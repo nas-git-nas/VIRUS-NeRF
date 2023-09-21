@@ -7,7 +7,7 @@ def get_opts(prefix_args=None):
     # dataset parameters
     parser.add_argument('--root_dir',
                         type=str,
-                        required=True,
+                        default='data/Synthetic_NeRF/Lego',
                         help='root directory of dataset')
     parser.add_argument('--dataset_name',
                         type=str,
