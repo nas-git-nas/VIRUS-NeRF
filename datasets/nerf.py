@@ -73,3 +73,5 @@ class NeRFDataset(BaseDataset):
             self.rays = torch.FloatTensor(np.stack(
                 self.rays))  # (N_images, hw, ?)
         self.poses = torch.FloatTensor(self.poses)  # (N_images, 3, 4)
+
+        pass

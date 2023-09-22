@@ -19,6 +19,8 @@ class NGPDataset(BaseDataset):
         if read_meta:
             self.read_meta(split)
 
+        pass
+
     def read_intrinsics(self):
         with open(os.path.join(self.root_dir, "transforms.json"),
                   'r') as f:

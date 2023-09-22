@@ -50,16 +50,6 @@ def main():
     hparams = get_opts()
     taichi_init(hparams)
 
-    # # datasets
-    # dataset = dataset_dict[hparams.dataset_name]
-    # train_dataset = dataset(
-    #     root_dir=hparams.root_dir,
-    #     split=hparams.split,
-    #     downsample=hparams.downsample,
-    # ).to(device)
-    # train_dataset.batch_size = hparams.batch_size
-    # train_dataset.ray_sampling_strategy = hparams.ray_sampling_strategy
-
     if hparams.deployment:
         model_config = {
             'scale': hparams.scale,
@@ -85,17 +75,11 @@ def main():
     model = NGP(**model_config).to(device)
 
     # load checkpoint if ckpt path is provided
-    hparams.ckpt_path = "results/model.pth"
+    hparams.ckpt_path = "results/Lego/model.pth"
     if hparams.ckpt_path:
         state_dict = torch.load(hparams.ckpt_path, map_location=device)
         model.load_state_dict(state_dict)
         print("Load checkpoint from %s" % hparams.ckpt_path)
-
-    # model.mark_invisible_cells(
-    #     train_dataset.K,
-    #     train_dataset.poses, 
-    #     train_dataset.img_wh,
-    # )
 
     # create slice
     slice_res = 128
@@ -137,36 +121,6 @@ def main():
     plt.tight_layout()
     plt.show()
 
-    # # plot density
-    # plt.imshow(sigmas, extent=[-hparams.scale,hparams.scale,-hparams.scale,hparams.scale], origin='lower', cmap='viridis')
-    # plt.colorbar(label='Density')
-    # plt.xlabel('X Axis')
-    # plt.ylabel('Y Axis')
-    # plt.title('Density Map')
-    # plt.show()
-
-    # # Create a 3x3 grid of subplots
-    # fig, axes = plt.subplots(nrows=3, ncols=2, figsize=(12, 12))
-
-    # for i in range(3):
-    #     for j in range(3):
-    #         if i * 3 + j < len(data):
-    #             x = data[i * 3 + j]
-    #             y = np.random.randn(1000)  # Random y-data for demonstration
-    #             heatmap, xedges, yedges = np.histogram2d(x, y, bins=30)
-    #             extent = [-1, 1, -1, 1]
-
-    #             # Plot the density map for the current subplot
-    #             ax = axes[i, j]
-    #             ax.imshow(heatmap.T, extent=extent, origin='lower', cmap='viridis')
-    #             ax.set_title(f'Subplot {i * 3 + j + 1}')
-    #             ax.set_xlabel('X Axis (-1 to 1)')
-    #             ax.set_ylabel('Y Axis (-1 to 1)')
-
-    # # Adjust layout to prevent overlapping labels
-    # plt.tight_layout()
-
-    # plt.show()
 
 if __name__ == '__main__':
     main()

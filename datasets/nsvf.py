@@ -32,6 +32,8 @@ class NSVFDataset(BaseDataset):
 
             self.read_meta(split)
 
+        pass
+
     def read_intrinsics(self):
         if 'Synthetic' in self.root_dir or 'Ignatius' in self.root_dir:
             with open(os.path.join(self.root_dir, 'intrinsics.txt')) as f:
