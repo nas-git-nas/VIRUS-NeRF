@@ -36,21 +36,11 @@ class RobotAtHomeDataset(BaseDataset):
     def __init__(self, root_dir, split='train', downsample=1.0, sensor_name="all", **kwargs):
         super().__init__(root_dir, split, downsample)
 
-        # self.read_intrinsics()
-        # if kwargs.get('read_meta', True):
-        #     xyz_min, xyz_max = \
-        #         np.loadtxt(os.path.join(root_dir, 'bbox.txt'))[:6].reshape(2, 3)
-        #     self.shift = (xyz_max + xyz_min) / 2
-        #     self.scale = (xyz_max -
-        #                   xyz_min).max() / 2 * 1.05  # enlarge a little
+        home_name = "anto"
+        room_name = "livingroom1"
+        session_name = "s1"
 
-        #     # hard-code fix the bound error for some scenes...
-        #     if 'Mic' in self.root_dir:
-        #         self.scale *= 1.2
-        #     elif 'Lego' in self.root_dir:
-        #         self.scale *= 1.1
-        #     self.read_meta(split)
-
+        # load dataset
         my_rh_path = root_dir
         my_rgbd_path = os.path.join(my_rh_path, 'files/rgbd')
         my_scene_path = os.path.join(my_rh_path, 'files/scene')
@@ -60,13 +50,27 @@ class RobotAtHomeDataset(BaseDataset):
 
         # get only observations from home="alma" and room="livingroom"
         df = self.rh.get_sensor_observations('lblrgbd') # load only labeld RGBD observations
-        home_id = self.rh.name2id("anto", "h")
-        room_id = self.rh.name2id("anto_bedroom1", "r")
+        home_id = self.rh.name2id(home_name, "h")
+        room_id = self.rh.name2id(home_name+"_"+room_name, "r")
         self.df = df[(df['home_id'] == home_id) & (df['room_id'] == room_id)]
 
+        # get only observations from particular sensor
         if sensor_name != "all":
             sensor_id = self.rh.name2id(sensor_name, "s")
             self.df = self.df[self.df["sensor_id"] == sensor_id]
+
+        # get scene point cloud
+        scenes = self.rh.get_scenes()
+        home_session_id = self.rh.name2id(home_name+"-"+session_name,'hs')
+        scene =  scenes.query(f'home_session_id=={home_session_id} & room_id=={room_id}')
+        scene_file = scene.scene_file.values[0]
+        scene_point_cloud = np.loadtxt(scene_file, skiprows=6)
+
+        # get scene shift and scale
+        xyz_min = scene_point_cloud[:,:3].min(axis=0)
+        xyz_max = scene_point_cloud[:,:3].max(axis=0)
+        self.shift = (xyz_max + xyz_min) / 2
+        self.scale = (xyz_max - xyz_min).max() / 2 * 1.05  # enlarge a little
 
         # split dataset
         self.splitDataset()
@@ -159,11 +163,10 @@ class RobotAtHomeDataset(BaseDataset):
         R_c2w = np.matmul(R_yaw_c2w, np.matmul(R_pitch_c2w, R_roll_c2w))
         # R_c2w = np.matmul(R_roll_c2w, np.matmul(R_pitch_c2w, R_yaw_c2w))
 
-        poses = np.concatenate((R_c2w, p_c2w[:, :, np.newaxis]), axis=2)
+        poses = np.concatenate((R_c2w, p_c2w[:, :, np.newaxis]), axis=2) # (N_images, 3, 4)
 
-        # # translate position TODO
-        # poses[:,:,3] -= self.shift
-        # poses[:,:,3] /= 2 * self.scale  # to bound the scene inside [-0.5, 0.5]
+        # translate and scale position
+        poses[:,:,3] = self.scalePosition(pos=poses[:,:,3])
 
         return torch.tensor(rays, dtype=torch.float32), torch.tensor(poses, dtype=torch.float32)
 
@@ -194,12 +197,23 @@ class RobotAtHomeDataset(BaseDataset):
 
         self.df = df
 
+    def scalePosition(self, pos):
+        """
+        Scale and shift position such that the scene is inside [-0.5, 0.5].
+        Args:
+            pos: position to scale and shift; tensor of shape (N_images, 3)
+        Returns:
+            pos: scaled and shifted position; tensor of shape (N_images, 3)
+        """
+        pos -= self.shift
+        pos /= 2 * self.scale
+        return pos
 
 
 
 def createFoVpolygon(corners, rays):
     # scale rays
-    rays = 0.3 * ( rays.T / np.linalg.norm(rays, axis=1) ).T
+    rays = 0.05 * ( rays.T / np.linalg.norm(rays, axis=1) ).T
 
     # Calculate field of view vertices
     fov_vertices1 = np.zeros((5, 3))
@@ -261,10 +275,10 @@ def plotCameraFoV(rays_o, rays_d, color, ax):
     ax.add_collection3d(Poly3DCollection(fov_polygon, alpha=0.18, edgecolor=color, facecolor=color))
 
     # plot top left corner of field of view
-    top_left_corner = rays_o[0,0,:] + 0.3*rays_d[0,0,:] / np.linalg.norm(rays_d[0,0,:])
+    top_left_corner = rays_o[0,0,:] + 0.05*rays_d[0,0,:] / np.linalg.norm(rays_d[0,0,:])
     ax.scatter(top_left_corner[0], top_left_corner[1], top_left_corner[2], color=color)
 
-    bottom_left_corner = rays_o[-1,0,:] + 0.3*rays_d[-1,0,:] / np.linalg.norm(rays_d[-1,0,:])
+    bottom_left_corner = rays_o[-1,0,:] + 0.05*rays_d[-1,0,:] / np.linalg.norm(rays_d[-1,0,:])
     ax.scatter(bottom_left_corner[0], bottom_left_corner[1], bottom_left_corner[2], color=color, marker='x')
 
 
@@ -283,26 +297,31 @@ def plotCameraRays(rays_o, rays_d, ax, color, show_nb_rays):
 
         # plot all sample rays
         start = rays_o[idx_w[i], idx_h[i], :]
-        end = start + 0.5 * rays_d[idx_w[i], idx_h[i], :]
+        end = start + 0.05 * rays_d[idx_w[i], idx_h[i], :]
         ax.plot([start[0], end[0]], [start[1], end[1]], [start[2], end[2]], c=color, label='Ray Direction')
 
-def plotCameraDirections(df, ax, color):
+def plotCameraDirections(df, ax, color, scale_fct):
     # get pose
     x = df["sensor_pose_x"]
     y = df["sensor_pose_y"]
     z = df["sensor_pose_z"]
-    yaw = df["sensor_pose_yaw"]
+    pos = np.array([x, y, z])
 
+    # scale position
+    pos = scale_fct(pos)
+
+
+    yaw = df["sensor_pose_yaw"]
     R_yaw_c2w = np.array([[np.cos(yaw), -np.sin(yaw), np.zeros_like(yaw)],
                             [np.sin(yaw), np.cos(yaw), np.zeros_like(yaw)],
                             [np.zeros_like(yaw), np.zeros_like(yaw), np.ones_like(yaw)]])
     
     # Plot points
-    ax.scatter(x, y, z, label='Points', color=color)
+    ax.scatter(pos[0], pos[1], pos[2], label='Points', color=color)
     
     # Plot directions
     direction = np.matmul(R_yaw_c2w[:,:], np.array([1, 0, 0]))
-    ax.quiver(x, y, z, direction[0], direction[1], direction[2], length=0.1, normalize=True, color=color)
+    ax.quiver(pos[0], pos[1], pos[2], direction[0], direction[1], direction[2], length=0.05, normalize=True, color=color)
 
 
 def test_read_meta():
@@ -343,11 +362,11 @@ def test_read_meta():
             rays_o = rays_o.reshape(dataset.img_wh[1], dataset.img_wh[0], 3).detach().clone().numpy() # (H, W, 3)
             rays_d = rays_d.reshape(dataset.img_wh[1], dataset.img_wh[0], 3).detach().clone().numpy() # (H, W, 3)
 
-            # verify ratio height to width
-            dH = np.linalg.norm(rays_d[0,0,:] - rays_d[-1,0,:])
-            dW = np.linalg.norm(rays_d[0,0,:] - rays_d[0,-1,:])
-            if np.abs(dH/dW - dataset.img_wh[1]/dataset.img_wh[0]) > 0.01:
-                print(f"ERROR: test_read_meta: Ratio height to width is not correct! {dH/dW} != {dataset.img_wh[1]/dataset.img_wh[0]}")
+            # # verify ratio height to width
+            # dH = np.linalg.norm(rays_d[0,0,:] - rays_d[-1,0,:])
+            # dW = np.linalg.norm(rays_d[0,0,:] - rays_d[0,-1,:])
+            # if np.abs(dH/dW - dataset.img_wh[1]/dataset.img_wh[0]) > 0.01:
+            #     print(f"ERROR: test_read_meta: Ratio height to width is not correct! {dH/dW} != {dataset.img_wh[1]/dataset.img_wh[0]}")
 
             # # veryfy rays_d
             # directions = get_ray_directions(dataset.img_wh[1], dataset.img_wh[0], dataset.K, flatten=False).detach().clone().numpy() # (H, W, 3)
@@ -361,32 +380,32 @@ def test_read_meta():
             #     print(f"rays_d[0,0,:] = {rays_d[0,0,:]}")
             #     print(f"directions[0,0,:] = {directions[0,0,:]}")
 
-            # verify opening angle
-            W_mid = dataset.img_wh[0] // 2
-            H_mid = dataset.img_wh[1] // 2
-            alpha_H = np.arccos(np.dot(rays_d[0,W_mid,:], rays_d[-1,W_mid,:]))
-            alpha_W = np.arccos(np.dot(rays_d[H_mid,0,:], rays_d[H_mid,-1,:]))
-            print(f"opening angle height = {np.rad2deg(alpha_H)}")
-            print(f"opening angle width = {np.rad2deg(alpha_W)}")
+            # # verify opening angle
+            # W_mid = dataset.img_wh[0] // 2
+            # H_mid = dataset.img_wh[1] // 2
+            # alpha_H = np.arccos(np.dot(rays_d[0,W_mid,:], rays_d[-1,W_mid,:]))
+            # alpha_W = np.arccos(np.dot(rays_d[H_mid,0,:], rays_d[H_mid,-1,:]))
+            # print(f"opening angle height = {np.rad2deg(alpha_H)}")
+            # print(f"opening angle width = {np.rad2deg(alpha_W)}")
 
             color = colour_map["cmap"](colour_map["norm"](i+int(dataset.rays.shape[0]/2)))
 
             plotCameraFoV(rays_o, rays_d, color, ax)
-            # plotCameraRays(rays_o, rays_d, ax, color, show_nb_rays)      
-            plotCameraDirections(df_split.iloc[i], ax, color)
+            plotCameraRays(rays_o, rays_d, ax, color, show_nb_rays)      
+            plotCameraDirections(df_split.iloc[i], ax, color, dataset.scalePosition)
 
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
     ax.set_title('Camera Poses Visualization')
     # ax.set_aspect('equal', 'box')
-    ax.set_box_aspect((3, 3, 1.5))
-    ax.set_xlim(0, 3)
-    ax.set_xticks(np.linspace(0, 3, 7))
-    ax.set_ylim(-2, 1)
-    ax.set_yticks(np.linspace(-2, 1, 7))
-    ax.set_zlim(0, 1.5)
-    ax.set_zticks(np.linspace(0, 1.5, 4))
+    ax.set_box_aspect((1, 1, 1))
+    ax.set_xlim(-0.5, 0.5)
+    ax.set_xticks(np.linspace(-0.5, 0.5, 5))
+    ax.set_ylim(-0.5, 0.5)
+    ax.set_yticks(np.linspace(-0.5, 0.5, 5))
+    ax.set_zlim(-0.5, 0.5)
+    ax.set_zticks(np.linspace(-0.5, 0.5, 5))
     plt.show()
 
 
