@@ -58,9 +58,10 @@ def main():
     update_interval = 16
 
     # datasets
+    root_dir = '/media/scratch1/schmin/data/robot_at_home'
     dataset = dataset_dict["robot_at_home"]
     train_dataset = dataset(
-        root_dir='../RobotAtHome2/data',
+        root_dir=root_dir,
         split="train",
         downsample=hparams.downsample,
     ).to(device)
@@ -68,7 +69,7 @@ def main():
     train_dataset.ray_sampling_strategy = hparams.ray_sampling_strategy
 
     test_dataset = dataset(
-        root_dir='../RobotAtHome2/data',
+        root_dir=root_dir,
         split='test',
         downsample=hparams.downsample,
     ).to(device)
@@ -152,7 +153,7 @@ def main():
 
     # training loop
     tic = time.time()
-    for step in range(hparams.max_steps+1):
+    for step in range(2000+1):
         model.train()
 
         i = torch.randint(0, len(train_dataset), (1,)).item()
@@ -187,7 +188,7 @@ def main():
         grad_scaler.update()
         scheduler.step()
 
-        if step % 10 == 0:
+        if step % 100 == 0:
             elapsed_time = time.time() - tic
             with torch.no_grad():
                 mse = F.mse_loss(results['rgb'], data['rgb'])

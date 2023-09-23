@@ -228,7 +228,7 @@ def main():
         directions = test_dataset.directions
         test_psnrs = []
         test_ssims = []
-        for test_step in range(4): #range(len(test_dataset)): NS changed
+        for test_step in range(len(test_dataset)):
             progress_bar.update()
             test_data = test_dataset[test_step]
 
