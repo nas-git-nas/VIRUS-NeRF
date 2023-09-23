@@ -58,9 +58,10 @@ def main():
     update_interval = 16
 
     # datasets
+    root_dir ='../RobotAtHome2/data'
     dataset = dataset_dict["robot_at_home"]
     train_dataset = dataset(
-        root_dir='../RobotAtHome2/data',
+        root_dir=root_dir,
         split="train",
         downsample=hparams.downsample,
     ).to(device)
@@ -68,7 +69,7 @@ def main():
     train_dataset.ray_sampling_strategy = hparams.ray_sampling_strategy
 
     test_dataset = dataset(
-        root_dir='../RobotAtHome2/data',
+        root_dir=root_dir,
         split='test',
         downsample=hparams.downsample,
     ).to(device)
@@ -259,7 +260,7 @@ def main():
             val_ssim.reset()
 
             # save test image to disk
-            if test_step == 0:
+            if test_step == 0 or test_step == 10 or test_step == 100:
                 test_idx = test_data['img_idxs']
                 # TODO: get rid of this
                 rgb_pred = rearrange(

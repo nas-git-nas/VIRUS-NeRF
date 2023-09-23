@@ -36,9 +36,11 @@ class RobotAtHomeDataset(BaseDataset):
     def __init__(self, root_dir, split='train', downsample=1.0, sensor_name="all", **kwargs):
         super().__init__(root_dir, split, downsample)
 
-        home_name = "anto"
-        room_name = "livingroom1"
-        session_name = "s1"
+        self.session_name = "session_2"
+        self.home_name = "anto"
+        self.room_name = "livingroom1"
+        self.subsession_name = "subsession_1"
+        self.home_session_name = "s1"
 
         # load dataset
         my_rh_path = root_dir
@@ -50,30 +52,27 @@ class RobotAtHomeDataset(BaseDataset):
 
         # get only observations from home="alma" and room="livingroom"
         df = self.rh.get_sensor_observations('lblrgbd') # load only labeld RGBD observations
-        home_id = self.rh.name2id(home_name, "h")
-        room_id = self.rh.name2id(home_name+"_"+room_name, "r")
+        home_id = self.rh.name2id(self.home_name, "h")
+        room_id = self.rh.name2id(self.home_name+"_"+self.room_name, "r")
         self.df = df[(df['home_id'] == home_id) & (df['room_id'] == room_id)]
+
+        # split dataset
+        split_ratio = {'train': 0.6, 'val': 0.2, 'test': 0.2}
+        self.df = self.splitDataset(df=self.df, split_ratio=split_ratio)
 
         # get only observations from particular sensor
         if sensor_name != "all":
             sensor_id = self.rh.name2id(sensor_name, "s")
             self.df = self.df[self.df["sensor_id"] == sensor_id]
 
-        # get scene point cloud
+        # get scene
         scenes = self.rh.get_scenes()
-        home_session_id = self.rh.name2id(home_name+"-"+session_name,'hs')
-        scene =  scenes.query(f'home_session_id=={home_session_id} & room_id=={room_id}')
-        scene_file = scene.scene_file.values[0]
-        scene_point_cloud = np.loadtxt(scene_file, skiprows=6)
+        home_session_id = self.rh.name2id(self.home_name+"-"+self.home_session_name,'hs')
+        self.scene =  scenes.query(f'home_session_id=={home_session_id} & room_id=={room_id}')
 
-        # get scene shift and scale
-        xyz_min = scene_point_cloud[:,:3].min(axis=0)
-        xyz_max = scene_point_cloud[:,:3].max(axis=0)
-        self.shift = (xyz_max + xyz_min) / 2
-        self.scale = (xyz_max - xyz_min).max() / 2 * 1.05  # enlarge a little
-
-        # split dataset
-        self.splitDataset()
+        # scene shift and scale variables
+        self.shift = None
+        self.scale = None
 
         self.img_wh, self.K, self.directions = self.read_intrinsics()
         self.rays, self.poses = self.read_meta(split)
@@ -170,32 +169,91 @@ class RobotAtHomeDataset(BaseDataset):
 
         return torch.tensor(rays, dtype=torch.float32), torch.tensor(poses, dtype=torch.float32)
 
-    def splitDataset(self):
+    def splitDataset(self, df, split_ratio):
         """
         Split the dataset into train, val and test sets.
+        Args:
+            df: dataframe containing the dataset
+            split_ratio: dictionary containing the split ratio for each split
+        Returns:
+            df: dataframe containing the dataset with a new column 'split'
         """
-        df = self.df.copy(deep=True)
+        df = self.df.copy(deep=True) 
+        df_split_path = os.path.join(self.root_dir, 'files', 'rgbd', self.session_name, 
+                                     self.home_name, self.room_name)
+        df_split_filename = 'split_'+self.subsession_name+'.csv'
+
+        # load split description if it exists already
+        df_description = None
+        if os.path.exists(os.path.join(df_split_path, 'split_description.csv')):    
+            df_description = pd.read_csv(os.path.join(df_split_path, 'split_description.csv'), 
+                                         index_col=0, dtype={'info':str,'train':float, 'val':float, 'test':float})
+        
+        # load split if it exists already
+        if os.path.exists(os.path.join(df_split_path, df_split_filename)):
+            # split ratio must be the same as in description (last split)
+            if df_description.loc[df_split_filename, 'train']==split_ratio['train'] \
+                and df_description.loc[df_split_filename, 'val']==split_ratio['val'] \
+                and df_description.loc[df_split_filename, 'test']==split_ratio['test']:
+
+                # load split and merge with df
+                df_split = pd.read_csv(os.path.join(df_split_path, df_split_filename))
+                df = pd.merge(df, df_split, on='id', how='left')
+                return df
 
         # create new column for split
         df.insert(1, 'split', None)
 
-        # get indices for each sensor_id and each split
-        train_idxs = np.empty(0, dtype=int)
-        val_idxs = np.empty(0, dtype=int)
-        test_idxs = np.empty(0, dtype=int)
+        # verify that split is correct
+        if split_ratio['train'] + split_ratio['val'] + split_ratio['test'] != 1.0:
+            print(f"ERROR: robot_at_home.py: splitDataset: split ratios do not sum up to 1.0")
+        if split_ratio['train']*10 % 1 != 0 or split_ratio['val']*10 % 1 != 0 or split_ratio['test']*10 % 1 != 0:
+            print(f"ERROR: robot_at_home.py: splitDataset: split ratios must be multiples of 0.1")
+        
+        # get indices for each sensor
+        split_idxs = {"train": np.empty(0, dtype=int), "val": np.empty(0, dtype=int), "test": np.empty(0, dtype=int)}
         for id in df["sensor_id"].unique():
             id_idxs = df.index[df["sensor_id"] == id].to_numpy()
+   
+            # get indices for each split
+            partitions = ["train" for _ in range(int(split_ratio['train']*10))] \
+                        + ["val" for _ in range(int(split_ratio['val']*10))] \
+                        + ["test" for _ in range(int(split_ratio['test']*10))]
+            for offset, part in enumerate(partitions):
+                split_idxs[part] = np.concatenate((split_idxs[part], id_idxs[offset::10]))
 
-            train_idxs = np.concatenate((train_idxs, id_idxs[::3]))
-            val_idxs = np.concatenate((val_idxs, id_idxs[1::3]))
-            test_idxs = np.concatenate((test_idxs, id_idxs[2::3]))
+        # assign split
+        df.loc[split_idxs["train"], 'split'] = 'train'
+        df.loc[split_idxs["val"], 'split'] = 'val'
+        df.loc[split_idxs["test"], 'split'] = 'test'
 
-        # set split column    
-        df.loc[train_idxs, 'split'] = 'train'
-        df.loc[val_idxs, 'split'] = 'val'
-        df.loc[test_idxs, 'split'] = 'test'
+        # # get indices for each sensor_id and each split
+        # train_idxs = np.empty(0, dtype=int)
+        # val_idxs = np.empty(0, dtype=int)
+        # test_idxs = np.empty(0, dtype=int)
+        # for id in df["sensor_id"].unique():
+        #     id_idxs = df.index[df["sensor_id"] == id].to_numpy()
 
-        self.df = df
+        #     train_idxs = np.concatenate((train_idxs, id_idxs[::3]))
+        #     val_idxs = np.concatenate((val_idxs, id_idxs[1::3]))
+        #     test_idxs = np.concatenate((test_idxs, id_idxs[2::3]))    
+        # df.loc[train_idxs, 'split'] = 'train'
+        # df.loc[val_idxs, 'split'] = 'val'
+        # df.loc[test_idxs, 'split'] = 'test'
+
+        # save split
+        df_split = df[['id', 'split', 'sensor_name']].copy(deep=True)
+        df_split.to_csv(os.path.join(df_split_path, df_split_filename), index=False)
+
+        # save split description
+        if df_description is None:
+            df_description = pd.DataFrame(columns=['info','train', 'val', 'test'])
+            df_description.loc["info"] = ["This file contains the split ratios for each split file in the same directory. " \
+                                          + "The Ratios must be a multiple of 0.1 and sum up to 1.0 to ensure correct splitting.", "", "", ""]
+        df_description.loc[df_split_filename] = ["-", split_ratio['train'], split_ratio['val'], split_ratio['test']]
+        df_description.to_csv(os.path.join(df_split_path, 'split_description.csv'), index=True)
+
+        return df
 
     def scalePosition(self, pos):
         """
@@ -205,11 +263,54 @@ class RobotAtHomeDataset(BaseDataset):
         Returns:
             pos: scaled and shifted position; tensor of shape (N_images, 3)
         """
+        # calc. shift and scale if not already done
+        if (self.shift is None) or (self.scale is None):
+            # get scene point cloud
+            scene_file = self.scene.scene_file.values[0]
+            scene_point_cloud = np.loadtxt(scene_file, skiprows=6)
+
+            # get scene shift and scale
+            xyz_min = scene_point_cloud[:,:3].min(axis=0)
+            xyz_max = scene_point_cloud[:,:3].max(axis=0)
+            self.shift = (xyz_max + xyz_min) / 2
+            self.scale = (xyz_max - xyz_min).max() / 2 * 1.05  # enlarge a little
+
+        # shift and scale position
         pos -= self.shift
         pos /= 2 * self.scale
         return pos
+    
+    def getSceneSlice(self, height, slice_res, height_tolerance=0.1):
+        """
+        Get a slice of the scene.
+        Args:
+            height: height of the slice in scene coordinate system; float
+            slice_res: size of slice map; int
+            height_tolerance: tolerance for height in scene coordinate system; float
+        Returns:
+            slice_map: slice of the scene; array of shape (slice_shape[0], slice_shape[1])
+        """
+        slice_map = np.zeros((slice_res, slice_res)) 
 
+        # get scene point cloud
+        scene_file = self.scene.scene_file.values[0]
+        scene_point_cloud = np.loadtxt(scene_file, skiprows=6)
 
+        # extract points in slice [height-height_tolerance, height+height_tolerance]
+        idxs = np.where((scene_point_cloud[:,2] >= height-height_tolerance) & (scene_point_cloud[:,2] <= height+height_tolerance))[0] # (N,)
+        points = scene_point_cloud[idxs,:3] # (N, x y z)    
+
+        # convert points to slice coordinates
+        points = self.scalePosition(pos=points) # (N, x y z), convert to cube coordinate system [-0.5, 0.5]
+        points = points[:,:2] # (N, x y), ignore z coordinate
+        idxs = (points + 0.5) * (slice_res - 1) # (N, x y), convert to slice coordinates
+        idxs = np.round(idxs).astype(int) # (N, x y), convert to int
+        idxs = np.clip(idxs, 0, slice_res-1) # (N, x y), clip to slice shape
+
+        # fill slice map
+        slice_map[idxs[:,0], idxs[:,1]] = 1
+
+        return slice_map
 
 def createFoVpolygon(corners, rays):
     # scale rays

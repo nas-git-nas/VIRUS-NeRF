@@ -71,11 +71,22 @@ def main():
             'half_opt': hparams.half_opt,
         }
 
+    # datasets
+    root_dir ='../RobotAtHome2/data'
+    dataset = dataset_dict["robot_at_home"]
+    train_dataset = dataset(
+        root_dir=root_dir,
+        split="train",
+        downsample=hparams.downsample,
+    ).to(device)
+    train_dataset.batch_size = hparams.batch_size
+    train_dataset.ray_sampling_strategy = hparams.ray_sampling_strategy
+
     # model
     model = NGP(**model_config).to(device)
 
     # load checkpoint if ckpt path is provided
-    hparams.ckpt_path = "results/Lego/model.pth"
+    hparams.ckpt_path = "results/robot_at_home/model.pth"
     if hparams.ckpt_path:
         state_dict = torch.load(hparams.ckpt_path, map_location=device)
         model.load_state_dict(state_dict)
@@ -83,13 +94,21 @@ def main():
 
     # create slice
     slice_res = 128
-    slice_heights = [-0.2, -0.1, 0.0, 0.1, 0.2]
+
+    slice_heights_secene = [0.6, 0.9, 1.2] # in scene coordinates (meters)
+    pos = np.zeros((len(slice_heights_secene), 3))
+    pos[:,2] = np.array(slice_heights_secene)
+    pos = train_dataset.scalePosition(pos=pos)
+    slice_heights = pos[:,2] # in cube coordinates [-0.5, 0.5]
+    # slice_heights = [-0.2, -0.1, 0.0, 0.1, 0.2]
+
     slice_pts = torch.linspace(-hparams.scale, hparams.scale, slice_res) # (slice_res,)
     m1, m2 = torch.meshgrid(slice_pts, slice_pts) # (slice_res,slice_res), (slice_res,slice_res)
     extent = [-hparams.scale,hparams.scale,-hparams.scale,hparams.scale]
        
     # Create a 3x3 grid of subplots
-    fig, axes = plt.subplots(nrows=2, ncols=len(slice_heights), figsize=(12,6))
+    thresholds = [5, 7.5, 10, 30, 50]
+    fig, axes = plt.subplots(nrows=2+len(thresholds), ncols=len(slice_heights), figsize=(12,12))
     
     for i in range(len(slice_heights)):
         # estimate density of slice
@@ -98,11 +117,15 @@ def main():
         sigmas = model.density(x) # (slice_res*slice_res,3)
         sigmas = sigmas.reshape(slice_res, slice_res).cpu().detach().numpy() # (slice_res,slice_res)
 
-        # threshold density
-        threshold = 10
-        sigmas_thresholded = sigmas.copy()
-        sigmas_thresholded[sigmas < threshold] = 0.0
-        sigmas_thresholded[sigmas >= threshold] = 1.0
+        # threshold density   
+        sigmas_thresholded = []
+        for j, thr in enumerate(thresholds):
+            sigmas_thresholded.append(sigmas.copy())
+            sigmas_thresholded[j][sigmas < thr] = 0.0
+            sigmas_thresholded[j][sigmas >= thr] = 1.0
+
+        # get ground truth
+        slice_map = train_dataset.getSceneSlice(height=slice_heights_secene[i], slice_res=slice_res)
 
         # Plot the density map for the current subplot
         ax = axes[0, i]
@@ -111,9 +134,16 @@ def main():
         ax.set_xlabel('X Axis')
         ax.set_ylabel('Y Axis')
 
-        ax = axes[1, i]
-        ax.imshow(sigmas_thresholded, extent=extent, origin='lower', cmap='viridis')
-        ax.set_title(f'Thresholded at {threshold}')
+        for j, sig_thr in enumerate(sigmas_thresholded):
+            ax = axes[j+1, i]
+            ax.imshow(sig_thr, extent=extent, origin='lower', cmap='viridis')
+            ax.set_title(f'Thresholded at {thresholds[j]}')
+            ax.set_xlabel('X Axis')
+            ax.set_ylabel('Y Axis')
+
+        ax = axes[-1, i]
+        ax.imshow(slice_map, extent=extent, origin='lower', cmap='viridis')
+        ax.set_title(f'Scene Slice')
         ax.set_xlabel('X Axis')
         ax.set_ylabel('Y Axis')
 
