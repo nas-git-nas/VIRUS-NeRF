@@ -57,7 +57,7 @@ class RobotAtHomeDataset(BaseDataset):
         self.df = df[(df['home_id'] == home_id) & (df['room_id'] == room_id)]
 
         # split dataset
-        split_ratio = {'train': 0.6, 'val': 0.2, 'test': 0.2}
+        split_ratio = {'train': 0.8, 'val': 0.1, 'test': 0.1}
         self.df = self.splitDataset(df=self.df, split_ratio=split_ratio)
 
         # get only observations from particular sensor
