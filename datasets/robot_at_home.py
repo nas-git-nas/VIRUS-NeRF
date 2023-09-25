@@ -92,11 +92,20 @@ class RobotAtHomeDataset(BaseDataset):
         h, w, _ = img.shape
 
         # get camera intrinsic matrix
-        # f = 570.3422241210938 # focal length
-        fh = 232.6282 # 232.632 if h/2
-        fw = 220.7983 # 220.8053 if w/2
-        K = np.array([[fw, 0.0, w/2-0.5],
-                      [0.0, fh, h/2-0.5], 
+        # # f = 570.3422241210938 / 2 # focal length
+        # f = 363.83755595658255
+        # fh = #232.6282 # 232.632 if h/2
+        # fw = #220.7983 # 220.8053 if w/2
+        # K = np.array([[f, 0.0, w/2],
+        #               [0.0, f, h/2], 
+        #               [0.0, 0.0, 1.0]])
+        
+        cx = 157.3245865
+        cy = 120.0802295
+        fx = 286.441384
+        fy = 271.36999
+        K = np.array([[fy, 0.0, cy],
+                      [0.0, fx, cx], 
                       [0.0, 0.0, 1.0]])
 
         # get ray directions
