@@ -58,10 +58,10 @@ def main():
     update_interval = 16
 
     # datasets
-    root_dir = '../RobotAtHome2/data' #'/media/scratch1/schmin/data/robot_at_home'
+    root_dir = '/media/scratch1/schmin/data/robot_at_home' # '../RobotAtHome2/data'
     dataset = dataset_dict["robot_at_home"]
     train_dataset = dataset(
-        root_dir='../RobotAtHome2/data',
+        root_dir=root_dir,
         split="train",
         downsample=hparams.downsample,
     ).to(device)
@@ -69,7 +69,7 @@ def main():
     train_dataset.ray_sampling_strategy = hparams.ray_sampling_strategy
 
     test_dataset = dataset(
-        root_dir='../RobotAtHome2/data',
+        root_dir=root_dir,
         split='test',
         downsample=hparams.downsample,
     ).to(device)
@@ -84,26 +84,12 @@ def main():
         data_range=1
     ).to(device)
 
-    if hparams.deployment:
-        model_config = {
-            'scale': hparams.scale,
-            'pos_encoder_type': 'hash',
-            'levels': 4,
-            'feature_per_level': 4,
-            'base_res': 32,
-            'max_res': 128,
-            'log2_T': 21,
-            'xyz_net_width': 16,
-            'rgb_net_width': 16,
-            'rgb_net_depth': 1,
-        }
-    else:
-        model_config = {
-            'scale': hparams.scale,
-            'pos_encoder_type': hparams.encoder_type,
-            'max_res': 1024 if hparams.scale == 0.5 else 4096,
-            'half_opt': hparams.half_opt,
-        }
+    model_config = {
+        'scale': 0.5,
+        'pos_encoder_type': 'hash',
+        'max_res':1024, #4096, # 1024,
+        'half_opt': False,
+    }
 
     # model
     model = NGP(**model_config).to(device)
@@ -128,32 +114,34 @@ def main():
         scaler = 2**19
     grad_scaler = torch.cuda.amp.GradScaler(scaler)
     # optimizer
+    lr = 1e-2
     try:
         import apex
         optimizer = apex.optimizers.FusedAdam(
             model.parameters(), 
-            lr=hparams.lr, 
+            lr=lr, 
             eps=1e-15,
         )
     except ImportError:
         print("Failed to import apex FusedAdam, use torch Adam instead.")
         optimizer = torch.optim.Adam(
             model.parameters(), 
-            hparams.lr, 
+            lr, 
             eps=1e-15,
         )
 
     # scheduler
+    hparams.max_steps = 3000
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
-        hparams.max_steps,
-        hparams.lr/30
+        optimizer=optimizer,
+        T_max=hparams.max_steps,
+        eta_min=lr/30,
     )
 
 
     # training loop
     tic = time.time()
-    for step in range(2000+1):
+    for step in range(hparams.max_steps+1):
         model.train()
 
         i = torch.randint(0, len(train_dataset), (1,)).item()
@@ -204,14 +192,8 @@ def main():
                 # volume rendering samples per ray 
                 # (stops marching when transmittance drops below 1e-4)
                 f"vr_s={results['vr_samples'] / len(data['rgb']):.1f} | "
+                f"lr={(optimizer.param_groups[0]['lr']):.5f} | "
             )
-
-    if hparams.deployment:
-        save_deployment_model(
-            model=model, 
-            dataset=train_dataset, 
-            save_dir=hparams.deployment_model_path,
-        )
 
     # check if val_dir exists, otherwise create it
     if not os.path.exists(val_dir):
@@ -274,7 +256,7 @@ def main():
                 imageio.imsave(
                     os.path.join(
                         val_dir, 
-                        f'rgb_{test_idx:03d}.png'
+                        f'rgb_{test_idx:03d}_'+str(test_step)+'.png'
                         ),
                     rgb_pred
                 )
