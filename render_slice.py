@@ -86,7 +86,7 @@ def main():
     model = NGP(**model_config).to(device)
 
     # load checkpoint if ckpt path is provided
-    hparams.ckpt_path = "results/robot_at_home/model.pth"
+    hparams.ckpt_path = "results/robot_at_home3/model.pth"
     if hparams.ckpt_path:
         state_dict = torch.load(hparams.ckpt_path, map_location=device)
         model.load_state_dict(state_dict)
@@ -95,7 +95,7 @@ def main():
     # create slice
     slice_res = 128
 
-    slice_heights_secene = [0.6, 0.9, 1.2] # in scene coordinates (meters)
+    slice_heights_secene = [0.7045, 1.045, 1.345] # in scene coordinates (meters)
     pos = np.zeros((len(slice_heights_secene), 3))
     pos[:,2] = np.array(slice_heights_secene)
     pos = train_dataset.scalePosition(pos=pos)
@@ -107,8 +107,8 @@ def main():
     extent = [-hparams.scale,hparams.scale,-hparams.scale,hparams.scale]
        
     # Create a 3x3 grid of subplots
-    thresholds = [5, 7.5, 10, 30, 50]
-    fig, axes = plt.subplots(nrows=2+len(thresholds), ncols=len(slice_heights), figsize=(12,12))
+    thresholds = [10, 20, 30, 40]
+    fig, axes = plt.subplots(ncols=2+len(thresholds), nrows=len(slice_heights), figsize=(12,6))
     
     for i in range(len(slice_heights)):
         # estimate density of slice
@@ -127,25 +127,26 @@ def main():
         # get ground truth
         slice_map = train_dataset.getSceneSlice(height=slice_heights_secene[i], slice_res=slice_res)
 
+        # plot the ground truth
+        ax = axes[i,0]
+        ax.imshow(slice_map, extent=extent, origin='lower', cmap='viridis')
+        if i == 0:
+            ax.set_title(f'Ground Truth')
+        ax.set_ylabel(f'Height {slice_heights_secene[i]}m')
+
         # Plot the density map for the current subplot
-        ax = axes[0, i]
+        ax = axes[i,1]
         ax.imshow(sigmas, extent=extent, origin='lower', cmap='viridis')
-        ax.set_title(f'Height {slice_heights[i]}')
-        ax.set_xlabel('X Axis')
-        ax.set_ylabel('Y Axis')
+        if i == 0:
+            ax.set_title(f'Rendered Density')
 
         for j, sig_thr in enumerate(sigmas_thresholded):
-            ax = axes[j+1, i]
+            ax = axes[i, j+2]
             ax.imshow(sig_thr, extent=extent, origin='lower', cmap='viridis')
-            ax.set_title(f'Thresholded at {thresholds[j]}')
-            ax.set_xlabel('X Axis')
-            ax.set_ylabel('Y Axis')
+            if i == 0:
+                ax.set_title(f'Threshold = {thresholds[j]}')
 
-        ax = axes[-1, i]
-        ax.imshow(slice_map, extent=extent, origin='lower', cmap='viridis')
-        ax.set_title(f'Scene Slice')
-        ax.set_xlabel('X Axis')
-        ax.set_ylabel('Y Axis')
+
 
     # Adjust layout to prevent overlapping labels
     plt.tight_layout()

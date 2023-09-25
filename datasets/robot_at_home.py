@@ -492,7 +492,7 @@ def test_read_meta():
             color = colour_map["cmap"](colour_map["norm"](i+int(dataset.rays.shape[0]/2)))
 
             plotCameraFoV(rays_o, rays_d, color, ax)
-            plotCameraRays(rays_o, rays_d, ax, color, show_nb_rays)      
+            # plotCameraRays(rays_o, rays_d, ax, color, show_nb_rays)      
             plotCameraDirections(df_split.iloc[i], ax, color, dataset.scalePosition)
 
     ax.set_xlabel('X')
