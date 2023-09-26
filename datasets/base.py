@@ -29,6 +29,8 @@ class BaseDataset(Dataset):
         self.poses = self.poses.to(device)
         self.K = self.K.to(device)
         self.directions = self.directions.to(device)
+        if hasattr(self, 'depths'):
+                self.depths = self.depths.to(device)
         return self
 
     def __getitem__(self, idx):
@@ -62,8 +64,10 @@ class BaseDataset(Dataset):
                 'pix_idxs': pix_idxs,
                 'pose': self.poses[img_idxs],
                 'direction': self.directions[pix_idxs],
-                'rgb': rays[:, :3]
+                'rgb': rays[:, :3],
             }
+            if hasattr(self, 'depths'):
+                sample['depth'] = self.depths[img_idxs, pix_idxs]
         else:
             sample = {'pose': self.poses[idx], 'img_idxs': idx}
              # if ground truth available

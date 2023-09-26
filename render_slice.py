@@ -102,6 +102,12 @@ def main():
     slice_heights = pos[:,2] # in cube coordinates [-0.5, 0.5]
     # slice_heights = [-0.2, -0.1, 0.0, 0.1, 0.2]
 
+    # convert tolerance from meters to cube coordinates
+    tolerance_scene = 0.1 # in meters
+    pos = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, tolerance_scene]])
+    pos = train_dataset.scalePosition(pos=pos)
+    tolerance = pos[1,2] - pos[0,2] # in cube coordinates
+
     slice_pts = torch.linspace(-hparams.scale, hparams.scale, slice_res) # (slice_res,)
     m1, m2 = torch.meshgrid(slice_pts, slice_pts) # (slice_res,slice_res), (slice_res,slice_res)
     extent = [-hparams.scale,hparams.scale,-hparams.scale,hparams.scale]
@@ -111,21 +117,26 @@ def main():
     fig, axes = plt.subplots(ncols=2+len(thresholds), nrows=len(slice_heights), figsize=(12,6))
     
     for i in range(len(slice_heights)):
+
         # estimate density of slice
-        height = slice_heights[i] * torch.ones(slice_res*slice_res,1)
-        x = torch.cat((m1.reshape(-1,1), m2.reshape(-1,1), height), dim=1) # (slice_res*slice_res, 3)
-        sigmas = model.density(x) # (slice_res*slice_res,3)
-        sigmas = sigmas.reshape(slice_res, slice_res).cpu().detach().numpy() # (slice_res,slice_res)
+        density = []
+        for j, height in enumerate(np.linspace(slice_heights[i]-tolerance, slice_heights[i]+tolerance, 10)):         
+            x = torch.cat((m1.reshape(-1,1), m2.reshape(-1,1), height*torch.ones(slice_res*slice_res,1)), dim=1) # (slice_res*slice_res, 3)
+            sigmas = model.density(x) # (slice_res*slice_res,3)
+            sigmas = sigmas.reshape(slice_res, slice_res).cpu().detach().numpy() # (slice_res,slice_res)
+            density.append(sigmas)
+        density = np.array(density).mean(axis=0)
+        
 
         # threshold density   
-        sigmas_thresholded = []
+        density_thresholded = []
         for j, thr in enumerate(thresholds):
-            sigmas_thresholded.append(sigmas.copy())
-            sigmas_thresholded[j][sigmas < thr] = 0.0
-            sigmas_thresholded[j][sigmas >= thr] = 1.0
+            density_thresholded.append(density.copy())
+            density_thresholded[j][density < thr] = 0.0
+            density_thresholded[j][density >= thr] = 1.0
 
         # get ground truth
-        slice_map = train_dataset.getSceneSlice(height=slice_heights_secene[i], slice_res=slice_res)
+        slice_map = train_dataset.getSceneSlice(height=slice_heights_secene[i], slice_res=slice_res, height_tolerance=tolerance_scene)
 
         # plot the ground truth
         ax = axes[i,0]
@@ -136,11 +147,11 @@ def main():
 
         # Plot the density map for the current subplot
         ax = axes[i,1]
-        ax.imshow(sigmas, extent=extent, origin='lower', cmap='viridis')
+        ax.imshow(density, extent=extent, origin='lower', cmap='viridis')
         if i == 0:
             ax.set_title(f'Rendered Density')
 
-        for j, sig_thr in enumerate(sigmas_thresholded):
+        for j, sig_thr in enumerate(density_thresholded):
             ax = axes[i, j+2]
             ax.imshow(sig_thr, extent=extent, origin='lower', cmap='viridis')
             if i == 0:

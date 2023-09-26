@@ -75,7 +75,7 @@ class RobotAtHomeDataset(BaseDataset):
         self.scale = None
 
         self.img_wh, self.K, self.directions = self.read_intrinsics()
-        self.rays, self.poses = self.read_meta(split)
+        self.rays, self.depths, self.poses = self.read_meta(split)
 
     def read_intrinsics(self):
         """
@@ -129,6 +129,7 @@ class RobotAtHomeDataset(BaseDataset):
             split: string indicating which split to read from
         Returns:
             rays: tensor of shape (N_images, W*H, 3) containing RGB images
+            depths: tensor of shape (N_images, W*H) containing depth images
             poses: tensor of shape (N_images, 3, 4) containing camera poses
         """
         df = self.df[self.df["split"] == split].copy(deep=True)
@@ -137,9 +138,15 @@ class RobotAtHomeDataset(BaseDataset):
         rays = np.empty(())
         ids = df["id"].to_numpy()
         rays = np.empty((ids.shape[0], self.img_wh[0]*self.img_wh[1], 3))
+        depths = np.empty((ids.shape[0], self.img_wh[0]*self.img_wh[1]))
         for i, id in enumerate(ids):
             [rgb_f, d_f] = self.rh.get_RGBD_files(id)
             rays[i,:,:] = mpimg.imread(rgb_f).reshape(self.img_wh[0]*self.img_wh[1], 3)
+
+            depth = mpimg.imread(d_f)
+            depth = depth * 3.5 # convert to meters, max. range of sensor is 3.5m
+            depths[i,:] = depth[:,:,0].flatten()
+
 
         # get position
         sensor_pose_x = df["sensor_pose_x"].to_numpy()
@@ -176,7 +183,7 @@ class RobotAtHomeDataset(BaseDataset):
         # translate and scale position
         poses[:,:,3] = self.scalePosition(pos=poses[:,:,3])
 
-        return torch.tensor(rays, dtype=torch.float32), torch.tensor(poses, dtype=torch.float32)
+        return torch.tensor(rays, dtype=torch.float32), torch.tensor(depths, dtype=torch.float32), torch.tensor(poses, dtype=torch.float32)
 
     def splitDataset(self, df, split_ratio):
         """

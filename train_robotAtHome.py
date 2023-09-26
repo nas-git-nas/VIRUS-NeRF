@@ -35,6 +35,32 @@ def taichi_init(args):
 
     ti.init(**taichi_init_args)
 
+def lossFunc(results, data, depth_loss_w=1.0):
+    """
+    Loss function for training
+    Args:
+        results: dict of rendered images
+            'opacity': sum(transmittance*alpha); array of shape: (N,)
+            'depth': sum(transmittance*alpha*t__i); array of shape: (N,)
+            'rgb': sum(transmittance*alpha*rgb_i); array of shape: (N, 3)
+            'total_samples': total samples for all rays; int
+            where   transmittance = exp( -sum(sigma_i * delta_i) )
+                    alpha = 1 - exp(-sigma_i * delta_i)
+                    delta_i = t_i+1 - t_i
+        data: dict of ground truth images
+            'img_idxs': image indices; array of shape (N,) or (1,) if same image
+            'pix_idxs': pixel indices; array of shape (N,)
+            'pose': poses; array of shape (N, 3, 4)
+            'direction': directions; array of shape (N, 3)
+            'rgb': pixel colours; array of shape (N, 3)
+            'depth': pixel depths; array of shape (N,)
+        depth_loss_w: weight of depth loss; float
+    Returns:
+        loss: loss value; float
+    """
+    colour_loss = F.mse_loss(results['rgb'], data['rgb'])
+    depth_loss = F.mse_loss(results['depth'], data['depth'])
+    return colour_loss + depth_loss_w * depth_loss
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -58,7 +84,7 @@ def main():
     update_interval = 16
 
     # datasets
-    root_dir = '/media/scratch1/schmin/data/robot_at_home' # '../RobotAtHome2/data'
+    root_dir = '../RobotAtHome2/data' # '/media/scratch1/schmin/data/robot_at_home'
     dataset = dataset_dict["robot_at_home"]
     train_dataset = dataset(
         root_dir=root_dir,
@@ -165,8 +191,7 @@ def main():
                 rays_d,
                 exp_step_factor=exp_step_factor,
             )
-
-            loss = F.mse_loss(results['rgb'], data['rgb'])
+            loss = lossFunc(results=results, data=data)
             if hparams.distortion_loss_w > 0:
                 loss += hparams.distortion_loss_w * distortion_loss(results).mean()
 
