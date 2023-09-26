@@ -50,13 +50,16 @@ class BaseDataset(Dataset):
             # randomly select pixels
             # pix_idxs = np.random.choice(self.img_wh[0] * self.img_wh[1],
             #                             self.batch_size)
+            
+            if hasattr(self, 'pixel_sampling_strategy') and self.pixel_sampling_strategy=='entire_image':
+                pix_idxs = torch.arange(
+                    0, self.img_wh[0]*self.img_wh[1], device=self.rays.device
+                )
+            else:
+                pix_idxs = torch.randint(
+                    0, self.img_wh[0]*self.img_wh[1], size=(self.batch_size,), device=self.rays.device
+                )
 
-            pix_idxs = torch.randint(
-                0, self.img_wh[0]*self.img_wh[1], size=(self.batch_size,), device=self.rays.device
-            )
-            # pix_idxs = torch.arange(
-            #     0, self.img_wh[0]*self.img_wh[1], device=self.rays.device
-            # )
 
             rays = self.rays[img_idxs, pix_idxs]
             sample = {
