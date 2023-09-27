@@ -84,7 +84,7 @@ def main():
     update_interval = 16
 
     # datasets
-    root_dir = '../RobotAtHome2/data' # '/media/scratch1/schmin/data/robot_at_home'
+    root_dir = '/media/scratch1/schmin/data/robot_at_home' # '../RobotAtHome2/data'
     dataset = dataset_dict["robot_at_home"]
     train_dataset = dataset(
         root_dir=root_dir,
