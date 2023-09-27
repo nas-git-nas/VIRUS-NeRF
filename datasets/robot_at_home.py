@@ -39,7 +39,7 @@ class RobotAtHomeDataset(BaseDataset):
 
         self.session_name = "session_2"
         self.home_name = "anto"
-        self.room_name = "livingroom1"
+        self.room_name = "bathroom2"
         self.subsession_name = "subsession_1"
         self.home_session_name = "s1"
 
@@ -148,11 +148,8 @@ class RobotAtHomeDataset(BaseDataset):
             depth_or = cv.imread(d_f, cv.IMREAD_UNCHANGED)
             if np.max(depth_or) > 115 or np.min(depth_or) < 0:
                 print(f"ERROR: robot_at_home.py: read_meta: depth image has invalid values")
+            depth = 4.7 * depth_or / 115.0 # convert to meters
 
-            # depths[i,:] = depth_or[:,:,0].flatten()
-
-
-            depth = 3.5 * depth_or / 115.0
             if np.allclose(depth_or[:,:,0], depth_or[:,:,1]) and np.allclose(depth_or[:,:,0], depth_or[:,:,2]):
                 depth = depth[:,:,0]
             else:
@@ -160,8 +157,6 @@ class RobotAtHomeDataset(BaseDataset):
             depth = self.scalePosition(pos=depth, only_scale=True) # (H, W), convert to cube coordinate system [-0.5, 0.5]
             depth[depth==0] = np.nan # set invalid depth values to nan
             depths[i,:] = depth.flatten()
-
-            # depth = depth_or * 3.5 # convert to meters, max. range of sensor is 3.5m
 
             # if i == 0 or i==50 or i==100 or i==200 or i==300 or i==400:
             #     fig, axs = plt.subplots(1, 3, figsize=(12, 6))
@@ -178,7 +173,7 @@ class RobotAtHomeDataset(BaseDataset):
             #     cbar1.set_label('Depth')
 
             #     # Display the second image with the specified colormap and colorbar
-            #     im2 = axs[2].imshow(depth, cmap='jet_r', aspect='equal', vmin=0.0, vmax=3.5)
+            #     im2 = axs[2].imshow(depth, cmap='jet_r', aspect='equal', vmin=0.0, vmax=4.7)
             #     axs[2].set_title('Transformed Density')
             #     axs[2].axis('off')
             #     cbar2 = plt.colorbar(im2, ax=axs[2], fraction=0.046, pad=0.04)
@@ -186,9 +181,6 @@ class RobotAtHomeDataset(BaseDataset):
 
             #     plt.tight_layout()
             #     plt.show()
-
-            
-
 
         # get position
         sensor_pose_x = df["sensor_pose_x"].to_numpy()
