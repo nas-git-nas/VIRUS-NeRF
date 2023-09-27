@@ -86,7 +86,7 @@ def main():
     model = NGP(**model_config).to(device)
 
     # load checkpoint if ckpt path is provided
-    hparams.ckpt_path = "results/robot_at_home3/model.pth"
+    hparams.ckpt_path = "results/rh_depth2/model.pth"
     if hparams.ckpt_path:
         state_dict = torch.load(hparams.ckpt_path, map_location=device)
         model.load_state_dict(state_dict)

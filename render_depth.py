@@ -30,14 +30,9 @@ def convertDepth2Pos(depths, rays_o, rays_d):
     pos_c = depths[val_idxs, None] * rays_d[val_idxs]
     pos_w = pos_c + rays_o[val_idxs]
 
-    print(f"pos_w shape: {pos_w.shape}")
-    print(f"val_idxs shape: {val_idxs.shape}, nb valid: {np.sum(val_idxs)}, nb nan: {np.sum((val_idxs==False))}")
-
     # incert nan where depth is not given
     pos_nan = np.full(rays_o.shape, np.nan)
     pos_nan[val_idxs] = pos_w
-
-    print(f"pos_nan shape: {pos_nan.shape}, nb nan: {np.sum(np.isnan(pos_nan))}")
 
     return pos_nan, val_idxs
 
@@ -84,25 +79,27 @@ def renderScene(dataset, depths, rays_o, rays_d):
     Returns:
         rgbs: (N, 3) scene color
     """
-    print(f"depths nb nan: {np.sum(np.isnan(depths))}, shape: {depths.shape}")
     # convert depth to 3D position
     pos, val_idxs = convertDepth2Pos(depths=depths, rays_o=rays_o, rays_d=rays_d)
-
-    print(f"pos nb nan: {np.sum(np.isnan(pos))}")
-    print(f"val_idxs: {np.sum(val_idxs)}")
 
     # get scene point cloud
     scene_file = dataset.scene.scene_file.values[0]
     scene_point_cloud = np.loadtxt(scene_file, skiprows=6)
 
+    # convert scene point cloud to cube coordinates
+    scene_point_cloud[:,:3] = dataset.scalePosition(pos=scene_point_cloud[:,:3])
+
     # limit scene point cloud to 3D positions within the camera frustum
     print(f"start: {scene_point_cloud.shape}")
-    pos_min = np.nanmin(pos, axis=0) - 0.5
-    pos_max = np.nanmin(pos, axis=0) + 0.5
+    pos_min = np.nanmin(pos, axis=0) - 0.01
+    pos_max = np.nanmin(pos, axis=0) + 0.01
+    print(f"pos_min: {pos_min}, pos_max: {pos_max}")
     scene_point_cloud = scene_point_cloud[(scene_point_cloud[:,0] > pos_min[0]) & (scene_point_cloud[:,0] < pos_max[0]) \
                                         & (scene_point_cloud[:,1] > pos_min[1]) & (scene_point_cloud[:,1] < pos_max[1]) \
                                         & (scene_point_cloud[:,2] > pos_min[2]) & (scene_point_cloud[:,2] < pos_max[2])]
     print(f"end: {scene_point_cloud.shape}")
+
+
 
     # render color of closest points
     closest_idxs = findClosestPoints(array1=pos[val_idxs], array2=scene_point_cloud[:,:3])
@@ -160,9 +157,9 @@ def renderDepth():
         depths = data["depth"].detach().clone().numpy() # (H*W)
         rgbs_gt = data["rgb"].detach().clone().numpy() # (H*W, 3)
 
-        # convert rays_o from cube coordinates to world coordinates
-        rays_o *= 2 * dataset.scale
-        rays_o += dataset.shift
+        # # convert rays_o from cube coordinates to world coordinates
+        # rays_o *= 2 * dataset.scale
+        # rays_o += dataset.shift
 
         # downsample arrays
         dw = 1 # downsample factor
