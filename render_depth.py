@@ -9,22 +9,37 @@ from datasets.ray_utils import get_rays
 
 def convertDepth2Pos(depths, rays_o, rays_d):
     """
-    Convert camera depth measurements to 3D positions
+    Convert camera depth measurements to 3D positions.
+    Returns for invalid depth values (nan) again np.nan.
     Args:
         depths: (N,) depth measurements
         rays_o: (N, 3) camera positions
         rays_d: (N, 3) ray directions
     Returns:
-        pos_w: (N, 3) 3D positions in world coordinates
+        pos_nan: (N, 3) 3D positions in world coordinates
+        val_idxs: valid indices / not np.nan of depths; bool array (N,)
     """
     # normalize directions
     rays_d = rays_d / np.linalg.norm(rays_d, axis=1, keepdims=True)
 
-    # convert depth to 3D position
-    pos_c = depths[:, None] * rays_d
-    pos_w = pos_c + rays_o
+    # get valid indices that are not nan
+    val_idxs = np.isnan(depths)
+    val_idxs = np.invert(val_idxs)
 
-    return pos_w
+    # convert depth to 3D position
+    pos_c = depths[val_idxs, None] * rays_d[val_idxs]
+    pos_w = pos_c + rays_o[val_idxs]
+
+    print(f"pos_w shape: {pos_w.shape}")
+    print(f"val_idxs shape: {val_idxs.shape}, nb valid: {np.sum(val_idxs)}, nb nan: {np.sum((val_idxs==False))}")
+
+    # incert nan where depth is not given
+    pos_nan = np.full(rays_o.shape, np.nan)
+    pos_nan[val_idxs] = pos_w
+
+    print(f"pos_nan shape: {pos_nan.shape}, nb nan: {np.sum(np.isnan(pos_nan))}")
+
+    return pos_nan, val_idxs
 
 def findClosestPoints(array1, array2):
     """
@@ -69,8 +84,12 @@ def renderScene(dataset, depths, rays_o, rays_d):
     Returns:
         rgbs: (N, 3) scene color
     """
+    print(f"depths nb nan: {np.sum(np.isnan(depths))}, shape: {depths.shape}")
     # convert depth to 3D position
-    pos = convertDepth2Pos(depths=depths, rays_o=rays_o, rays_d=rays_d)
+    pos, val_idxs = convertDepth2Pos(depths=depths, rays_o=rays_o, rays_d=rays_d)
+
+    print(f"pos nb nan: {np.sum(np.isnan(pos))}")
+    print(f"val_idxs: {np.sum(val_idxs)}")
 
     # get scene point cloud
     scene_file = dataset.scene.scene_file.values[0]
@@ -78,18 +97,22 @@ def renderScene(dataset, depths, rays_o, rays_d):
 
     # limit scene point cloud to 3D positions within the camera frustum
     print(f"start: {scene_point_cloud.shape}")
-    pos_min = pos.min(axis=0) - 0.05
-    pos_max = pos.max(axis=0) + 0.05
+    pos_min = np.nanmin(pos, axis=0) - 0.5
+    pos_max = np.nanmin(pos, axis=0) + 0.5
     scene_point_cloud = scene_point_cloud[(scene_point_cloud[:,0] > pos_min[0]) & (scene_point_cloud[:,0] < pos_max[0]) \
                                         & (scene_point_cloud[:,1] > pos_min[1]) & (scene_point_cloud[:,1] < pos_max[1]) \
                                         & (scene_point_cloud[:,2] > pos_min[2]) & (scene_point_cloud[:,2] < pos_max[2])]
     print(f"end: {scene_point_cloud.shape}")
 
     # render color of closest points
-    closest_idxs = findClosestPoints(array1=pos, array2=scene_point_cloud[:,:3])
+    closest_idxs = findClosestPoints(array1=pos[val_idxs], array2=scene_point_cloud[:,:3])
     rgbs = scene_point_cloud[closest_idxs, 3:]
 
-    return rgbs
+    # set color to nan where depth is not given
+    rgbs_nan = np.full(rays_o.shape, np.nan)
+    rgbs_nan[val_idxs] = rgbs
+
+    return rgbs_nan
 
 def plotImg(rgbs_gt, rgbs_scene, depths):
     # Create subplots with 1 row and 2 columns
@@ -106,7 +129,7 @@ def plotImg(rgbs_gt, rgbs_scene, depths):
     # Plot the second image on the second axis 
     d = axs[2].imshow(depths, cmap='viridis')
     fig.colorbar(d, ax=axs[2])
-    axs[2].set_title('Scene render using depth')
+    axs[2].set_title('Depth')
 
     # Remove axis ticks and labels for images
     axs[0].axis('off')
@@ -137,6 +160,10 @@ def renderDepth():
         depths = data["depth"].detach().clone().numpy() # (H*W)
         rgbs_gt = data["rgb"].detach().clone().numpy() # (H*W, 3)
 
+        # convert rays_o from cube coordinates to world coordinates
+        rays_o *= 2 * dataset.scale
+        rays_o += dataset.shift
+
         # downsample arrays
         dw = 1 # downsample factor
         W, H = dataset.img_wh
@@ -147,8 +174,8 @@ def renderDepth():
         rgbs_gt = rgbs_gt.reshape(H, W, 3)[::dw, ::dw].reshape(-1, 3)
 
         # render scene colors
-        # rgbs_scene = renderScene(dataset=dataset, depths=depths, rays_o=rays_o, rays_d=rays_d)
-        rgbs_scene = rgbs_gt
+        rgbs_scene = renderScene(dataset=dataset, depths=depths, rays_o=rays_o, rays_d=rays_d)
+        # rgbs_scene = rgbs_gt
 
         # plot images
         plotImg(rgbs_gt=rgbs_gt.reshape(h, w, 3), 
