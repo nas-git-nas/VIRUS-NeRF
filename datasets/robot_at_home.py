@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from tqdm import tqdm
 import pandas as pd
+import cv2 as cv
 
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
@@ -143,9 +144,50 @@ class RobotAtHomeDataset(BaseDataset):
             [rgb_f, d_f] = self.rh.get_RGBD_files(id)
             rays[i,:,:] = mpimg.imread(rgb_f).reshape(self.img_wh[0]*self.img_wh[1], 3)
 
-            depth = mpimg.imread(d_f)
-            depth = depth * 3.5 # convert to meters, max. range of sensor is 3.5m
-            depths[i,:] = depth[:,:,0].flatten()
+            # depth_or = mpimg.imread(d_f)
+            depth_or = cv.imread(d_f, cv.IMREAD_UNCHANGED)
+            if np.max(depth_or) > 115 or np.min(depth_or) < 0:
+                print(f"ERROR: robot_at_home.py: read_meta: depth image has invalid values")
+
+            # depths[i,:] = depth_or[:,:,0].flatten()
+
+
+            depth = 3.5 * depth_or / 115.0
+            if np.allclose(depth_or[:,:,0], depth_or[:,:,1]) and np.allclose(depth_or[:,:,0], depth_or[:,:,2]):
+                depth = depth[:,:,0]
+            else:
+                print(f"ERROR: robot_at_home.py: read_meta: depth image has more than one channel")
+            depth = self.scalePosition(pos=depth, only_scale=True) # (H, W), convert to cube coordinate system [-0.5, 0.5]
+            depth[depth==0] = np.nan # set invalid depth values to nan
+            depths[i,:] = depth.flatten()
+
+            # depth = depth_or * 3.5 # convert to meters, max. range of sensor is 3.5m
+
+            # if i == 0 or i==50 or i==100 or i==200 or i==300 or i==400:
+            #     fig, axs = plt.subplots(1, 3, figsize=(12, 6))
+
+            #     axs[0].imshow(rays[i,:,:].reshape(self.img_wh[1], self.img_wh[0], 3))
+            #     axs[0].set_title('Original Image')
+            #     axs[0].axis('off')
+
+            #     # Display the first image with the specified colormap and colorbar
+            #     im1 = axs[1].imshow(depth_or[:,:,0], cmap='jet_r', aspect='equal')
+            #     axs[1].set_title('Original Density')
+            #     axs[1].axis('off')
+            #     cbar1 = plt.colorbar(im1, ax=axs[1], fraction=0.046, pad=0.04)
+            #     cbar1.set_label('Depth')
+
+            #     # Display the second image with the specified colormap and colorbar
+            #     im2 = axs[2].imshow(depth, cmap='jet_r', aspect='equal', vmin=0.0, vmax=3.5)
+            #     axs[2].set_title('Transformed Density')
+            #     axs[2].axis('off')
+            #     cbar2 = plt.colorbar(im2, ax=axs[2], fraction=0.046, pad=0.04)
+            #     cbar2.set_label('Depth')
+
+            #     plt.tight_layout()
+            #     plt.show()
+
+            
 
 
         # get position
@@ -271,11 +313,12 @@ class RobotAtHomeDataset(BaseDataset):
 
         return df
 
-    def scalePosition(self, pos):
+    def scalePosition(self, pos, only_scale=False):
         """
         Scale and shift position such that the scene is inside [-0.5, 0.5].
         Args:
             pos: position to scale and shift; tensor of shape (N_images, 3)
+            only_scale: if True, only scale position and do not shift; bool
         Returns:
             pos: scaled and shifted position; tensor of shape (N_images, 3)
         """
@@ -292,7 +335,8 @@ class RobotAtHomeDataset(BaseDataset):
             self.scale = (xyz_max - xyz_min).max() / 2 * 1.05  # enlarge a little
 
         # shift and scale position
-        pos -= self.shift
+        if not only_scale:
+            pos -= self.shift
         pos /= 2 * self.scale
         return pos
     
@@ -327,6 +371,9 @@ class RobotAtHomeDataset(BaseDataset):
         slice_map[idxs[:,0], idxs[:,1]] = 1
 
         return slice_map
+    
+
+
 
 def createFoVpolygon(corners, rays):
     # scale rays
