@@ -59,7 +59,9 @@ def lossFunc(results, data, depth_loss_w=1.0):
         loss: loss value; float
     """
     colour_loss = F.mse_loss(results['rgb'], data['rgb'])
-    depth_loss = F.mse_loss(results['depth'], data['depth'])
+
+    val_idxs = ~torch.isnan(data['depth'])
+    depth_loss = F.mse_loss(results['depth'][val_idxs], data['depth'][val_idxs])
     return colour_loss + depth_loss_w * depth_loss
 
 def main():
@@ -224,6 +226,7 @@ def main():
     if not os.path.exists(val_dir):
         os.makedirs(val_dir)
     # save model
+    print(f"Saving model to {val_dir}")
     torch.save(
         model.state_dict(),
         os.path.join(val_dir, 'model.pth'),
@@ -268,6 +271,7 @@ def main():
 
             # save test image to disk
             if test_step == 0 or test_step == 10 or test_step == 100:
+                print(f"Saving test image {test_step} to disk")
                 test_idx = test_data['img_idxs']
                 # TODO: get rid of this
                 rgb_pred = rearrange(
