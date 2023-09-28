@@ -39,9 +39,17 @@ class RobotAtHomeDataset(BaseDataset):
 
         self.session_name = "session_2"
         self.home_name = "anto"
-        self.room_name = "bathroom2"
+        self.room_name = "livingroom1"
         self.subsession_name = "subsession_1"
         self.home_session_name = "s1"
+
+        self.rh_location_names = {
+            "session": "session_2",
+            "home": "anto",
+            "room": "livingroom1",
+            "subsession": "subsession_1",
+            "home_session": "s1",
+        }
 
         # load dataset
         my_rh_path = root_dir
@@ -305,64 +313,9 @@ class RobotAtHomeDataset(BaseDataset):
 
         return df
 
-    def scalePosition(self, pos, only_scale=False):
-        """
-        Scale and shift position such that the scene is inside [-0.5, 0.5].
-        Args:
-            pos: position to scale and shift; tensor of shape (N_images, 3)
-            only_scale: if True, only scale position and do not shift; bool
-        Returns:
-            pos: scaled and shifted position; tensor of shape (N_images, 3)
-        """
-        # calc. shift and scale if not already done
-        if (self.shift is None) or (self.scale is None):
-            # get scene point cloud
-            scene_file = self.scene.scene_file.values[0]
-            scene_point_cloud = np.loadtxt(scene_file, skiprows=6)
 
-            # get scene shift and scale
-            xyz_min = scene_point_cloud[:,:3].min(axis=0)
-            xyz_max = scene_point_cloud[:,:3].max(axis=0)
-            self.shift = (xyz_max + xyz_min) / 2
-            self.scale = (xyz_max - xyz_min).max() / 2 * 1.05  # enlarge a little
-
-        # shift and scale position
-        if not only_scale:
-            pos -= self.shift
-        pos /= 2 * self.scale
-        return pos
     
-    def getSceneSlice(self, height, slice_res, height_tolerance=0.1):
-        """
-        Get a slice of the scene.
-        Args:
-            height: height of the slice in scene coordinate system; float
-            slice_res: size of slice map; int
-            height_tolerance: tolerance for height in scene coordinate system; float
-        Returns:
-            slice_map: slice of the scene; array of shape (slice_shape[0], slice_shape[1])
-        """
-        slice_map = np.zeros((slice_res, slice_res)) 
 
-        # get scene point cloud
-        scene_file = self.scene.scene_file.values[0]
-        scene_point_cloud = np.loadtxt(scene_file, skiprows=6)
-
-        # extract points in slice [height-height_tolerance, height+height_tolerance]
-        idxs = np.where((scene_point_cloud[:,2] >= height-height_tolerance) & (scene_point_cloud[:,2] <= height+height_tolerance))[0] # (N,)
-        points = scene_point_cloud[idxs,:3] # (N, x y z)    
-
-        # convert points to slice coordinates
-        points = self.scalePosition(pos=points) # (N, x y z), convert to cube coordinate system [-0.5, 0.5]
-        points = points[:,:2] # (N, x y), ignore z coordinate
-        idxs = (points + 0.5) * (slice_res - 1) # (N, x y), convert to slice coordinates
-        idxs = np.round(idxs).astype(int) # (N, x y), convert to int
-        idxs = np.clip(idxs, 0, slice_res-1) # (N, x y), clip to slice shape
-
-        # fill slice map
-        slice_map[idxs[:,0], idxs[:,1]] = 1
-
-        return slice_map
     
 
 

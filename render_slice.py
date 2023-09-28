@@ -86,7 +86,7 @@ def main():
     model = NGP(**model_config).to(device)
 
     # load checkpoint if ckpt path is provided
-    hparams.ckpt_path = "results/rh_depth2/model.pth"
+    hparams.ckpt_path = "results/rh_anto_livingroom1/model.pth"
     if hparams.ckpt_path:
         state_dict = torch.load(hparams.ckpt_path, map_location=device)
         model.load_state_dict(state_dict)
@@ -113,7 +113,7 @@ def main():
     extent = [-hparams.scale,hparams.scale,-hparams.scale,hparams.scale]
        
     # Create a 3x3 grid of subplots
-    thresholds = [10, 20, 30, 40]
+    thresholds = [5, 10, 15, 20]
     fig, axes = plt.subplots(ncols=2+len(thresholds), nrows=len(slice_heights), figsize=(12,6))
     
     for i in range(len(slice_heights)):
