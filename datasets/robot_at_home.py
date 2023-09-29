@@ -39,7 +39,7 @@ class RobotAtHomeDataset(BaseDataset):
 
         self.session_name = "session_2"
         self.home_name = "anto"
-        self.room_name = "bathroom2"
+        self.room_name = "livingroom1"
         self.subsession_name = "subsession_1"
         self.home_session_name = "s1"
 
