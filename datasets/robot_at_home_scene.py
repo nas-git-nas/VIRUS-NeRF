@@ -66,58 +66,107 @@ class RobotAtHomeScene():
 
         return slice_map
     
-    def getSliceScan(self, points, map_res, angular_res, height_tolerance=0.1, angular_range=[-np.pi,np.pi], points_in_world_coord=True):
+    def getSliceScan(self, res, rays_o, rays_d=None, height_tolerance=0.1, angular_range=[-np.pi,np.pi], rays_o_in_world_coord=True):
         """
         Get a scan of the scene at points. The scan is similar to a horizontal 2D LiDAR scan and represents
         the distance to the closest point in the scene in the direction of the scan.
         Args:
             points: points to scan in world coordinates; numpy array of shape (N, 3)
-            map_res: size of slice map; int
+            res: size of slice map; int
             angular_res: size of scan / nb. angles per scan; int
             height_tolerance: tolerance for height in world coordinate system; float
             angular_range: range of scan angles ([min, max] where min is inclusive and max is exclusive); list of two floats
+            rays_o_in_world_coord: if True, rays_o is given in world otherwise in cube coordinates; bool
         Returns:
-            slice_scans: scan of the scene at points; numpy array of shape (map_res, map_res)
+            scan_map: scan of the scene at rays_o; numpy array of shape (res, res)
+            scan_depth: distance to closest point in scene at rays_o; numpy array of shape (N,)
+            scan_ray_angles: angles of scan rays; numpy array of shape (N,)
         """
-        # transform points to cube coordinate system
-        if points_in_world_coord:
-            points = self.w2cTransformation(pos=points, copy=True) # (N, 3)
+        if rays_o_in_world_coord:
+            rays_o = self.w2cTransformation(pos=rays_o, copy=True) # (N, 2)
 
-        # get scan rays
-        r_angles = np.linspace(angular_range[0], angular_range[1], angular_res, endpoint=False) # (angular_res,)
-        r_points = np.linspace(0, (self.w2c_params["cube_max"]-self.w2c_params["cube_min"]),
-                                 np.ceil(np.sqrt(2*map_res**2)).astype(int)) # (nb_points,)
-        r_points, r_angles = np.meshgrid(r_points, r_angles, indexing="xy") # (angular_res, nb_points)
-        r_x = r_points * np.cos(r_angles) # (angular_res, nb_points)
-        r_y = r_points * np.sin(r_angles) # (angular_res, nb_points)
-        r_c = np.stack((r_x.flatten(), r_y.flatten()), axis=1) # (angular_res*nb_points, 2)
+        # calculate scan rays in cube coordinate system
+        scan_rays_c, scan_angles = self.__calcScanRays(res, rays_o=rays_o, rays_d=rays_d, angular_range=angular_range) # (N*M, 2)
 
-        # get slice maps for unique heights
-        slice_maps = {}
-        for height in np.unique(points[:,2]):
-            slice_map = self.getSliceMap(height, map_res, height_tolerance=height_tolerance, height_in_world_coord=False) # (map_res, map_res)
-            slice_maps[height] = slice_map
+        # verify that all height values are inside tolerance
+        height_mean = np.mean(rays_o[:,2])
+        if np.any(np.abs(rays_o[:,2] - height_mean) > height_tolerance):
+            print(f"ERROR: height values of rays_o are not inside tolerance of {height_tolerance}!" \
+                  + f"mean height: {height_mean}, min height: {np.min(rays_o[:,2])}, max height: {np.max(rays_o[:,2])}")
 
-        # get slice scans
-        slice_scans = np.zeros((points.shape[0], map_res, map_res)) # (map_res, map_res)
-        for i in range(points.shape[0]):
-            # get occupancy status of points on rays
-            rays_c = r_c + points[i,:2] # (angular_res*nb_points, 2)
-            rays_idxs = self.c2idxTransformation(pos=rays_c, res=map_res) # (angular_res*nb_points, 2)
-            rays_occ = slice_maps[points[i,2]][rays_idxs[:,0], rays_idxs[:,1]] # (angular_res*nb_points,)
+        # get slice map for mean height
+        slice_map = self.getSliceMap(height_mean, res, height_tolerance=height_tolerance, height_in_world_coord=False) # (res, res)
 
-            rays_idxs = rays_idxs.reshape((angular_res, -1, 2)) # (angular_res, nb_points, 2)
-            rays_occ = rays_occ.reshape((angular_res, -1)) # (angular_res, nb_points)
+        # get occupancy status of points on rays
+        scan_rays_idxs = self.c2idxTransformation(pos=scan_rays_c, res=res) # (N*M, 2)
+        scan_rays_occ = slice_map[scan_rays_idxs[:,0], scan_rays_idxs[:,1]] # (N*M,)
 
-            # get closest occupied point on rays
-            angle_idxs, point_idxs = np.where(rays_occ > 0) 
-            angle_idxs, id = np.unique(angle_idxs, return_index=True) # (occ_points,)
-            point_idxs = point_idxs[id] # (occ_points,)
+        scan_rays_idxs = scan_rays_idxs.reshape((rays_o.shape[0], -1, 2)) # (N, M, 2)
+        scan_rays_occ = scan_rays_occ.reshape((rays_o.shape[0], -1)) # (N, M)
 
-            rays_idxs = rays_idxs[angle_idxs, point_idxs] # (occ_points, 2)
-            slice_scans[i, rays_idxs[:,0], rays_idxs[:,1]] = 1
+        # get closest occupied point on rays
+        angle_idxs, point_idxs = np.where(scan_rays_occ > 0) # (occ_points,)
+        angle_idxs, unique_ixds = np.unique(angle_idxs, return_index=True) # (closest_occ_points,)
+        point_idxs = point_idxs[unique_ixds] # (closest_occ_points,)
+        scan_rays_closest_idxs = scan_rays_idxs[angle_idxs, point_idxs] # (closest_occ_points, 2)
+        
+        # create scan map where all closest occupied points on ray are set to 1
+        scan_map = np.zeros((res, res)) # (res, res)
+        scan_map[scan_rays_closest_idxs[:,0], scan_rays_closest_idxs[:,1]] = 1
 
-        return slice_scans    
+        # create scan depth that represents the distance in cube coordinates to the closest occupied point on ray
+        scan_depth = np.full(rays_o.shape[0], np.nan) # (N,)
+        scan_rays_closest_c = self.idx2cTransformation(map_idxs=scan_rays_closest_idxs, res=res) # (closest_occ_points, 2)
+        scan_depth[angle_idxs] = np.linalg.norm(scan_rays_closest_c - rays_o[angle_idxs,:2], axis=1) # (closest_occ_points,)
+
+        # print(f"number of nan values in scan_depth: {np.sum(np.isnan(scan_depth))}")
+
+        # # verify scan_rays_closest_c
+        # s_r_cl_idxs = self.c2idxTransformation(pos=scan_rays_closest_c, res=res) # (closest_occ_points, 2)
+        # test_map = np.zeros((res, res)) # (res, res)
+        # test_map[s_r_cl_idxs[:,0], s_r_cl_idxs[:,1]] = 1
+        # if not np.allclose(test_map, scan_map):
+        #     print("ERROR: scan_map and test_map are not equal!")
+
+        # scan_depth_pos = self.convertDepth2Pos(rays_o=rays_o, scan_depth=scan_depth, scan_angles=scan_angles) # (N, 2)
+        # # not_nan_idxs = np.where(~np.isnan(scan_depth))[0]
+        # # scan_depth_pos = np.stack((scan_depth[not_nan_idxs] * np.cos(scan_angles[not_nan_idxs]), 
+        # #                            scan_depth[not_nan_idxs] * np.sin(scan_angles[not_nan_idxs])), axis=1) # (N, 2)
+        # # scan_depth_pos += rays_o[not_nan_idxs,:2] # (N, 2)
+        # scan_depth_pos_idxs = self.c2idxTransformation(pos=scan_depth_pos, res=res) # (N, 2)
+        # test_map = np.zeros((res, res)) # (res, res)
+        # test_map[scan_depth_pos_idxs[:,0], scan_depth_pos_idxs[:,1]] = 1
+        # if not np.allclose(test_map, scan_map):
+        #     print("ERROR: scan_map and test_map 2 are not equal!")
+
+        #     fig, axes = plt.subplots(ncols=3, nrows=1, figsize=(12,8))
+
+        #     ax = axes[0]
+        #     ax.imshow(scan_map.T, origin='lower', cmap='viridis', extent=[-0.5,0.5,-0.5,0.5], vmin=0, vmax=np.max(scan_map))
+        #     ax.set_title(f'Scan Map')
+        #     ax.set_xlabel(f'x [m]')
+        #     ax.set_ylabel(f'y [m]')
+        #     for i in range(0, scan_depth_pos.shape[0], 10):
+        #         ax.plot([rays_o[i,0], scan_depth_pos[i,0]], [rays_o[i,1], scan_depth_pos[i,1]], c='r', linewidth=0.5)
+
+        #     ax = axes[1]
+        #     ax.imshow(test_map.T, origin='lower', cmap='viridis', extent=[-0.5,0.5,-0.5,0.5], vmin=0, vmax=np.max(test_map))
+        #     ax.set_title(f'Test Map')
+        #     ax.set_xlabel(f'x [m]')
+        #     ax.set_ylabel(f'y [m]')
+        #     for i in range(0, scan_depth_pos.shape[0], 10):
+        #         ax.plot([rays_o[i,0], scan_depth_pos[i,0]], [rays_o[i,1], scan_depth_pos[i,1]], c='r', linewidth=0.5)
+
+        #     ax = axes[2]
+        #     ax.imshow((scan_map-test_map).T, origin='lower', cmap='viridis', extent=[-0.5,0.5,-0.5,0.5], vmin=-1, vmax=1)
+        #     ax.set_title(f'Difference Map')
+        #     ax.set_xlabel(f'x [m]')
+        #     ax.set_ylabel(f'y [m]')
+
+        #     plt.tight_layout()
+        #     plt.show()
+
+        return scan_map, scan_depth, scan_angles
     
     def w2cTransformation(self, pos, only_scale=False, copy=True):
         """
@@ -199,6 +248,22 @@ class RobotAtHomeScene():
         pos_c = self.w2cTransformation(pos=pos)
         return self.c2idxTransformation(pos=pos_c, res=res)
     
+    def convertDepth2Pos(self, rays_o, scan_depth, scan_angles):
+        """
+        Convert depth values to positions.
+        Args:
+            rays_o: origin of scan rays in cube coordinates; numpy array of shape (N, 2/3)
+            scan_depth: distance to closest point in scene at rays_o; numpy array of shape (N,)
+            scan_angles: angles of scan rays; numpy array of shape (N,)
+        Returns:
+            pos: position in cube coordinate system; numpy array of shape (N, 2)
+        """
+        val_idxs = np.where(~np.isnan(scan_depth))[0]
+        pos = np.stack((scan_depth[val_idxs] * np.cos(scan_angles[val_idxs]), 
+                                   scan_depth[val_idxs] * np.sin(scan_angles[val_idxs])), axis=1) # (N, 2)
+        pos += rays_o[val_idxs,:2] # (N, 2)
+        return pos
+    
     def idx2wTransformation(self, map_idxs, res):
         """
         Transformation from slice map indices ([0,res-1]**2) to world (in meters).
@@ -245,6 +310,42 @@ class RobotAtHomeScene():
         self.w2c_params["defined"] = True
         self.w2c_params["shift"] = shift
         self.w2c_params["scale"] = scale
+
+    def __calcScanRays(self, res, rays_o, rays_d=None, angular_range=[-np.pi,np.pi]):
+        """
+        Calculate scan rays in cube coordinate system. If rays_d is not given (None), the angles are linearly spaced 
+        in the angular range.
+        Args:
+            res: size of slice map; int
+            rays_o: origin of scan rays in cube coordinates; numpy array of shape (N, 3)
+            rays_d: direction of scan rays; numpy array of shape (N, 3)
+            angular_range: range of scan angles ([min, max] where min is inclusive and max is exclusive); list of two floats
+        Returns:
+            scan_rays_c: scan rays in cube coordinate system; numpy array of shape (N*M, 2)
+            scan_angles: angles of scan rays; numpy array of shape (N,)
+        """
+        rays_o = np.copy(rays_o[:,:2]) # (N, 2)
+
+        # if rays_d is None, linearly space angles between in angular_range
+        # else, use given ray directions
+        if rays_d is None:
+            scan_angles = np.linspace(angular_range[0], angular_range[1], rays_o.shape[0], endpoint=False) # (N,)
+        else:
+            scan_angles = np.arctan2(rays_d[:,1], rays_d[:,0]) # (N,)
+
+        # get relative scan rays
+        M = np.ceil(np.sqrt(2*res**2)).astype(int)
+        r_points = np.linspace(0, (self.w2c_params["cube_max"]-self.w2c_params["cube_min"]), M) # (M,)
+        m_points, m_angles = np.meshgrid(r_points, scan_angles, indexing="xy") # (N, M)
+        r_x = m_points * np.cos(m_angles) # (N, M)
+        r_y = m_points * np.sin(m_angles) # (N, M)
+        r_c = np.stack((r_x.flatten(), r_y.flatten()), axis=1) # (N*M, 2)
+
+        # get absolute scan rays in cube coordinate system
+        rays_o = np.repeat(rays_o, M, axis=0) # (N*M, 2)
+        scan_rays_c = r_c + rays_o # (N*M, 2)
+        return scan_rays_c, scan_angles
+
     
     
     
@@ -270,48 +371,66 @@ def test_RobotAtHomeScene():
     }
     rh_scene = RobotAtHomeScene(rh, rh_location_names)
 
-    # get slice map and scan
-    points_w = np.array([[0,0,0.5],
-                         [2.5,0,0.5],
-                         [0.5,-2,0.5]])
-    
+    # get slice map
     res = 256
-    slice_map = rh_scene.getSliceMap(height=points_w[0,2], res=res)
-    slice_scans = rh_scene.getSliceScan(points=np.copy(points_w), map_res=res, angular_res=256, angular_range=[-np.pi/2,np.pi])
+    res_angular = 256
+    rays_o_w = np.array([[0,0,0.5]])
+    rays_o_w = np.repeat(rays_o_w, res_angular, axis=0)
+    slice_map = rh_scene.getSliceMap(height=rays_o_w[0,2], res=res)
 
-    fig, axes = plt.subplots(ncols=3, nrows=slice_scans.shape[0], figsize=(12,8))
+    # get slice scan
+    rays_d_is_given = True
+    if rays_d_is_given:
+        rays_o_w2 = np.array([[0,-2,0.5]])
+        rays_o_w2 = np.repeat(rays_o_w2, res_angular, axis=0)
+        angles_d1 = np.linspace(-np.pi/3, np.pi/3, res_angular, endpoint=False)
+        rays_d1 = np.stack((np.cos(angles_d1), np.sin(angles_d1), np.zeros_like(angles_d1)), axis=1)
+        angles_d2 = np.linspace(0, 2*np.pi/3, res_angular, endpoint=False)
+        rays_d2 = np.stack((np.cos(angles_d2), np.sin(angles_d2), np.zeros_like(angles_d2)), axis=1)
+
+        rays_o_w = np.concatenate((rays_o_w, rays_o_w2), axis=0)
+        rays_d = np.concatenate((rays_d1, rays_d2), axis=0)
+
+        scan_map, scan_depth_c, scan_angles = rh_scene.getSliceScan(res=res, rays_o=rays_o_w, rays_d=rays_d, rays_o_in_world_coord=True)
+    else:
+        scan_map, scan_depth_c, scan_angles = rh_scene.getSliceScan(res=res, rays_o=rays_o_w, rays_d=None, rays_o_in_world_coord=True)
+
+    # convert scan depth to position in world coordinate system
+    rays_o_c = rh_scene.w2cTransformation(pos=rays_o_w, copy=True)
+    scan_depth_pos_c = rh_scene.convertDepth2Pos(rays_o=rays_o_c, scan_depth=scan_depth_c, scan_angles=scan_angles) # (N, 2)
+    scan_depth_pos_w = rh_scene.c2wTransformation(pos=scan_depth_pos_c, copy=True) # (N, 2)
+
+    # plot
+    fig, axes = plt.subplots(ncols=3, nrows=1, figsize=(12,6))
     extent = rh_scene.c2wTransformation(pos=np.array([[-0.5,-0.5],[0.5,0.5]]), copy=False)
     extent = extent.T.flatten()
+    rays_o_w_unique = np.unique(rays_o_w, axis=0)
+    comb_map = slice_map + 2*scan_map
+    # score = np.sum(slice_map * slice_scans[i]) / np.sum(slice_scans[i])
 
-    for i in range(slice_scans.shape[0]):   
-        comb_map = slice_map + 2*slice_scans[i]
-        # score = np.sum(slice_map * slice_scans[i]) / np.sum(slice_scans[i])
+    ax = axes[0]
+    ax.imshow(slice_map.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(comb_map))
+    ax.scatter(rays_o_w_unique[:,0], rays_o_w_unique[:,1], c='w', s=5)
+    ax.set_title(f'Map')
+    ax.set_xlabel(f'x [m]')
+    ax.set_ylabel(f'y [m]')
 
-        ax = axes[i,0]
-        ax.imshow(slice_map.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(comb_map))
-        ax.scatter(points_w[i,0], points_w[i,1], c='r', s=10)
-        if i == 0:
-            ax.set_title(f'Slice Map')
-        if i == slice_scans.shape[0]-1:
-            ax.set_xlabel(f'x [m]')
-        ax.set_ylabel(f'y [m]')
-
-        ax = axes[i,1]
-        ax.imshow(2*slice_scans[i].T,origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(comb_map))
-        ax.scatter(points_w[i,0], points_w[i,1], c='r', s=10)
-        if i == 0:
-            ax.set_title(f'Slice Scan')
-        if i == slice_scans.shape[0]-1:
-            ax.set_xlabel(f'x [m]')
-
-        ax = axes[i,2]
-        ax.imshow(comb_map.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(comb_map))
-        ax.scatter(points_w[i,0], points_w[i,1], c='r', s=10)
-        if i == 0:
-            ax.set_title(f'Combined Map')
-        if i == slice_scans.shape[0]-1:
-            ax.set_xlabel(f'x [m]')
-
+    ax = axes[1]
+    ax.imshow(2*scan_map.T,origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(comb_map))
+    for i in range(scan_depth_pos_w.shape[0]):
+        ax.plot([rays_o_w[i,0], scan_depth_pos_w[i,0]], [rays_o_w[i,1], scan_depth_pos_w[i,1]], c='w', linewidth=0.1)
+    ax.scatter(rays_o_w_unique[:,0], rays_o_w_unique[:,1], c='w', s=5)
+    ax.set_title(f'Scan')
+    ax.set_xlabel(f'x [m]')
+    
+    ax = axes[2]
+    ax.imshow(comb_map.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(comb_map))
+    for i in range(scan_depth_pos_w.shape[0]):
+        ax.plot([rays_o_w[i,0], scan_depth_pos_w[i,0]], [rays_o_w[i,1], scan_depth_pos_w[i,1]], c='w', linewidth=0.1)
+    ax.scatter(rays_o_w_unique[:,0], rays_o_w_unique[:,1], c='w', s=5)
+    ax.set_title(f'Combined')
+    ax.set_xlabel(f'x [m]')
+    
     plt.tight_layout()
     plt.show()
 
