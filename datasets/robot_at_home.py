@@ -72,12 +72,13 @@ class RobotAtHomeDataset(BaseDataset):
 
         # split dataset
         split_ratio = {'train': 0.8, 'val': 0.1, 'test': 0.1}
-        self.df = self.splitDataset(df=self.df, split_ratio=split_ratio)
+        self.df = self.splitDataset(df=self.df, split_ratio=split_ratio) # TODO: move to separate file
+        self.df = self.df[self.df["split"] == split]
 
         # get only observations from particular sensor
         if sensor_name != "all":
-            sensor_id = self.rh.name2id(sensor_name, "s")
-            self.df = self.df[self.df["sensor_id"] == sensor_id]
+            name_idxs = self.getIdxFromSensorName(sensor_name)
+            self.df = self.df[name_idxs]
 
         # load scene
         self.scene = RobotAtHomeScene(rh=self.rh, rh_location_names=self.rh_location_names)
@@ -320,6 +321,19 @@ class RobotAtHomeDataset(BaseDataset):
         df_description.to_csv(os.path.join(df_split_path, 'split_description.csv'), index=True)
 
         return df
+    
+    def getIdxFromSensorName(self, sensor_name):
+        """
+        Get the indices of the dataset that belong to a particular sensor.
+        Args:
+            sensor_name: name of the sensor, str
+        Returns:
+            idxs: indices of the dataset that belong to the sensor
+        """
+        sensor_id = self.rh.name2id(sensor_name, "s")
+        mask = np.array(self.df["sensor_id"] == sensor_id, dtype=bool)
+        idxs = np.where(mask)[0]
+        return idxs
 
 
     

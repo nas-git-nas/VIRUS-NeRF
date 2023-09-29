@@ -42,15 +42,10 @@ class Trainer:
         self.args = Args(hparams=self.hparams)
 
         # TODO: add as hparams
-        print("-----------------------")
-        print(self.args.device)
-        print(type(self.args.device))
         if self.args.device == torch.device("cuda"):
             root_dir =  '/media/scratch1/schmin/data/robot_at_home'
         else:
             root_dir =  '../RobotAtHome2/data'
-        print(root_dir)
-        print("-----------------------")
 
         # set seed
         random.seed(self.args.seed)
@@ -165,4 +160,12 @@ class Trainer:
         val_idxs = ~torch.isnan(data['depth'])
         depth_loss = F.mse_loss(results['depth'][val_idxs], data['depth'][val_idxs])
         return colour_loss + depth_loss_w * depth_loss
+    
+    def __saveModel(self):
+        # save model
+        print(f"Saving model to {self.args.val_dir}")
+        torch.save(
+            self.model.state_dict(),
+            os.path.join(self.args.val_dir, 'model.pth'),
+        )
 
