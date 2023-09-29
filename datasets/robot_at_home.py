@@ -25,11 +25,13 @@ try:
     from .base import BaseDataset
     from .color_utils import read_image
     from .ray_utils import get_ray_directions
+    from .robot_at_home_scene import RobotAtHomeScene
 except:
     from ray_utils import get_rays
     from base import BaseDataset
     from color_utils import read_image
     from ray_utils import get_ray_directions
+    from robot_at_home_scene import RobotAtHomeScene
 
 
 class RobotAtHomeDataset(BaseDataset):
@@ -42,6 +44,14 @@ class RobotAtHomeDataset(BaseDataset):
         self.room_name = "livingroom1"
         self.subsession_name = "subsession_1"
         self.home_session_name = "s1"
+
+        self.rh_location_names = {
+            "session": "session_2",
+            "home": "anto",
+            "room": "livingroom1",
+            "subsession": "subsession_1",
+            "home_session": "s1",
+        }
 
         # load dataset
         my_rh_path = root_dir
@@ -57,6 +67,9 @@ class RobotAtHomeDataset(BaseDataset):
         room_id = self.rh.name2id(self.home_name+"_"+self.room_name, "r")
         self.df = df[(df['home_id'] == home_id) & (df['room_id'] == room_id)]
 
+        # TODO: remove
+        self.df = self.df.iloc[:100,:]
+
         # split dataset
         split_ratio = {'train': 0.8, 'val': 0.1, 'test': 0.1}
         self.df = self.splitDataset(df=self.df, split_ratio=split_ratio)
@@ -66,10 +79,11 @@ class RobotAtHomeDataset(BaseDataset):
             sensor_id = self.rh.name2id(sensor_name, "s")
             self.df = self.df[self.df["sensor_id"] == sensor_id]
 
-        # get scene
-        scenes = self.rh.get_scenes()
-        home_session_id = self.rh.name2id(self.home_name+"-"+self.home_session_name,'hs')
-        self.scene =  scenes.query(f'home_session_id=={home_session_id} & room_id=={room_id}')
+        # load scene
+        self.scene = RobotAtHomeScene(rh=self.rh, rh_location_names=self.rh_location_names)
+        # scenes = self.rh.get_scenes()
+        # home_session_id = self.rh.name2id(self.home_name+"-"+self.home_session_name,'hs')
+        # self.scene =  scenes.query(f'home_session_id=={home_session_id} & room_id=={room_id}')
 
         # scene shift and scale variables
         self.shift = None
@@ -154,9 +168,10 @@ class RobotAtHomeDataset(BaseDataset):
                 depth = depth[:,:,0]
             else:
                 print(f"ERROR: robot_at_home.py: read_meta: depth image has more than one channel")
-            depth = self.scalePosition(pos=depth, only_scale=True) # (H, W), convert to cube coordinate system [-0.5, 0.5]
+            # depth = self.scalePosition(pos=depth, only_scale=True) # (H, W), convert to cube coordinate system [-0.5, 0.5]
             depth[depth==0] = np.nan # set invalid depth values to nan
-            depths[i,:] = depth.flatten()
+            depth = self.scene.w2cTransformation(depth.flatten(), only_scale=True) # (H*W,), convert to cube coordinate system [-0.5, 0.5]
+            depths[i,:] = depth
 
             # if i == 0 or i==50 or i==100 or i==200 or i==300 or i==400:
             #     fig, axs = plt.subplots(1, 3, figsize=(12, 6))
@@ -215,7 +230,8 @@ class RobotAtHomeDataset(BaseDataset):
         poses = np.concatenate((R_c2w, p_c2w[:, :, np.newaxis]), axis=2) # (N_images, 3, 4)
 
         # translate and scale position
-        poses[:,:,3] = self.scalePosition(pos=poses[:,:,3])
+        # poses[:,:,3] = self.scalePosition(pos=poses[:,:,3])
+        poses[:,:,3] = self.scene.w2cTransformation(pos=poses[:,:,3], copy=False)
 
         return torch.tensor(rays, dtype=torch.float32), torch.tensor(depths, dtype=torch.float32), torch.tensor(poses, dtype=torch.float32)
 
@@ -305,64 +321,9 @@ class RobotAtHomeDataset(BaseDataset):
 
         return df
 
-    def scalePosition(self, pos, only_scale=False):
-        """
-        Scale and shift position such that the scene is inside [-0.5, 0.5].
-        Args:
-            pos: position to scale and shift; tensor of shape (N_images, 3)
-            only_scale: if True, only scale position and do not shift; bool
-        Returns:
-            pos: scaled and shifted position; tensor of shape (N_images, 3)
-        """
-        # calc. shift and scale if not already done
-        if (self.shift is None) or (self.scale is None):
-            # get scene point cloud
-            scene_file = self.scene.scene_file.values[0]
-            scene_point_cloud = np.loadtxt(scene_file, skiprows=6)
 
-            # get scene shift and scale
-            xyz_min = scene_point_cloud[:,:3].min(axis=0)
-            xyz_max = scene_point_cloud[:,:3].max(axis=0)
-            self.shift = (xyz_max + xyz_min) / 2
-            self.scale = (xyz_max - xyz_min).max() / 2 * 1.05  # enlarge a little
-
-        # shift and scale position
-        if not only_scale:
-            pos -= self.shift
-        pos /= 2 * self.scale
-        return pos
     
-    def getSceneSlice(self, height, slice_res, height_tolerance=0.1):
-        """
-        Get a slice of the scene.
-        Args:
-            height: height of the slice in scene coordinate system; float
-            slice_res: size of slice map; int
-            height_tolerance: tolerance for height in scene coordinate system; float
-        Returns:
-            slice_map: slice of the scene; array of shape (slice_shape[0], slice_shape[1])
-        """
-        slice_map = np.zeros((slice_res, slice_res)) 
 
-        # get scene point cloud
-        scene_file = self.scene.scene_file.values[0]
-        scene_point_cloud = np.loadtxt(scene_file, skiprows=6)
-
-        # extract points in slice [height-height_tolerance, height+height_tolerance]
-        idxs = np.where((scene_point_cloud[:,2] >= height-height_tolerance) & (scene_point_cloud[:,2] <= height+height_tolerance))[0] # (N,)
-        points = scene_point_cloud[idxs,:3] # (N, x y z)    
-
-        # convert points to slice coordinates
-        points = self.scalePosition(pos=points) # (N, x y z), convert to cube coordinate system [-0.5, 0.5]
-        points = points[:,:2] # (N, x y), ignore z coordinate
-        idxs = (points + 0.5) * (slice_res - 1) # (N, x y), convert to slice coordinates
-        idxs = np.round(idxs).astype(int) # (N, x y), convert to int
-        idxs = np.clip(idxs, 0, slice_res-1) # (N, x y), clip to slice shape
-
-        # fill slice map
-        slice_map[idxs[:,0], idxs[:,1]] = 1
-
-        return slice_map
     
 
 
