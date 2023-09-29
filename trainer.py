@@ -42,7 +42,15 @@ class Trainer:
         self.args = Args(hparams=self.hparams)
 
         # TODO: add as hparams
-        root_dir =  '../RobotAtHome2/data' # '/media/scratch1/schmin/data/robot_at_home'
+        print("-----------------------")
+        print(self.args.device)
+        print(type(self.args.device))
+        if self.args.device == torch.device("cuda"):
+            root_dir =  '/media/scratch1/schmin/data/robot_at_home'
+        else:
+            root_dir =  '../RobotAtHome2/data'
+        print(root_dir)
+        print("-----------------------")
 
         # set seed
         random.seed(self.args.seed)
