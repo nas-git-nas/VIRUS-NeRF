@@ -25,11 +25,13 @@ try:
     from .base import BaseDataset
     from .color_utils import read_image
     from .ray_utils import get_ray_directions
+    from .robot_at_home_scene import RobotAtHomeScene
 except:
     from ray_utils import get_rays
     from base import BaseDataset
     from color_utils import read_image
     from ray_utils import get_ray_directions
+    from robot_at_home_scene import RobotAtHomeScene
 
 
 class RobotAtHomeDataset(BaseDataset):
@@ -65,6 +67,9 @@ class RobotAtHomeDataset(BaseDataset):
         room_id = self.rh.name2id(self.home_name+"_"+self.room_name, "r")
         self.df = df[(df['home_id'] == home_id) & (df['room_id'] == room_id)]
 
+        # TODO: remove
+        self.df = self.df.iloc[:100,:]
+
         # split dataset
         split_ratio = {'train': 0.8, 'val': 0.1, 'test': 0.1}
         self.df = self.splitDataset(df=self.df, split_ratio=split_ratio)
@@ -74,10 +79,11 @@ class RobotAtHomeDataset(BaseDataset):
             sensor_id = self.rh.name2id(sensor_name, "s")
             self.df = self.df[self.df["sensor_id"] == sensor_id]
 
-        # get scene
-        scenes = self.rh.get_scenes()
-        home_session_id = self.rh.name2id(self.home_name+"-"+self.home_session_name,'hs')
-        self.scene =  scenes.query(f'home_session_id=={home_session_id} & room_id=={room_id}')
+        # load scene
+        self.scene = RobotAtHomeScene(rh=self.rh, rh_location_names=self.rh_location_names)
+        # scenes = self.rh.get_scenes()
+        # home_session_id = self.rh.name2id(self.home_name+"-"+self.home_session_name,'hs')
+        # self.scene =  scenes.query(f'home_session_id=={home_session_id} & room_id=={room_id}')
 
         # scene shift and scale variables
         self.shift = None
@@ -162,9 +168,10 @@ class RobotAtHomeDataset(BaseDataset):
                 depth = depth[:,:,0]
             else:
                 print(f"ERROR: robot_at_home.py: read_meta: depth image has more than one channel")
-            depth = self.scalePosition(pos=depth, only_scale=True) # (H, W), convert to cube coordinate system [-0.5, 0.5]
+            # depth = self.scalePosition(pos=depth, only_scale=True) # (H, W), convert to cube coordinate system [-0.5, 0.5]
             depth[depth==0] = np.nan # set invalid depth values to nan
-            depths[i,:] = depth.flatten()
+            depth = self.scene.w2cTransformation(depth.flatten(), only_scale=True) # (H*W,), convert to cube coordinate system [-0.5, 0.5]
+            depths[i,:] = depth
 
             # if i == 0 or i==50 or i==100 or i==200 or i==300 or i==400:
             #     fig, axs = plt.subplots(1, 3, figsize=(12, 6))
@@ -223,7 +230,8 @@ class RobotAtHomeDataset(BaseDataset):
         poses = np.concatenate((R_c2w, p_c2w[:, :, np.newaxis]), axis=2) # (N_images, 3, 4)
 
         # translate and scale position
-        poses[:,:,3] = self.scalePosition(pos=poses[:,:,3])
+        # poses[:,:,3] = self.scalePosition(pos=poses[:,:,3])
+        poses[:,:,3] = self.scene.w2cTransformation(pos=poses[:,:,3], copy=False)
 
         return torch.tensor(rays, dtype=torch.float32), torch.tensor(depths, dtype=torch.float32), torch.tensor(poses, dtype=torch.float32)
 

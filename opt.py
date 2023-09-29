@@ -97,4 +97,20 @@ def get_opts(prefix_args=None):
     parser.add_argument('--deployment', action='store_true', default=False)
     parser.add_argument('--deployment_model_path', type=str, default="./")
 
+    parser.add_argument(
+        '--warmup_steps',
+        action='store_true',
+        default=256,
+        help='warmup steps for occupancy grid update'
+    )
+
+    parser.add_argument(
+        '--update_interval',
+        action='store_true',
+        default=16,
+        help='update interval for occupancy grid update'
+    )
+
+    
+
     return parser.parse_args(prefix_args)

@@ -347,9 +347,6 @@ class RobotAtHomeScene():
         return scan_rays_c, scan_angles
 
     
-    
-    
-
 
 
 def test_RobotAtHomeScene():
