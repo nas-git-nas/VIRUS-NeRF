@@ -253,6 +253,10 @@ class TrainerRH(Trainer):
         # get ground truth depth
         scan_map, depth_gt, scan_angles = self.test_dataset.scene.getSliceScan(res=556, rays_o=rays_o, rays_d=rays_d, rays_o_in_world_coord=False)
 
+        # convert depth to world coordinates (meters)
+        depth = self.test_dataset.scene.w2cTransformation(pos=depth, only_scale=True, copy=False)
+        depth_gt = self.test_dataset.scene.w2cTransformation(pos=depth_gt, only_scale=True, copy=False)
+
         # calculate mean squared depth error
         depth_mse = np.mean((depth-depth_gt)**2)
 
