@@ -74,9 +74,7 @@ class Trainer:
 
         # load checkpoint if ckpt path is provided
         if self.hparams.ckpt_path:
-            state_dict = torch.load(self.hparams.ckpt_path)
-            self.model.load_state_dict(state_dict)
-            print("Load checkpoint from %s" % self.hparams.ckpt_path)
+            self.__loadCheckpoint(ckpt_path=self.hparams.ckpt_path)
 
         self.model.mark_invisible_cells(
             self.train_dataset.K,
@@ -125,6 +123,26 @@ class Trainer:
     def test(self):
         pass
 
+    def saveModel(self):
+        """
+        Save model
+        """
+        print(f"Saving model to {self.args.val_dir}")
+        torch.save(
+            self.model.state_dict(),
+            os.path.join(self.args.val_dir, 'model.pth'),
+        )
+
+    def loadCheckpoint(self, ckpt_path:str):
+        """
+        Load checkpoint
+        Args:
+            ckpt_path: path to checkpoint; str
+        """
+        state_dict = torch.load(ckpt_path, map_location=torch.device('cpu'))
+        self.model.load_state_dict(state_dict)
+        print("Load checkpoint from %s" % ckpt_path)
+
     def taichi_init(self, args):
         taichi_init_args = {"arch": ti.cuda,}
         if args.half_opt:
@@ -161,11 +179,5 @@ class Trainer:
         depth_loss = F.mse_loss(results['depth'][val_idxs], data['depth'][val_idxs])
         return colour_loss + depth_loss_w * depth_loss
     
-    def __saveModel(self):
-        # save model
-        print(f"Saving model to {self.args.val_dir}")
-        torch.save(
-            self.model.state_dict(),
-            os.path.join(self.args.val_dir, 'model.pth'),
-        )
+
 

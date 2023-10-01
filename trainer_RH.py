@@ -12,6 +12,7 @@ import taichi as ti
 from einops import rearrange
 import torch.nn.functional as F
 from abc import abstractmethod
+import matplotlib.pyplot as plt
 
 from gui import NGPGUI
 from opt import get_opts
@@ -167,9 +168,38 @@ class TrainerRH(Trainer):
             test_psnr_avg = sum(test_psnrs) / len(test_psnrs)
             test_ssim_avg = sum(test_ssims) / len(test_ssims)
             with torch.no_grad():
-                depth_mse = self.__evaluateDepth()
+                depth_mse, _, _, _, _, _ = self.evaluateDepth()
             print(f"evaluation: psnr_avg={test_psnr_avg} | ssim_avg={test_ssim_avg} | depth_mse={depth_mse}")
 
+    def evaluateSlice(self, res, height_w, tolerance_w):
+        """
+        Evaluate slice density.
+        Args:
+            res: number of samples in each dimension; int
+            height_w: height of slice in world coordinates (meters); float
+            tolerance_w: tolerance in world coordinates (meters); float
+        Returns:
+            density: density map of slice; array of shape (res,res)
+        """
+        # convert distances from meters to cube coordinates
+        height_c = self.train_dataset.scene.w2cTransformation(pos=np.array([[0.0, 0.0, height_w]]), copy=True)[0,2]
+        tolerance_c = self.train_dataset.scene.w2cTransformation(pos=tolerance_w, only_scale=True, copy=True)
+
+        slice_pts = torch.linspace(self.test_dataset.scene.w2c_params["cube_min"], self.test_dataset.scene.w2c_params["cube_max"], res) # (slice_res,)
+        m1, m2 = torch.meshgrid(slice_pts, slice_pts) # (slice_res,slice_res), (slice_res,slice_res)
+        slice_pts = torch.stack((m1.reshape(-1), m2.reshape(-1)), dim=1) # (slice_res*slice_res, 2)
+
+
+        # estimate density of slice
+        density = []
+        for h in np.linspace(height_c-tolerance_c, height_c+tolerance_c, 10):         
+            x = torch.cat((slice_pts, h*torch.ones(res*res,1)), dim=1) # (slice_res*slice_res, 3)
+            sigmas = self.model.density(x) # (slice_res*slice_res,3)
+            sigmas = sigmas.reshape(res, res).cpu().detach().numpy() # (slice_res,slice_res)
+            density.append(sigmas)
+        density = np.array(density).mean(axis=0)
+
+        return density
 
     def __printStats(self, results, data, step, loss, tic):
         """
@@ -198,7 +228,7 @@ class TrainerRH(Trainer):
         with torch.no_grad():
             mse = F.mse_loss(results['rgb'], data['rgb'])
             psnr = -10.0 * torch.log(mse) / np.log(10.0)
-            depth_mse = self.__evaluateDepth()
+            depth_mse, _, _, _, _, _ = self.__evaluateDepth()
 
         # print statistics
         print(
@@ -217,13 +247,16 @@ class TrainerRH(Trainer):
             f"depth_mse={depth_mse:.6f} | "
         )
 
-    def __evaluateDepth(self, res_angular=256):
+    def evaluateDepth(self, res:int=256, res_angular=256):
         """
         Evaluate depth error.
         Args:
-            res_angular: number of angular samples; int
+            res: map_gt size; int
+            res_angular: number of angular samples (M); int
         Returns:
             depth_mse: mean squared depth error; float
+            depth_w: predicted depth in world coordinates (meters); array of shape (N*M,)
+            depth_w_gt: ground truth depth in world coordinates (meters); array of shape (N*M,)
         """
         # get indices of one particular sensor
         sensor_img_idxs = self.test_dataset.getIdxFromSensorName(sensor_name="RGBD_1")
@@ -253,17 +286,16 @@ class TrainerRH(Trainer):
         depth = results['depth'].detach().cpu().numpy() # (N*M,)
 
         # get ground truth depth
-        scan_map, depth_gt, scan_angles = self.test_dataset.scene.getSliceScan(res=556, rays_o=rays_o, rays_d=rays_d, rays_o_in_world_coord=False)
+        map_gt, depth_gt, scan_angles = self.test_dataset.scene.getSliceScan(res=res, rays_o=rays_o, rays_d=rays_d, rays_o_in_world_coord=False)
 
         # convert depth to world coordinates (meters)
-        depth = self.test_dataset.scene.c2wTransformation(pos=depth, only_scale=True, copy=False)
-        depth_gt = self.test_dataset.scene.c2wTransformation(pos=depth_gt, only_scale=True, copy=False)
+        depth_w = self.test_dataset.scene.c2wTransformation(pos=depth, only_scale=True, copy=True)
+        depth_w_gt = self.test_dataset.scene.c2wTransformation(pos=depth_gt, only_scale=True, copy=True)
 
         # calculate mean squared depth error
-        depth_mse = np.mean((depth-depth_gt)**2)
+        depth_mse = np.mean((depth_w-depth_w_gt)**2)
 
-        return depth_mse
-
+        return depth_mse, depth_w, depth_w_gt, map_gt, rays_o, scan_angles
 
 
 

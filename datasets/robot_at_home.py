@@ -68,7 +68,7 @@ class RobotAtHomeDataset(BaseDataset):
         self.df = df[(df['home_id'] == home_id) & (df['room_id'] == room_id)]
 
         # TODO: remove
-        self.df = self.df.iloc[:100,:]
+        # self.df = self.df.iloc[:100,:]
 
         # split dataset
         split_ratio = {'train': 0.8, 'val': 0.1, 'test': 0.1}

@@ -248,6 +248,18 @@ class RobotAtHomeScene():
         pos_c = self.w2cTransformation(pos=pos)
         return self.c2idxTransformation(pos=pos_c, res=res)
     
+    def idx2wTransformation(self, map_idxs, res):
+        """
+        Transformation from slice map indices ([0,res-1]**2) to world (in meters).
+        Args:
+            map_idxs: slice map indices; tensor or array of shape (N, 2)
+            res: size of slice map; int
+        Returns:
+            pos_w3: position in world coordinate system; tensor or array of shape (N, 2)
+        """
+        pos_c = self.idx2cTransformation(map_idxs=map_idxs, res=res)
+        return self.c2wTransformation(pos=pos_c)
+    
     def convertDepth2Pos(self, rays_o, scan_depth, scan_angles):
         """
         Convert depth values to positions.
@@ -263,18 +275,6 @@ class RobotAtHomeScene():
                                    scan_depth[val_idxs] * np.sin(scan_angles[val_idxs])), axis=1) # (N, 2)
         pos += rays_o[val_idxs,:2] # (N, 2)
         return pos
-    
-    def idx2wTransformation(self, map_idxs, res):
-        """
-        Transformation from slice map indices ([0,res-1]**2) to world (in meters).
-        Args:
-            map_idxs: slice map indices; tensor or array of shape (N, 2)
-            res: size of slice map; int
-        Returns:
-            pos_w3: position in world coordinate system; tensor or array of shape (N, 2)
-        """
-        pos_c = self.idx2cTransformation(map_idxs=map_idxs, res=res)
-        return self.c2wTransformation(pos=pos_c)
   
     def __loadPointCloud(self):
         """
