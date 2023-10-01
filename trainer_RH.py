@@ -89,7 +89,7 @@ class TrainerRH(Trainer):
             self.grad_scaler.update()
             self.scheduler.step()
 
-            if step % 1 == 0:
+            if step % 100 == 0:
                 self.__printStats(results=results, data=data, step=step, loss=loss, tic=tic)
 
         self.__saveModel()
@@ -227,13 +227,15 @@ class TrainerRH(Trainer):
         """
         # get indices of one particular sensor
         sensor_img_idxs = self.test_dataset.getIdxFromSensorName(sensor_name="RGBD_1")
+        sensor_img_idxs = torch.tensor(sensor_img_idxs, dtype=torch.long, device=self.args.device)
 
         with torch.autocast(device_type='cuda', dtype=torch.float16):
             # get rays
             rays_o = self.test_dataset.poses[sensor_img_idxs, :3, 3].detach().clone() # (N, 3)
             rays_o = torch.repeat_interleave(rays_o, res_angular, dim=0) # (N*M, 3)
 
-            rays_d = torch.linspace(-np.pi, np.pi-2*np.pi/res_angular, res_angular) # (M,)
+            rays_d = torch.linspace(-np.pi, np.pi-2*np.pi/res_angular, res_angular, 
+                                    dtype=torch.float32, device=self.args.device) # (M,)
             rays_d = torch.stack((torch.cos(rays_d), torch.sin(rays_d), torch.zeros_like(rays_d)), axis=1) # (M, 3)
             rays_d = rays_d.repeat(len(sensor_img_idxs), 1) # (N*M, 3)
 
@@ -254,8 +256,8 @@ class TrainerRH(Trainer):
         scan_map, depth_gt, scan_angles = self.test_dataset.scene.getSliceScan(res=556, rays_o=rays_o, rays_d=rays_d, rays_o_in_world_coord=False)
 
         # convert depth to world coordinates (meters)
-        depth = self.test_dataset.scene.w2cTransformation(pos=depth, only_scale=True, copy=False)
-        depth_gt = self.test_dataset.scene.w2cTransformation(pos=depth_gt, only_scale=True, copy=False)
+        depth = self.test_dataset.scene.c2wTransformation(pos=depth, only_scale=True, copy=False)
+        depth_gt = self.test_dataset.scene.c2wTransformation(pos=depth_gt, only_scale=True, copy=False)
 
         # calculate mean squared depth error
         depth_mse = np.mean((depth-depth_gt)**2)
