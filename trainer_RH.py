@@ -37,17 +37,17 @@ class TrainerRH(Trainer):
         model_config = {
             'scale': 0.5,
             'pos_encoder_type': 'hash',
-            'max_res':1024, #4096, # 1024,
+            'max_res': 1024, # 4096
             'half_opt': False,
         }
 
         Trainer.__init__(self, dataset=dataset_dict["robot_at_home"], model_config=model_config)
 
         # metric
-        val_psnr = PeakSignalNoiseRatio(
+        self.val_psnr = PeakSignalNoiseRatio(
             data_range=1
         ).to(self.args.device)
-        val_ssim = StructuralSimilarityIndexMeasure(
+        self.val_ssim = StructuralSimilarityIndexMeasure(
             data_range=1
         ).to(self.args.device)
 
@@ -79,7 +79,7 @@ class TrainerRH(Trainer):
                 )
 
                 # calculate loss
-                loss = self.lossFunc(results=results, data=data)
+                loss, color_loss, depth_loss = self.lossFunc(results=results, data=data)
                 if self.hparams.distortion_loss_w > 0:
                     loss += self.hparams.distortion_loss_w * distortion_loss(results).mean()
 
@@ -91,9 +91,9 @@ class TrainerRH(Trainer):
             self.scheduler.step()
 
             if step % 100 == 0:
-                self.__printStats(results=results, data=data, step=step, loss=loss, tic=tic)
+                self.__printStats(results=results, data=data, step=step, loss=loss, color_loss=color_loss, depth_loss=depth_loss, tic=tic)
 
-        self.__saveModel()
+        self.saveModel()
 
     def evaluate(self):
         # test loop
@@ -168,8 +168,8 @@ class TrainerRH(Trainer):
             test_psnr_avg = sum(test_psnrs) / len(test_psnrs)
             test_ssim_avg = sum(test_ssims) / len(test_ssims)
             with torch.no_grad():
-                depth_mse, _, _, _, _, _ = self.evaluateDepth()
-            print(f"evaluation: psnr_avg={test_psnr_avg} | ssim_avg={test_ssim_avg} | depth_mse={depth_mse}")
+                error, _, _, _, _, _ = self.evaluateDepth()
+            print(f"evaluation: psnr_avg={test_psnr_avg} | ssim_avg={test_ssim_avg} | depth_mae={error['depth_mae']} | depth_mare={error['depth_mare']}")
 
     def evaluateSlice(self, res, height_w, tolerance_w):
         """
@@ -201,7 +201,7 @@ class TrainerRH(Trainer):
 
         return density
 
-    def __printStats(self, results, data, step, loss, tic):
+    def __printStats(self, results, data, step, loss, color_loss, depth_loss, tic):
         """
         Print statistics about the current training step.
         Args:
@@ -222,20 +222,24 @@ class TrainerRH(Trainer):
                 'depth': pixel depths; array of shape (N,)
             step: current training step; int
             loss: loss value; float
+            color_loss: color loss value; float
+            depth_loss: depth loss value; float
             tic: training starting time; time.time()
         """
         # calculate peak-signal-to-noise ratio
         with torch.no_grad():
             mse = F.mse_loss(results['rgb'], data['rgb'])
             psnr = -10.0 * torch.log(mse) / np.log(10.0)
-            depth_mse, _, _, _, _, _ = self.__evaluateDepth()
+            error, _, _, _, _, _ = self.evaluateDepth()
 
         # print statistics
         print(
-            f"elapsed_time={(time.time()-tic):.2f}s | "
+            f"time={(time.time()-tic):.2f}s | "
             f"step={step} | "
             f"psnr={psnr:.2f} | "
-            f"loss={loss:.6f} | "
+            f"loss={loss:.4f} | "
+            f"color_loss={color_loss:.4f} | "
+            f"depth_loss={depth_loss:.4f} | "
             # number of rays
             f"rays={len(data['rgb'])} | "
             # ray marching samples per ray (occupied space on the ray)
@@ -244,7 +248,8 @@ class TrainerRH(Trainer):
             # (stops marching when transmittance drops below 1e-4)
             f"vr_s={results['vr_samples'] / len(data['rgb']):.1f} | "
             f"lr={(self.optimizer.param_groups[0]['lr']):.5f} | "
-            f"depth_mse={depth_mse:.6f} | "
+            f"depth_mae={error['depth_mae']:.3f} | "
+            f"depth_mare={error['depth_mare']:.3f} | "
         )
 
     def evaluateDepth(self, res:int=256, res_angular=256, np_test_pts=None, height_tolerance:float=0.1):
@@ -307,9 +312,11 @@ class TrainerRH(Trainer):
         depth_w_gt = self.test_dataset.scene.c2wTransformation(pos=depth_gt, only_scale=True, copy=True)
 
         # calculate mean squared depth error
-        depth_mse = np.mean((depth_w-depth_w_gt)**2)
+        depth_mae = np.nanmean(np.abs(depth_w - depth_w_gt))
+        depth_mare = np.nanmean(np.abs((depth_w - depth_w_gt)/ depth_w_gt))
+        error = {"depth_mae": depth_mae, "depth_mare": depth_mare}
 
-        return depth_mse, depth_w, depth_w_gt, scan_map_gt, rays_o, scan_angles
+        return error, depth_w, depth_w_gt, scan_map_gt, rays_o, scan_angles
 
 
 
