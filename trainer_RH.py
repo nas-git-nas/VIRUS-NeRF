@@ -247,7 +247,7 @@ class TrainerRH(Trainer):
             f"depth_mse={depth_mse:.6f} | "
         )
 
-    def evaluateDepth(self, res:int=256, res_angular=256):
+    def evaluateDepth(self, res:int=256, res_angular=256, np_test_pts=None, height_tolerance:float=0.1):
         """
         Evaluate depth error.
         Args:
@@ -260,7 +260,14 @@ class TrainerRH(Trainer):
         """
         # get indices of one particular sensor
         sensor_img_idxs = self.test_dataset.getIdxFromSensorName(sensor_name="RGBD_1")
+
+        # keep only a certain number of points
+        if np_test_pts is not None:
+            test_pts_idxs = np.linspace(0, len(sensor_img_idxs)-1, np_test_pts, dtype=int)
+            sensor_img_idxs = sensor_img_idxs[test_pts_idxs]
+
         sensor_img_idxs = torch.tensor(sensor_img_idxs, dtype=torch.long, device=self.args.device)
+        tolerance_c = self.test_dataset.scene.w2cTransformation(pos=height_tolerance, only_scale=True, copy=True)
 
         with torch.autocast(device_type='cuda', dtype=torch.float16):
             # get rays
@@ -272,21 +279,28 @@ class TrainerRH(Trainer):
             rays_d = torch.stack((torch.cos(rays_d), torch.sin(rays_d), torch.zeros_like(rays_d)), axis=1) # (M, 3)
             rays_d = rays_d.repeat(len(sensor_img_idxs), 1) # (N*M, 3)
 
-            # render image
-            results = render(
-                self.model, 
-                rays_o, 
-                rays_d,
-                test_time=True,
-                exp_step_factor=self.args.exp_step_factor,
-            )
+            depths = []
+            for h in np.linspace(-tolerance_c, tolerance_c, 10):
+                # get rays
+                tol = torch.tensor([0.0, 0.0, h], dtype=torch.float32, device=self.args.device)
+                rays_o_h = rays_o + tol # (N*M, 3)
+
+                # render image
+                results = render(
+                    self.model, 
+                    rays_o_h, 
+                    rays_d,
+                    test_time=True,
+                    exp_step_factor=self.args.exp_step_factor,
+                )
+                depths.append(results['depth'].detach().cpu().numpy())
 
         rays_o = rays_o.detach().cpu().numpy()
         rays_d = rays_d.detach().cpu().numpy()
-        depth = results['depth'].detach().cpu().numpy() # (N*M,)
+        depth = np.array(depths).mean(axis=0) # (N*M,)
 
         # get ground truth depth
-        map_gt, depth_gt, scan_angles = self.test_dataset.scene.getSliceScan(res=res, rays_o=rays_o, rays_d=rays_d, rays_o_in_world_coord=False)
+        scan_map_gt, depth_gt, scan_angles = self.test_dataset.scene.getSliceScan(res=res, rays_o=rays_o, rays_d=rays_d, rays_o_in_world_coord=False, height_tolerance=height_tolerance)
 
         # convert depth to world coordinates (meters)
         depth_w = self.test_dataset.scene.c2wTransformation(pos=depth, only_scale=True, copy=True)
@@ -295,7 +309,7 @@ class TrainerRH(Trainer):
         # calculate mean squared depth error
         depth_mse = np.mean((depth_w-depth_w_gt)**2)
 
-        return depth_mse, depth_w, depth_w_gt, map_gt, rays_o, scan_angles
+        return depth_mse, depth_w, depth_w_gt, scan_map_gt, rays_o, scan_angles
 
 
 

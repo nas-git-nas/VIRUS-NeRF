@@ -67,7 +67,7 @@ class RobotAtHomeDataset(BaseDataset):
         room_id = self.rh.name2id(self.home_name+"_"+self.room_name, "r")
         self.df = df[(df['home_id'] == home_id) & (df['room_id'] == room_id)]
 
-        # TODO: remove
+        # # TODO: remove
         # self.df = self.df.iloc[:100,:]
 
         # split dataset
