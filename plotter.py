@@ -157,7 +157,7 @@ def plotTrainerRHScan(trainer:TrainerRH, res:int, res_angular:int, np_test_pts:i
 
 
 def test_plotTrainerRHSlice():
-    ckpt_path = "results/rh_anto_livingroom1/model.pth"
+    ckpt_path = "results/rh_anto_livingroom1_depth_loss_10000/model.pth"
     trainer = TrainerRH()
     trainer.loadCheckpoint(ckpt_path=ckpt_path)
 
@@ -171,7 +171,7 @@ def test_plotTrainerRHSlice():
 
 
 def test_plotTrainerRHScan():
-    ckpt_path = "results/rh_anto_livingroom1/model.pth"
+    ckpt_path = "results/rh_anto_livingroom1_depth_loss_10000/model.pth"
     trainer = TrainerRH()
     trainer.loadCheckpoint(ckpt_path=ckpt_path)
 
