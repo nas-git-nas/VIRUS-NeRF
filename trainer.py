@@ -108,7 +108,7 @@ class Trainer:
             )
 
         # scheduler
-        self.hparams.max_steps = 3000 # TODO: add as hparams
+        self.hparams.max_steps = 1500 # TODO: add as hparams
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer=self.optimizer,
             T_max=self.hparams.max_steps,
@@ -150,13 +150,13 @@ class Trainer:
 
         ti.init(**taichi_init_args)
 
-    def lossFunc(self, results, data, depth_loss_w=1.0):
+    def lossFunc(self, results, data, depth_loss_w=1000.0):
         """
         Loss function for training
         Args:
             results: dict of rendered images
                 'opacity': sum(transmittance*alpha); array of shape: (N,)
-                'depth': sum(transmittance*alpha*t__i); array of shape: (N,)
+                'depth': sum(transmittance*alpha*t_i); array of shape: (N,)
                 'rgb': sum(transmittance*alpha*rgb_i); array of shape: (N, 3)
                 'total_samples': total samples for all rays; int
                 where   transmittance = exp( -sum(sigma_i * delta_i) )
@@ -171,13 +171,17 @@ class Trainer:
                 'depth': pixel depths; array of shape (N,)
             depth_loss_w: weight of depth loss; float
         Returns:
-            loss: loss value; float
+            total_loss: loss value; float
+            colour_loss: colour loss value; float
+            depth_loss: depth loss value; float
         """
         colour_loss = F.mse_loss(results['rgb'], data['rgb'])
 
         val_idxs = ~torch.isnan(data['depth'])
         depth_loss = F.mse_loss(results['depth'][val_idxs], data['depth'][val_idxs])
-        return colour_loss + depth_loss_w * depth_loss
+
+        total_loss = colour_loss + depth_loss_w * depth_loss
+        return total_loss, colour_loss, depth_loss
     
 
 
