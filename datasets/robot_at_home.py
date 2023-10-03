@@ -39,11 +39,11 @@ class RobotAtHomeDataset(BaseDataset):
     def __init__(self, root_dir, split='train', downsample=1.0, sensor_name="all", **kwargs):
         super().__init__(root_dir, split, downsample)
 
-        self.session_name = "session_2"
-        self.home_name = "anto"
-        self.room_name = "livingroom1"
-        self.subsession_name = "subsession_1"
-        self.home_session_name = "s1"
+        # self.session_name = "session_2"
+        # self.home_name = "anto"
+        # self.room_name = "livingroom1"
+        # self.subsession_name = "subsession_1"
+        # self.home_session_name = "s1"
 
         self.rh_location_names = {
             "session": "session_2",
@@ -61,10 +61,10 @@ class RobotAtHomeDataset(BaseDataset):
         my_db_filename = "rh.db"
         self.rh = RobotAtHome(rh_path=my_rh_path, rgbd_path=my_rgbd_path, scene_path=my_scene_path, wspc_path=my_wspc_path, db_filename=my_db_filename)
 
-        # get only observations from home="alma" and room="livingroom"
+        # get only observations from specific home and room
         df = self.rh.get_sensor_observations('lblrgbd') # load only labeld RGBD observations
-        home_id = self.rh.name2id(self.home_name, "h")
-        room_id = self.rh.name2id(self.home_name+"_"+self.room_name, "r")
+        home_id = self.rh.name2id(self.rh_location_names['home'], "h")
+        room_id = self.rh.name2id(self.rh_location_names['home']+"_"+self.rh_location_names['room'], "r")
         self.df = df[(df['home_id'] == home_id) & (df['room_id'] == room_id)]
 
         # TODO: remove

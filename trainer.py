@@ -15,7 +15,7 @@ from abc import abstractmethod
 
 from gui import NGPGUI
 from opt import get_opts
-from args import Args
+from args.args import Args
 from datasets import dataset_dict
 from datasets.ray_utils import get_rays
 

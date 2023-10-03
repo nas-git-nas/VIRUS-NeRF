@@ -1,0 +1,31 @@
+{
+    "dataset":
+    {
+        "path": "data/Synthetic_NeRF/Lego",
+        "name": "robot_at_home",
+        "split": "train",
+        "downsample": 1.0
+    },
+    "model":
+    {
+        "chpt_path": false, 
+        "scale": 0.5,
+        "encoder_type": "hash"
+    },
+    "training":
+    {
+        "distortion_loss_w": 0.0,
+        "batch_size": 8192,
+        "ray_sampling_strategy": "all_images",
+        "max_steps": 20000,
+        "lr": 1e-2,
+        "random_bg": false
+    },
+    "occ_grid":
+    {
+        "warmup_steps": 256,
+        "update_interval": 16,
+        "max_res": 1024
+    }
+    
+}
