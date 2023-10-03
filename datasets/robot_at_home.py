@@ -67,8 +67,8 @@ class RobotAtHomeDataset(BaseDataset):
         room_id = self.rh.name2id(self.home_name+"_"+self.room_name, "r")
         self.df = df[(df['home_id'] == home_id) & (df['room_id'] == room_id)]
 
-        # # TODO: remove
-        # self.df = self.df.iloc[:100,:]
+        # TODO: remove
+        self.df = self.df.iloc[:100,:]
 
         # split dataset
         split_ratio = {'train': 0.8, 'val': 0.1, 'test': 0.1}
@@ -144,8 +144,8 @@ class RobotAtHomeDataset(BaseDataset):
         Args:
             split: string indicating which split to read from
         Returns:
-            rays: tensor of shape (N_images, W*H, 3) containing RGB images
-            depths: tensor of shape (N_images, W*H) containing depth images
+            rays: tensor of shape (N_images, H*W, 3) containing RGB images
+            depths: tensor of shape (N_images, H*W) containing depth images
             poses: tensor of shape (N_images, 3, 4) containing camera poses
         """
         df = self.df[self.df["split"] == split].copy(deep=True)

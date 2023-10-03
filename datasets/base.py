@@ -72,7 +72,12 @@ class BaseDataset(Dataset):
             if hasattr(self, 'depths'):
                 sample['depth'] = self.depths[img_idxs, pix_idxs]
         else:
-            sample = {'pose': self.poses[idx], 'img_idxs': idx}
+            sample = {
+                'pose': self.poses[idx], 
+                'img_idxs': idx
+            }
+            if hasattr(self, 'depths'):
+                sample['depth'] = self.depths[idx]
              # if ground truth available
             if len(self.rays) > 0: 
                 rays = self.rays[idx]
