@@ -4,17 +4,18 @@ import matplotlib.pyplot as plt
 from alive_progress import alive_bar
 
 from robotathome import RobotAtHome
+from args.args import Args
 
 class RobotAtHomeScene():
-    def __init__(self, rh:RobotAtHome, rh_location_names:dict):
+    def __init__(self, rh:RobotAtHome, args:Args):
         """
         Class to handle robot@home2 scenes. The scene's point cloud serves as ground truth.
         Args:
             rh: robot@home2 database; RobotAtHome object
-            rh_location_names: dictionary of location names; dict
+            args: arguments; Args object
         """ 
         self.rh = rh
-        self.rh_location_names = rh_location_names
+        self.args = args
 
         self._point_cloud = self.__loadPointCloud()
 
@@ -284,8 +285,8 @@ class RobotAtHomeScene():
         Returns:
             point cloud of scene; numpy array (N, x y z R B G)
         """
-        home_session_id = self.rh.name2id(self.rh_location_names["home"]+"-"+self.rh_location_names["home_session"],'hs')
-        room_id = self.rh.name2id(self.rh_location_names["home"]+"_"+self.rh_location_names["room"], "r")
+        home_session_id = self.rh.name2id(self.args.rh.home+"-"+self.args.rh.home_session,'hs')
+        room_id = self.rh.name2id(self.args.rh.home+"_"+self.args.rh.room, "r")
 
         # get scene database of particular room  
         scene =  self.rh.get_scenes().query(f'home_session_id=={home_session_id} & room_id=={room_id}')

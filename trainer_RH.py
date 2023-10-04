@@ -34,7 +34,7 @@ from trainer import Trainer
 class TrainerRH(Trainer):
     def __init__(self) -> None:
 
-        # TODO: add as hparams
+        # TODO: add as args
         model_config = {
             'scale': 0.5,
             'pos_encoder_type': 'hash',
@@ -55,7 +55,7 @@ class TrainerRH(Trainer):
     def train(self):
         # training loop
         tic = time.time()
-        for step in range(self.hparams.max_steps+1):
+        for step in range(self.args.training.max_steps+1):
             self.model.train()
 
             i = torch.randint(0, len(self.train_dataset), (1,)).item()
@@ -65,10 +65,10 @@ class TrainerRH(Trainer):
             pose = data['pose']
 
             with torch.autocast(device_type='cuda', dtype=torch.float16):
-                if step % self.hparams.update_interval == 0:
+                if step % self.args.occ_grid.update_interval == 0:
                     self.model.update_density_grid(
                         0.01 * MAX_SAMPLES / 3**0.5,
-                        warmup=step < self.hparams.warmup_steps,
+                        warmup=step < self.args.occ_grid.warmup_steps,
                     )
                 # get rays and render image
                 rays_o, rays_d = get_rays(direction, pose)
@@ -81,8 +81,8 @@ class TrainerRH(Trainer):
 
                 # calculate loss
                 loss, color_loss, depth_loss = self.lossFunc(results=results, data=data)
-                if self.hparams.distortion_loss_w > 0:
-                    loss += self.hparams.distortion_loss_w * distortion_loss(results).mean()
+                if self.args.training.distortion_loss_w > 0:
+                    loss += self.args.training.distortion_loss_w * distortion_loss(results).mean()
 
             # backpropagate and update weights
             self.optimizer.zero_grad()
@@ -152,14 +152,14 @@ class TrainerRH(Trainer):
                         rearrange(results['depth'].cpu().numpy(), '(h w) -> h w', h=h))
                     imageio.imsave(
                         os.path.join(
-                            self.args.val_dir, 
+                            self.args.save_dir, 
                             f'rgb_{test_idx:03d}_'+str(test_step)+'.png'
                             ),
                         rgb_pred
                     )
                     imageio.imsave(
                         os.path.join(
-                            self.args.val_dir, 
+                            self.args.save_dir, 
                             f'depth_{test_idx:03d}.png'
                         ),
                         depth

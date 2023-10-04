@@ -20,6 +20,8 @@ from robotathome import time_win2unixepoch, time_unixepoch2win
 
 from datasets.sensor_model import ToFModel, USSModel
 
+from args.args import Args
+
 try:
     from .ray_utils import get_rays
     from .base import BaseDataset
@@ -36,22 +38,18 @@ except:
 
 class RobotAtHomeDataset(BaseDataset):
 
-    def __init__(self, root_dir, split='train', downsample=1.0, sensor_name="all", **kwargs):
+    def __init__(self, args:Args, root_dir, split='train', downsample=1.0, sensor_name="all", **kwargs):
         super().__init__(root_dir, split, downsample)
 
-        # self.session_name = "session_2"
-        # self.home_name = "anto"
-        # self.room_name = "livingroom1"
-        # self.subsession_name = "subsession_1"
-        # self.home_session_name = "s1"
+        self.args = args
 
-        self.rh_location_names = {
-            "session": "session_2",
-            "home": "anto",
-            "room": "livingroom1",
-            "subsession": "subsession_1",
-            "home_session": "s1",
-        }
+        # self.rh_location_names = {
+        #     "session": "session_2",
+        #     "home": "anto",
+        #     "room": "livingroom1",
+        #     "subsession": "subsession_1",
+        #     "home_session": "s1",
+        # }
 
         # load dataset
         my_rh_path = root_dir
@@ -63,12 +61,12 @@ class RobotAtHomeDataset(BaseDataset):
 
         # get only observations from specific home and room
         df = self.rh.get_sensor_observations('lblrgbd') # load only labeld RGBD observations
-        home_id = self.rh.name2id(self.rh_location_names['home'], "h")
-        room_id = self.rh.name2id(self.rh_location_names['home']+"_"+self.rh_location_names['room'], "r")
+        home_id = self.rh.name2id(self.args.rh.home, "h")
+        room_id = self.rh.name2id(self.args.rh.home+"_"+self.args.rh.room, "r")
         self.df = df[(df['home_id'] == home_id) & (df['room_id'] == room_id)]
 
-        # TODO: remove
-        self.df = self.df.iloc[:100,:]
+        # # TODO: remove
+        # self.df = self.df.iloc[:100,:]
 
         # split dataset
         split_ratio = {'train': 0.8, 'val': 0.1, 'test': 0.1}
@@ -81,7 +79,7 @@ class RobotAtHomeDataset(BaseDataset):
             self.df = self.df[name_idxs]
 
         # load scene
-        self.scene = RobotAtHomeScene(rh=self.rh, rh_location_names=self.rh_location_names)
+        self.scene = RobotAtHomeScene(rh=self.rh, args=self.args)
         # scenes = self.rh.get_scenes()
         # home_session_id = self.rh.name2id(self.home_name+"-"+self.home_session_name,'hs')
         # self.scene =  scenes.query(f'home_session_id=={home_session_id} & room_id=={room_id}')
@@ -249,9 +247,9 @@ class RobotAtHomeDataset(BaseDataset):
             df: dataframe containing the dataset with a new column 'split'
         """
         df = self.df.copy(deep=True) 
-        df_split_path = os.path.join(self.root_dir, 'files', 'rgbd', self.rh_location_names["session"], 
-                                     self.rh_location_names["home"], self.rh_location_names["room"])
-        df_split_filename = 'split_'+self.rh_location_names["subsession"]+'.csv'
+        df_split_path = os.path.join(self.root_dir, 'files', 'rgbd', self.args.rh.session, 
+                                     self.args.rh.home, self.args.rh.room)
+        df_split_filename = 'split_'+self.args.rh.subsession+'.csv'
 
         # load split description if it exists already
         df_description = None

@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 import shutil
 
-from args.h_params import HParamsDataset, HParamsModel, HParamsTraining, HParamsOccGrid
+from args.h_params import HParamsDataset, HParamsModel, HParamsTraining, HParamsOccGrid, HParamsRH
 
 
 class Args():
@@ -21,6 +21,10 @@ class Args():
         self.model.setHParams(hparams)
         self.training.setHParams(hparams)
         self.occ_grid.setHParams(hparams)
+
+        if self.dataset.name == "robot_at_home":
+            self.rh = HParamsRH()
+            self.rh.setHParams(hparams)
 
         # general
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

@@ -204,7 +204,7 @@ def test_plotTrainerRHSlice():
 
 
 def test_plotTrainerRHScan():
-    ckpt_path = "results/rh_anto_livingroom1_depth_loss_10000/model.pth"
+    ckpt_path = "results/robot_at_home/20231004_0910/model.pth"
     trainer = TrainerRH()
     trainer.loadCheckpoint(ckpt_path=ckpt_path)
 

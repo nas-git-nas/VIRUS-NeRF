@@ -8,7 +8,7 @@
     },
     "model":
     {
-        "chpt_path": false, 
+        "ckpt_path": false, 
         "scale": 0.5,
         "encoder_type": "hash"
     },
@@ -17,7 +17,7 @@
         "distortion_loss_w": 0.0,
         "batch_size": 8192,
         "ray_sampling_strategy": "all_images",
-        "max_steps": 20000,
+        "max_steps": 1500,
         "lr": 1e-2,
         "random_bg": false
     },
@@ -26,6 +26,14 @@
         "warmup_steps": 256,
         "update_interval": 16,
         "max_res": 1024
+    },
+    "robot_at_home":
+    {
+        "session": "session_2",
+        "home": "anto",
+        "room": "livingroom1",
+        "subsession": "subsession_1",
+        "home_session": "s1"
     }
     
 }

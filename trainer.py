@@ -35,13 +35,13 @@ warnings.filterwarnings("ignore")
 
 class Trainer:
     def __init__(self, dataset, model_config) -> None:
-        # hyper parameters
-        self.hparams = get_opts()
+        # # hyper parameters
+        # self.hparams = get_opts() # TODO: args
         
         # variable arguments
         self.args = Args(file_name="hparams.json")
 
-        # TODO: add as hparams
+        # TODO: args
         if self.args.device == torch.device("cuda"):
             root_dir =  '/media/scratch1/schmin/data/robot_at_home'
         else:
@@ -52,29 +52,29 @@ class Trainer:
         np.random.seed(self.args.seed)
         torch.manual_seed(self.args.seed)
 
-        self.taichi_init(self.hparams)
+        self.taichi_init()
 
         # datasets       
         self.train_dataset = dataset(
             root_dir=root_dir,
             split="train",
-            downsample=self.hparams.downsample,
+            downsample=self.args.dataset.downsample,
         ).to(self.args.device)
-        self.train_dataset.batch_size = self.hparams.batch_size
-        self.train_dataset.ray_sampling_strategy = self.hparams.ray_sampling_strategy
+        self.train_dataset.batch_size = self.args.training.batch_size
+        self.train_dataset.ray_sampling_strategy = self.args.training.ray_sampling_strategy
 
         self.test_dataset = dataset(
             root_dir=root_dir,
             split='test',
-            downsample=self.hparams.downsample,
+            downsample=self.args.dataset.downsample,
         ).to(self.args.device)
 
         # model
         self.model = NGP(**model_config).to(self.args.device)
 
         # load checkpoint if ckpt path is provided
-        if self.hparams.ckpt_path:
-            self.__loadCheckpoint(ckpt_path=self.hparams.ckpt_path)
+        if self.args.model.ckpt_path:
+            self.__loadCheckpoint(ckpt_path=self.hpaargs.modelrams.ckpt_path)
 
         self.model.mark_invisible_cells(
             self.train_dataset.K,
@@ -82,37 +82,36 @@ class Trainer:
             self.train_dataset.img_wh,
         )
 
-        # use large scaler, the default scaler is 2**16 
-        # TODO: investigate why the gradient is small
-        if self.hparams.half_opt:
-            scaler = 2**16
-        else:
-            scaler = 2**19
+        # # use large scaler, the default scaler is 2**16 
+        # # TODO: investigate why the gradient is small
+        # if self.hparams.half_opt:
+        #     scaler = 2**16
+        # else:
+        #     scaler = 2**19
+        scaler = 2**19
         self.grad_scaler = torch.cuda.amp.GradScaler(scaler)
 
         # optimizer
-        self.lr = 1e-2 # TODO: add as hparams
         try:
             import apex
             self.optimizer = apex.optimizers.FusedAdam(
                 self.model.parameters(), 
-                lr=self.lr, 
+                lr=self.args.training.lr, 
                 eps=1e-15,
             )
         except ImportError:
             print("Failed to import apex FusedAdam, use torch Adam instead.")
             self.optimizer = torch.optim.Adam(
                 self.model.parameters(), 
-                self.lr, 
+                self.args.training.lr, 
                 eps=1e-15,
             )
 
         # scheduler
-        self.hparams.max_steps = 1500 # TODO: add as hparams
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer=self.optimizer,
-            T_max=self.hparams.max_steps,
-            eta_min=self.lr/30,
+            T_max=self.args.training.max_steps,
+            eta_min=self.args.training.lr/30,
     )
 
     @abstractmethod
@@ -127,10 +126,10 @@ class Trainer:
         """
         Save model
         """
-        print(f"Saving model to {self.args.val_dir}")
+        print(f"Saving model to {self.args.save_dir}")
         torch.save(
             self.model.state_dict(),
-            os.path.join(self.args.val_dir, 'model.pth'),
+            os.path.join(self.args.save_dir, 'model.pth'),
         )
 
     def loadCheckpoint(self, ckpt_path:str):
@@ -143,10 +142,10 @@ class Trainer:
         self.model.load_state_dict(state_dict)
         print("Load checkpoint from %s" % ckpt_path)
 
-    def taichi_init(self, args):
+    def taichi_init(self):
         taichi_init_args = {"arch": ti.cuda,}
-        if args.half_opt:
-            taichi_init_args["half2_vectorization"] = True
+        # if hparams.half_opt:
+        #     taichi_init_args["half2_vectorization"] = True
 
         ti.init(**taichi_init_args)
 

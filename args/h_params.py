@@ -32,7 +32,7 @@ class HParamsDataset(HParams):
 class HParamsModel(HParams):
     def __init__(self) -> None:
         # hyper parameters
-        self.chpt_path = None
+        self.ckpt_path = None
         self.scale = None
         self.encoder_type = None
 
@@ -60,3 +60,14 @@ class HParamsOccGrid(HParams):
         self.max_res = None
 
         HParams.__init__(self, name="occ_grid")
+
+class HParamsRH(HParams):
+    def __init__(self) -> None:
+        # hyper parameters
+        self.session = None
+        self.home = None
+        self.room = None
+        self.subsession = None
+        self.home_session = None
+
+        HParams.__init__(self, name="rh")
