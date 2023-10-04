@@ -232,7 +232,7 @@ class RobotAtHomeDataset(BaseDataset):
         # poses[:,:,3] = self.scalePosition(pos=poses[:,:,3])
         poses[:,:,3] = self.scene.w2cTransformation(pos=poses[:,:,3], copy=False)
 
-        model = ToFModel(img_wh=self.img_wh) # TODO: add as args
+        model = USSModel(img_wh=self.img_wh) # TODO: add as args
         depths = model.convertDepth(depths)
 
         return torch.tensor(rays, dtype=torch.float32), torch.tensor(depths, dtype=torch.float32), torch.tensor(poses, dtype=torch.float32)
