@@ -61,7 +61,7 @@ class HParamsOccGrid(HParams):
 
         HParams.__init__(self, name="occ_grid")
 
-class HParamsRH(HParams):
+class HParamsRobotAtHome(HParams):
     def __init__(self) -> None:
         # hyper parameters
         self.session = None
@@ -69,5 +69,6 @@ class HParamsRH(HParams):
         self.room = None
         self.subsession = None
         self.home_session = None
+        self.sensor_model = None
 
-        HParams.__init__(self, name="rh")
+        HParams.__init__(self, name="robot_at_home")

@@ -56,6 +56,7 @@ class Trainer:
 
         # datasets       
         self.train_dataset = dataset(
+            args = self.args,
             root_dir=root_dir,
             split="train",
             downsample=self.args.dataset.downsample,
@@ -64,6 +65,7 @@ class Trainer:
         self.train_dataset.ray_sampling_strategy = self.args.training.ray_sampling_strategy
 
         self.test_dataset = dataset(
+            args = self.args,
             root_dir=root_dir,
             split='test',
             downsample=self.args.dataset.downsample,

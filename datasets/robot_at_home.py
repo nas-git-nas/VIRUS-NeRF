@@ -65,8 +65,8 @@ class RobotAtHomeDataset(BaseDataset):
         room_id = self.rh.name2id(self.args.rh.home+"_"+self.args.rh.room, "r")
         self.df = df[(df['home_id'] == home_id) & (df['room_id'] == room_id)]
 
-        # # TODO: remove
-        # self.df = self.df.iloc[:100,:]
+        # TODO: remove
+        self.df = self.df.iloc[:100,:]
 
         # split dataset
         split_ratio = {'train': 0.8, 'val': 0.1, 'test': 0.1}
@@ -88,7 +88,18 @@ class RobotAtHomeDataset(BaseDataset):
         self.shift = None
         self.scale = None
 
+
+
         self.img_wh, self.K, self.directions = self.read_intrinsics()
+
+        # define sensor model
+        if self.args.rh.sensor_model == "ToF":
+            self.sensor_model = ToFModel(img_wh=self.img_wh)
+        elif self.args.rh.sensor_model == "USS":
+            self.sensor_model = USSModel(img_wh=self.img_wh)
+        else:
+            self.sensor_model = None
+
         self.rays, self.depths, self.poses = self.read_meta(split)
 
     def read_intrinsics(self):
@@ -232,8 +243,8 @@ class RobotAtHomeDataset(BaseDataset):
         # poses[:,:,3] = self.scalePosition(pos=poses[:,:,3])
         poses[:,:,3] = self.scene.w2cTransformation(pos=poses[:,:,3], copy=False)
 
-        model = USSModel(img_wh=self.img_wh) # TODO: add as args
-        depths = model.convertDepth(depths)
+        if self.sensor_model is not None:
+            depths = self.sensor_model.convertDepth(depths)
 
         return torch.tensor(rays, dtype=torch.float32), torch.tensor(depths, dtype=torch.float32), torch.tensor(poses, dtype=torch.float32)
 

@@ -34,7 +34,7 @@ from trainer import Trainer
 class TrainerRH(Trainer):
     def __init__(self) -> None:
 
-        # TODO: add as args
+        # TODO: args
         model_config = {
             'scale': 0.5,
             'pos_encoder_type': 'hash',

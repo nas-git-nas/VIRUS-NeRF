@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 import shutil
 
-from args.h_params import HParamsDataset, HParamsModel, HParamsTraining, HParamsOccGrid, HParamsRH
+from args.h_params import HParamsDataset, HParamsModel, HParamsTraining, HParamsOccGrid, HParamsRobotAtHome
 
 
 class Args():
@@ -23,7 +23,7 @@ class Args():
         self.occ_grid.setHParams(hparams)
 
         if self.dataset.name == "robot_at_home":
-            self.rh = HParamsRH()
+            self.rh = HParamsRobotAtHome()
             self.rh.setHParams(hparams)
 
         # general
