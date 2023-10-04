@@ -67,8 +67,8 @@ class RobotAtHomeDataset(BaseDataset):
         room_id = self.rh.name2id(self.rh_location_names['home']+"_"+self.rh_location_names['room'], "r")
         self.df = df[(df['home_id'] == home_id) & (df['room_id'] == room_id)]
 
-        # TODO: remove
-        self.df = self.df.iloc[:100,:]
+        # # TODO: remove
+        # self.df = self.df.iloc[:100,:]
 
         # split dataset
         split_ratio = {'train': 0.8, 'val': 0.1, 'test': 0.1}
@@ -234,7 +234,7 @@ class RobotAtHomeDataset(BaseDataset):
         # poses[:,:,3] = self.scalePosition(pos=poses[:,:,3])
         poses[:,:,3] = self.scene.w2cTransformation(pos=poses[:,:,3], copy=False)
 
-        model = ToFModel(img_wh=self.img_wh) # TODO: add as args
+        model = USSModel(img_wh=self.img_wh) # TODO: add as args
         depths = model.convertDepth(depths)
 
         return torch.tensor(rays, dtype=torch.float32), torch.tensor(depths, dtype=torch.float32), torch.tensor(poses, dtype=torch.float32)

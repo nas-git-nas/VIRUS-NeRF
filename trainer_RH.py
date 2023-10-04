@@ -152,14 +152,14 @@ class TrainerRH(Trainer):
                         rearrange(results['depth'].cpu().numpy(), '(h w) -> h w', h=h))
                     imageio.imsave(
                         os.path.join(
-                            self.args.val_dir, 
+                            self.args.save_dir, 
                             f'rgb_{test_idx:03d}_'+str(test_step)+'.png'
                             ),
                         rgb_pred
                     )
                     imageio.imsave(
                         os.path.join(
-                            self.args.val_dir, 
+                            self.args.save_dir, 
                             f'depth_{test_idx:03d}.png'
                         ),
                         depth

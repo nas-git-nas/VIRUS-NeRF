@@ -127,10 +127,10 @@ class Trainer:
         """
         Save model
         """
-        print(f"Saving model to {self.args.val_dir}")
+        print(f"Saving model to {self.args.save_dir}")
         torch.save(
             self.model.state_dict(),
-            os.path.join(self.args.val_dir, 'model.pth'),
+            os.path.join(self.args.save_dir, 'model.pth'),
         )
 
     def loadCheckpoint(self, ckpt_path:str):
