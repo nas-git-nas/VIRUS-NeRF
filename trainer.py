@@ -39,7 +39,7 @@ class Trainer:
         self.hparams = get_opts()
         
         # variable arguments
-        self.args = Args(hparams=self.hparams)
+        self.args = Args(file_name="hparams.json")
 
         # TODO: add as hparams
         if self.args.device == torch.device("cuda"):

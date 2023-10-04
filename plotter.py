@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from trainer_RH import TrainerRH
+from helpers.geometric_fcts import findNearestNeighbour
 
 
 
@@ -58,7 +59,7 @@ def plotTrainerRHSlice(trainer:TrainerRH, res:int, heights_w:list, tolerance_w:f
 
 def plotTrainerRHScan(trainer:TrainerRH, res:int, res_angular:int, np_test_pts:int, height_tolerance:float=0.1):
 
-    depth_mse, depth_w, depth_w_gt, scan_map_gt, rays_o_c, scan_angles = trainer.evaluateDepth(res=res, res_angular=res_angular, np_test_pts=np_test_pts, height_tolerance=height_tolerance)
+    error, depth_w, depth_w_gt, scan_map_gt, rays_o_c, scan_angles = trainer.evaluateDepth(res=res, res_angular=res_angular, np_test_pts=np_test_pts, height_tolerance=height_tolerance)
 
     # N = rays_o_c.shape[0] // res_angular
     # if N != np_test_pts:
@@ -84,16 +85,29 @@ def plotTrainerRHScan(trainer:TrainerRH, res:int, res_angular:int, np_test_pts:i
     # get slice map
     density_map = trainer.evaluateSlice(res=res, height_w=np.mean(rays_o_w[:,2]), tolerance_w=height_tolerance) 
     density_map[density_map < 10] = 0.0
-    density_map[density_map >= 10] = 1.0    
+    density_map[density_map >= 10] = 1.0  
+
+    # convert depth to position in world coordinate system
+    pos_w = trainer.test_dataset.scene.convertDepth2Pos(rays_o_w, depth_w, scan_angles)
+    pos_w_gt = trainer.test_dataset.scene.convertDepth2Pos(rays_o_w, depth_w_gt, scan_angles)
 
     # calculate RMSE and RMSRE (mean squared relative error)
     depth_w = depth_w.reshape(np_test_pts, res_angular)
     depth_w_gt = depth_w_gt.reshape(np_test_pts, res_angular)
+    pos_w = pos_w.reshape(np_test_pts, res_angular, 2)
+    pos_w_gt = pos_w_gt.reshape(np_test_pts, res_angular, 2)
+
+    #
     depth_mae = np.nanmean(np.abs(depth_w - depth_w_gt), axis=1)
     depth_mare = np.nanmean(np.abs((depth_w - depth_w_gt)/ depth_w_gt), axis=1)
 
+    nn_dists = np.zeros((np_test_pts, res_angular))
+    for i in range(np_test_pts):
+        _, dists = findNearestNeighbour(array1=pos_w_gt[i], array2=pos_w[i])
+        nn_dists[i] = dists
+
     # plot
-    fig, axes = plt.subplots(ncols=1+np_test_pts, nrows=3, figsize=(13.5,9))
+    fig, axes = plt.subplots(ncols=1+np_test_pts, nrows=4, figsize=(9,9))
     extent = trainer.test_dataset.scene.c2wTransformation(pos=np.array([[-0.5,-0.5],[0.5,0.5]]), copy=False)
     extent = extent.T.flatten()
 
@@ -110,26 +124,31 @@ def plotTrainerRHScan(trainer:TrainerRH, res:int, res_angular:int, np_test_pts:i
 
     ax = axes[0,0]
     ax.imshow(slice_map_gt.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(density_map_comb))
-    ax.set_title(f'Density Map GT')
-    ax.set_ylabel(f'y [m]')
+    ax.set_ylabel(f'GT', weight='bold')
+    ax.set_title(f'Density', weight='bold')
+    ax.set_xlabel(f'x [m]')
 
     ax = axes[1,0]
     ax.imshow(2*density_map.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(density_map_comb))
-    ax.set_title(f'NeRF')
-    ax.set_ylabel(f'y [m]')
+    ax.set_ylabel(f'NeRF', weight='bold')
+    ax.set_xlabel(f'x [m]')
 
     ax = axes[2,0]
     ax.imshow(density_map_comb.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(density_map_comb))
-    ax.set_title(f'Combined (Score: {density_score:.2f}))')
-    ax.set_ylabel(f'y [m]')
+    ax.set_ylabel(f'GT + NeRF', weight='bold')
     ax.set_xlabel(f'x [m]')
+
+    fig.delaxes(axes[3,0])
+    
 
     for i in range(np_test_pts):
         ax = axes[0,i+1]
         ax.imshow(scan_map_gt.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(scan_maps_comb[i]))
         ax.scatter(rays_o_w[i,0,0], rays_o_w[i,0,1], c='w', s=5)
         ax.scatter(rays_o_w[:,0,0], rays_o_w[:,0,1], c='w', s=5, alpha=0.1)
-        ax.set_title(f'Scan Map GT')
+        ax.set_title(f'Scan {i+1}', weight='bold')
+        ax.set_xlabel(f'x [m]')
+        ax.set_ylabel(f'y [m]')
 
         ax = axes[1,i+1]
         ax.imshow(2*scan_maps[i].T,origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(scan_maps_comb[i]))
@@ -138,7 +157,8 @@ def plotTrainerRHScan(trainer:TrainerRH, res:int, res_angular:int, np_test_pts:i
         #         ax.plot([rays_o_w[i,j,0], depth_pos_w[i,j,0]], [rays_o_w[i,j,1], depth_pos_w[i,j,1]], c='w', linewidth=0.1)
         ax.scatter(rays_o_w[i,0,0], rays_o_w[i,0,1], c='w', s=5)
         ax.scatter(rays_o_w[:,0,0], rays_o_w[:,0,1], c='w', s=5, alpha=0.1)
-        ax.set_title(f'NeRF (MAE: {depth_mae[i]:.2f}m)')
+        ax.set_xlabel(f'x [m]')
+        ax.set_ylabel(f'y [m]')
         
         ax = axes[2,i+1]
         ax.imshow(scan_maps_comb[i].T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(scan_maps_comb[i]))
@@ -147,8 +167,21 @@ def plotTrainerRHScan(trainer:TrainerRH, res:int, res_angular:int, np_test_pts:i
         #         ax.plot([rays_o_w[i,j,0], depth_pos_w[i,j,0]], [rays_o_w[i,j,1], depth_pos_w[i,j,1]], c='w', linewidth=0.1)
         ax.scatter(rays_o_w[i,0,0], rays_o_w[i,0,1], c='w', s=5)
         ax.scatter(rays_o_w[:,0,0], rays_o_w[:,0,1], c='w', s=5, alpha=0.1)
-        ax.set_title(f'Combined (MARE: {depth_mare[i]:.2f})')
         ax.set_xlabel(f'x [m]')
+        ax.set_ylabel(f'y [m]')
+
+        ax = axes[3,i+1]
+        ax.hist(nn_dists[i], bins=50)
+        ax.vlines(np.nanmean(nn_dists[i]), ymin=0, ymax=20, colors='r', linestyles='dashed', label=f'avg.={np.nanmean(nn_dists[i]):.2f}')
+        if i == 0:
+            ax.set_ylabel(f'Nearest Neighbour', weight='bold')
+        else:
+            ax.set_ylabel(f'# elements')
+        ax.set_xlim([0, np.nanmax(nn_dists)])
+        ax.set_ylim([0, 25])
+        ax.set_xlabel(f'distance [m]')
+        ax.legend()
+        ax.set_box_aspect(1)
     
     plt.tight_layout()
     plt.show()  
@@ -178,7 +211,7 @@ def test_plotTrainerRHScan():
     # create slice
     res = 128
     res_angular = 256
-    np_test_pts = 5
+    np_test_pts = 3
     tolerance_w = 0.005 # in meters
     plotTrainerRHScan(trainer=trainer, res=res, res_angular=res_angular, np_test_pts=np_test_pts, height_tolerance=tolerance_w)
 

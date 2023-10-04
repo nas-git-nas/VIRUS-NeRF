@@ -3,7 +3,8 @@ import matplotlib.pyplot as plt
 from abc import abstractmethod
 import skimage.measure
 
-from robot_at_home import RobotAtHomeDataset
+if __name__ == "__main__":
+    from robot_at_home import RobotAtHomeDataset
 
 
 class SensorModel():

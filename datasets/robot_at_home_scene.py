@@ -271,9 +271,11 @@ class RobotAtHomeScene():
             pos: position in cube coordinate system; numpy array of shape (N, 2)
         """
         val_idxs = np.where(~np.isnan(scan_depth))[0]
-        pos = np.stack((scan_depth[val_idxs] * np.cos(scan_angles[val_idxs]), 
-                                   scan_depth[val_idxs] * np.sin(scan_angles[val_idxs])), axis=1) # (N, 2)
-        pos += rays_o[val_idxs,:2] # (N, 2)
+        
+        pos = np.full((scan_depth.shape[0], 2), np.nan) # (N, 2)
+        pos[val_idxs] = np.stack((scan_depth[val_idxs] * np.cos(scan_angles[val_idxs]), 
+                                  scan_depth[val_idxs] * np.sin(scan_angles[val_idxs])), axis=1)
+        pos[val_idxs] += rays_o[val_idxs,:2] # (N, 2)
         return pos
   
     def __loadPointCloud(self):

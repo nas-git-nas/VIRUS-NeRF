@@ -23,6 +23,7 @@ from modules.networks import NGP
 from modules.distortion import distortion_loss
 from modules.rendering import MAX_SAMPLES, render
 from modules.utils import depth2img, save_deployment_model
+from helpers.geometric_fcts import findNearestNeighbour
 
 from torchmetrics import (
     PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure

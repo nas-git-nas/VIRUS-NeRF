@@ -18,7 +18,7 @@ from robotathome import RobotAtHome
 from robotathome import logger, log
 from robotathome import time_win2unixepoch, time_unixepoch2win
 
-
+from datasets.sensor_model import ToFModel, USSModel
 
 try:
     from .ray_utils import get_rays
@@ -234,6 +234,9 @@ class RobotAtHomeDataset(BaseDataset):
         # poses[:,:,3] = self.scalePosition(pos=poses[:,:,3])
         poses[:,:,3] = self.scene.w2cTransformation(pos=poses[:,:,3], copy=False)
 
+        model = ToFModel(img_wh=self.img_wh) # TODO: add as args
+        depths = model.convertDepth(depths)
+
         return torch.tensor(rays, dtype=torch.float32), torch.tensor(depths, dtype=torch.float32), torch.tensor(poses, dtype=torch.float32)
 
     def splitDataset(self, df, split_ratio):
@@ -246,9 +249,9 @@ class RobotAtHomeDataset(BaseDataset):
             df: dataframe containing the dataset with a new column 'split'
         """
         df = self.df.copy(deep=True) 
-        df_split_path = os.path.join(self.root_dir, 'files', 'rgbd', self.session_name, 
-                                     self.home_name, self.room_name)
-        df_split_filename = 'split_'+self.subsession_name+'.csv'
+        df_split_path = os.path.join(self.root_dir, 'files', 'rgbd', self.rh_location_names["session"], 
+                                     self.rh_location_names["home"], self.rh_location_names["room"])
+        df_split_filename = 'split_'+self.rh_location_names["subsession"]+'.csv'
 
         # load split description if it exists already
         df_description = None

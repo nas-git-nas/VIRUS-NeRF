@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 import shutil
 
-from h_params import HParamsDataset, HParamsModel, HParamsTraining, HParamsOccGrid
+from args.h_params import HParamsDataset, HParamsModel, HParamsTraining, HParamsOccGrid
 
 
 class Args():
