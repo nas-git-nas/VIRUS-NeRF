@@ -315,7 +315,7 @@ class TrainerRH(Trainer):
 
 
 def test_trainer():
-    trainer = TrainerRH(hparams_file="rh_windows.json")
+    trainer = TrainerRH(hparams_file="rh_gpu.json")
     trainer.train()
     trainer.evaluate()
 

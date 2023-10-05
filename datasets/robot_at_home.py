@@ -213,9 +213,7 @@ class RobotAtHomeDataset(BaseDataset):
         poses[:,:,3] = self.scene.w2cTransformation(pos=poses[:,:,3], copy=False)
 
         if self.sensor_model is not None:
-            print(f"depths num nan = {np.sum(np.isnan(depths))}")
             depths = self.sensor_model.convertDepth(depths)
-            print(f"depths num nan = {np.sum(np.isnan(depths))}")
 
         return torch.tensor(rays, dtype=torch.float32), torch.tensor(depths, dtype=torch.float32), torch.tensor(poses, dtype=torch.float32)
     
