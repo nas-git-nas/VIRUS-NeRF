@@ -37,7 +37,7 @@
         "room": "livingroom1",
         "subsession": "subsession_1",
         "home_session": "s1",
-        "sensor_model": "ToF",
+        "sensor_model": "USS",
         "angle_of_view": [45, 58]
     },
     "uss":

@@ -84,7 +84,7 @@ class HParamsUSS(HParams):
         # hyper parameters
         self.angle_of_view = None
 
-        HParams.__init__(self, name="uss")
+        HParams.__init__(self, name="USS")
 
 
 class HParamsToF(HParams):
@@ -93,4 +93,4 @@ class HParamsToF(HParams):
         self.angle_of_view = None
         self.matrix = None
 
-        HParams.__init__(self, name="tof")
+        HParams.__init__(self, name="ToF")

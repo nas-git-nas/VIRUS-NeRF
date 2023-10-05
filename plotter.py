@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import matplotlib.pyplot as plt
 
 from trainer_RH import TrainerRH
@@ -57,7 +58,7 @@ def plotTrainerRHSlice(trainer:TrainerRH, res:int, heights_w:list, tolerance_w:f
     plt.tight_layout()
     plt.show()
 
-def plotTrainerRHScan(trainer:TrainerRH, res:int, res_angular:int, np_test_pts:int, height_tolerance:float=0.1):
+def plotTrainerRHScan(trainer:TrainerRH, res:int, res_angular:int, np_test_pts:int, save_path:str, height_tolerance:float=0.1):
 
     error, depth_w, depth_w_gt, scan_map_gt, rays_o_c, scan_angles = trainer.evaluateDepth(res=res, res_angular=res_angular, np_test_pts=np_test_pts, height_tolerance=height_tolerance)
 
@@ -184,6 +185,7 @@ def plotTrainerRHScan(trainer:TrainerRH, res:int, res_angular:int, np_test_pts:i
         ax.set_box_aspect(1)
     
     plt.tight_layout()
+    plt.savefig(os.path.join(save_path, "scan.pdf"))
     plt.show()  
 
 
@@ -204,16 +206,23 @@ def test_plotTrainerRHSlice():
 
 
 def test_plotTrainerRHScan():
-    ckpt_path = "results/robot_at_home/20231004_0910/model.pth"
-    trainer = TrainerRH()
-    trainer.loadCheckpoint(ckpt_path=ckpt_path)
+    save_path = "results/robot_at_home/trained_models/20231005_1455"
+    trainer = TrainerRH(hparams_file=os.path.join("..", save_path, "hparams.json"))
+    trainer.loadCheckpoint(ckpt_path=os.path.join(save_path, "model.pth"))
 
     # create slice
     res = 128
     res_angular = 256
     np_test_pts = 3
     tolerance_w = 0.005 # in meters
-    plotTrainerRHScan(trainer=trainer, res=res, res_angular=res_angular, np_test_pts=np_test_pts, height_tolerance=tolerance_w)
+    plotTrainerRHScan(
+        trainer = trainer, 
+        res = res, 
+        res_angular = res_angular, 
+        np_test_pts = np_test_pts, 
+        save_path = save_path, 
+        height_tolerance = tolerance_w
+    )
 
 
 if __name__ == '__main__':
