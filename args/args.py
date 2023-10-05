@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 import shutil
 
-from args.h_params import HParamsDataset, HParamsModel, HParamsTraining, HParamsOccGrid, HParamsRobotAtHome
+from args.h_params import HParamsDataset, HParamsModel, HParamsTraining, HParamsOccGrid, HParamsRobotAtHome, HParamsUSS, HParamsToF
 
 
 class Args():
@@ -25,6 +25,13 @@ class Args():
         if self.dataset.name == "robot_at_home":
             self.rh = HParamsRobotAtHome()
             self.rh.setHParams(hparams)
+
+            if self.rh.sensor_model == "USS":
+                self.uss = HParamsUSS()
+                self.uss.setHParams(hparams)
+            elif self.rh.sensor_model == "ToF":
+                self.tof = HParamsToF()
+                self.tof.setHParams(hparams)
 
         # general
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -69,12 +76,20 @@ class Args():
         hparams["model"] = self.model.getHParams()
         hparams["training"] = self.training.getHParams()
         hparams["occ_grid"] = self.occ_grid.getHParams()
+
+        if self.dataset.name == "robot_at_home":
+            hparams["robot_at_home"] = self.rh.getHParams()
+
+            if self.rh.sensor_model == "USS":
+                hparams["USS"] = self.uss.getHParams()
+            elif self.rh.sensor_model == "ToF":
+                hparams["ToF"] = self.tof.getHParams()
         
         # Serializing json
         json_object = json.dumps(hparams, indent=4)
         
         # Writing to sample.json
-        with open(os.path.join("results", "hparams.json"), "w") as outfile:
+        with open(os.path.join(self.save_dir, "hparams.json"), "w") as outfile:
             outfile.write(json_object)
 
 

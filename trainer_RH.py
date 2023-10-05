@@ -32,17 +32,9 @@ from torchmetrics import (
 from trainer import Trainer
 
 class TrainerRH(Trainer):
-    def __init__(self) -> None:
+    def __init__(self, hparams_file) -> None:
 
-        # TODO: args
-        model_config = {
-            'scale': 0.5,
-            'pos_encoder_type': 'hash',
-            'max_res': 1024, # 4096
-            'half_opt': False,
-        }
-
-        Trainer.__init__(self, dataset=dataset_dict["robot_at_home"], model_config=model_config)
+        Trainer.__init__(self, hparams_file=hparams_file)
 
         # metric
         self.val_psnr = PeakSignalNoiseRatio(
@@ -265,7 +257,7 @@ class TrainerRH(Trainer):
             depth_w_gt: ground truth depth in world coordinates (meters); array of shape (N*M,)
         """
         # get indices of one particular sensor
-        sensor_img_idxs = self.test_dataset.getIdxFromSensorName(sensor_name="RGBD_1")
+        sensor_img_idxs = self.test_dataset.getIdxFromSensorName(df=self.test_dataset.df, sensor_name="RGBD_1")
 
         # keep only a certain number of points
         if np_test_pts is not None:
@@ -323,7 +315,7 @@ class TrainerRH(Trainer):
 
 
 def test_trainer():
-    trainer = TrainerRH()
+    trainer = TrainerRH(hparams_file="rh_windows.json")
     trainer.train()
     trainer.evaluate()
 
