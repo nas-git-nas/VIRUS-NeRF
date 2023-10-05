@@ -18,6 +18,7 @@ from opt import get_opts
 from args.args import Args
 from datasets import dataset_dict
 from datasets.ray_utils import get_rays
+from datasets.robot_at_home import RobotAtHomeDataset
 
 from modules.networks import NGP
 from modules.distortion import distortion_loss
@@ -34,18 +35,10 @@ warnings.filterwarnings("ignore")
 
 
 class Trainer:
-    def __init__(self, dataset, model_config) -> None:
-        # # hyper parameters
-        # self.hparams = get_opts() # TODO: args
+    def __init__(self, hparams_file) -> None:
         
-        # variable arguments
-        self.args = Args(file_name="hparams.json")
-
-        # TODO: args
-        if self.args.device == torch.device("cuda"):
-            root_dir =  '/media/scratch1/schmin/data/robot_at_home'
-        else:
-            root_dir =  '../RobotAtHome2/data'
+        # get hyper-parameters and other variables
+        self.args = Args(file_name=hparams_file)
 
         # set seed
         random.seed(self.args.seed)
@@ -54,29 +47,34 @@ class Trainer:
 
         self.taichi_init()
 
-        # datasets       
+        # datasets   
+        if self.args.dataset.name == 'robot_at_home':
+            dataset = RobotAtHomeDataset    
+        
         self.train_dataset = dataset(
             args = self.args,
-            root_dir=root_dir,
             split="train",
-            downsample=self.args.dataset.downsample,
         ).to(self.args.device)
         self.train_dataset.batch_size = self.args.training.batch_size
         self.train_dataset.ray_sampling_strategy = self.args.training.ray_sampling_strategy
 
         self.test_dataset = dataset(
             args = self.args,
-            root_dir=root_dir,
             split='test',
-            downsample=self.args.dataset.downsample,
         ).to(self.args.device)
 
         # model
+        model_config = {
+            'scale': self.args.model.scale,
+            'pos_encoder_type': self.args.model.encoder_type,
+            'max_res': self.args.occ_grid.max_res, 
+            'half_opt': False, # TODO: args
+        }
         self.model = NGP(**model_config).to(self.args.device)
 
         # load checkpoint if ckpt path is provided
         if self.args.model.ckpt_path:
-            self.__loadCheckpoint(ckpt_path=self.hpaargs.modelrams.ckpt_path)
+            self.loadCheckpoint(ckpt_path=self.hpaargs.modelrams.ckpt_path)
 
         self.model.mark_invisible_cells(
             self.train_dataset.K,
@@ -133,6 +131,7 @@ class Trainer:
             self.model.state_dict(),
             os.path.join(self.args.save_dir, 'model.pth'),
         )
+        self.args.saveJson()
 
     def loadCheckpoint(self, ckpt_path:str):
         """
@@ -151,7 +150,7 @@ class Trainer:
 
         ti.init(**taichi_init_args)
 
-    def lossFunc(self, results, data, depth_loss_w=1000.0):
+    def lossFunc(self, results, data):
         """
         Loss function for training
         Args:
@@ -170,7 +169,6 @@ class Trainer:
                 'direction': directions; array of shape (N, 3)
                 'rgb': pixel colours; array of shape (N, 3)
                 'depth': pixel depths; array of shape (N,)
-            depth_loss_w: weight of depth loss; float
         Returns:
             total_loss: loss value; float
             colour_loss: colour loss value; float
@@ -179,9 +177,9 @@ class Trainer:
         colour_loss = F.mse_loss(results['rgb'], data['rgb'])
 
         val_idxs = ~torch.isnan(data['depth'])
-        depth_loss = F.mse_loss(results['depth'][val_idxs], data['depth'][val_idxs])
+        depth_loss = self.args.training.depth_loss_w * F.mse_loss(results['depth'][val_idxs], data['depth'][val_idxs])
 
-        total_loss = colour_loss + depth_loss_w * depth_loss
+        total_loss = colour_loss + depth_loss
         return total_loss, colour_loss, depth_loss
     
 

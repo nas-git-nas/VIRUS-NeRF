@@ -38,65 +38,34 @@ except:
 
 class RobotAtHomeDataset(BaseDataset):
 
-    def __init__(self, args:Args, root_dir, split='train', downsample=1.0, sensor_name="all", **kwargs):
-        super().__init__(root_dir, split, downsample)
+    def __init__(self, args:Args, split:str='train'):
+
+        super().__init__(root_dir=args.dataset.path, split=split, downsample=args.dataset.downsample)
 
         self.args = args
 
-        # self.rh_location_names = {
-        #     "session": "session_2",
-        #     "home": "anto",
-        #     "room": "livingroom1",
-        #     "subsession": "subsession_1",
-        #     "home_session": "s1",
-        # }
-
         # load dataset
-        my_rh_path = root_dir
-        my_rgbd_path = os.path.join(my_rh_path, 'files/rgbd')
-        my_scene_path = os.path.join(my_rh_path, 'files/scene')
-        my_wspc_path = 'results'
-        my_db_filename = "rh.db"
-        self.rh = RobotAtHome(rh_path=my_rh_path, rgbd_path=my_rgbd_path, scene_path=my_scene_path, wspc_path=my_wspc_path, db_filename=my_db_filename)
+        self.rh = RobotAtHome(
+            rh_path = self.args.dataset.path, 
+            rgbd_path = os.path.join(self.args.dataset.path, 'files/rgbd'), 
+            scene_path = os.path.join(self.args.dataset.path, 'files/scene'), 
+            wspc_path = 'results', 
+            db_filename = "rh.db"
+        )
 
-        # get only observations from specific home and room
-        df = self.rh.get_sensor_observations('lblrgbd') # load only labeld RGBD observations
-        home_id = self.rh.name2id(self.args.rh.home, "h")
-        room_id = self.rh.name2id(self.args.rh.home+"_"+self.args.rh.room, "r")
-        self.df = df[(df['home_id'] == home_id) & (df['room_id'] == room_id)]
-
-        # # TODO: remove
-        # self.df = self.df.iloc[:100,:]
-
-        # split dataset
-        split_ratio = {'train': 0.8, 'val': 0.1, 'test': 0.1}
-        self.df = self.splitDataset(df=self.df, split_ratio=split_ratio) # TODO: move to separate file
-        self.df = self.df[self.df["split"] == split]
-
-        # get only observations from particular sensor
-        if sensor_name != "all":
-            name_idxs = self.getIdxFromSensorName(sensor_name)
-            self.df = self.df[name_idxs]
+        # load dataframe
+        self.df = self.__loadRHDataframe(split=split)
 
         # load scene
         self.scene = RobotAtHomeScene(rh=self.rh, args=self.args)
-        # scenes = self.rh.get_scenes()
-        # home_session_id = self.rh.name2id(self.home_name+"-"+self.home_session_name,'hs')
-        # self.scene =  scenes.query(f'home_session_id=={home_session_id} & room_id=={room_id}')
-
-        # scene shift and scale variables
-        self.shift = None
-        self.scale = None
-
-
 
         self.img_wh, self.K, self.directions = self.read_intrinsics()
 
         # define sensor model
         if self.args.rh.sensor_model == "ToF":
-            self.sensor_model = ToFModel(img_wh=self.img_wh)
+            self.sensor_model = ToFModel(args=args, img_wh=self.img_wh)
         elif self.args.rh.sensor_model == "USS":
-            self.sensor_model = USSModel(img_wh=self.img_wh)
+            self.sensor_model = USSModel(args=args, img_wh=self.img_wh)
         else:
             self.sensor_model = None
 
@@ -244,110 +213,62 @@ class RobotAtHomeDataset(BaseDataset):
         poses[:,:,3] = self.scene.w2cTransformation(pos=poses[:,:,3], copy=False)
 
         if self.sensor_model is not None:
+            print(f"depths num nan = {np.sum(np.isnan(depths))}")
             depths = self.sensor_model.convertDepth(depths)
+            print(f"depths num nan = {np.sum(np.isnan(depths))}")
 
         return torch.tensor(rays, dtype=torch.float32), torch.tensor(depths, dtype=torch.float32), torch.tensor(poses, dtype=torch.float32)
-
-    def splitDataset(self, df, split_ratio):
-        """
-        Split the dataset into train, val and test sets.
-        Args:
-            df: dataframe containing the dataset
-            split_ratio: dictionary containing the split ratio for each split
-        Returns:
-            df: dataframe containing the dataset with a new column 'split'
-        """
-        df = self.df.copy(deep=True) 
-        df_split_path = os.path.join(self.root_dir, 'files', 'rgbd', self.args.rh.session, 
-                                     self.args.rh.home, self.args.rh.room)
-        df_split_filename = 'split_'+self.args.rh.subsession+'.csv'
-
-        # load split description if it exists already
-        df_description = None
-        if os.path.exists(os.path.join(df_split_path, 'split_description.csv')):    
-            df_description = pd.read_csv(os.path.join(df_split_path, 'split_description.csv'), 
-                                         index_col=0, dtype={'info':str,'train':float, 'val':float, 'test':float})
-        
-        # load split if it exists already
-        if os.path.exists(os.path.join(df_split_path, df_split_filename)):
-            # split ratio must be the same as in description (last split)
-            if df_description.loc[df_split_filename, 'train']==split_ratio['train'] \
-                and df_description.loc[df_split_filename, 'val']==split_ratio['val'] \
-                and df_description.loc[df_split_filename, 'test']==split_ratio['test']:
-
-                # load split and merge with df
-                df_split = pd.read_csv(os.path.join(df_split_path, df_split_filename))
-                df = pd.merge(df, df_split, on='id', how='left')
-                return df
-
-        # create new column for split
-        df.insert(1, 'split', None)
-
-        # verify that split is correct
-        if split_ratio['train'] + split_ratio['val'] + split_ratio['test'] != 1.0:
-            print(f"ERROR: robot_at_home.py: splitDataset: split ratios do not sum up to 1.0")
-        if split_ratio['train']*10 % 1 != 0 or split_ratio['val']*10 % 1 != 0 or split_ratio['test']*10 % 1 != 0:
-            print(f"ERROR: robot_at_home.py: splitDataset: split ratios must be multiples of 0.1")
-        
-        # get indices for each sensor
-        split_idxs = {"train": np.empty(0, dtype=int), "val": np.empty(0, dtype=int), "test": np.empty(0, dtype=int)}
-        for id in df["sensor_id"].unique():
-            id_idxs = df.index[df["sensor_id"] == id].to_numpy()
-   
-            # get indices for each split
-            partitions = ["train" for _ in range(int(split_ratio['train']*10))] \
-                        + ["val" for _ in range(int(split_ratio['val']*10))] \
-                        + ["test" for _ in range(int(split_ratio['test']*10))]
-            for offset, part in enumerate(partitions):
-                split_idxs[part] = np.concatenate((split_idxs[part], id_idxs[offset::10]))
-
-        # assign split
-        df.loc[split_idxs["train"], 'split'] = 'train'
-        df.loc[split_idxs["val"], 'split'] = 'val'
-        df.loc[split_idxs["test"], 'split'] = 'test'
-
-        # # get indices for each sensor_id and each split
-        # train_idxs = np.empty(0, dtype=int)
-        # val_idxs = np.empty(0, dtype=int)
-        # test_idxs = np.empty(0, dtype=int)
-        # for id in df["sensor_id"].unique():
-        #     id_idxs = df.index[df["sensor_id"] == id].to_numpy()
-
-        #     train_idxs = np.concatenate((train_idxs, id_idxs[::3]))
-        #     val_idxs = np.concatenate((val_idxs, id_idxs[1::3]))
-        #     test_idxs = np.concatenate((test_idxs, id_idxs[2::3]))    
-        # df.loc[train_idxs, 'split'] = 'train'
-        # df.loc[val_idxs, 'split'] = 'val'
-        # df.loc[test_idxs, 'split'] = 'test'
-
-        # save split
-        df_split = df[['id', 'split', 'sensor_name']].copy(deep=True)
-        df_split.to_csv(os.path.join(df_split_path, df_split_filename), index=False)
-
-        # save split description
-        if df_description is None:
-            df_description = pd.DataFrame(columns=['info','train', 'val', 'test'])
-            df_description.loc["info"] = ["This file contains the split ratios for each split file in the same directory. " \
-                                          + "The Ratios must be a multiple of 0.1 and sum up to 1.0 to ensure correct splitting.", "", "", ""]
-        df_description.loc[df_split_filename] = ["-", split_ratio['train'], split_ratio['val'], split_ratio['test']]
-        df_description.to_csv(os.path.join(df_split_path, 'split_description.csv'), index=True)
-
-        return df
     
-    def getIdxFromSensorName(self, sensor_name):
+    def getIdxFromSensorName(self, df, sensor_name):
         """
         Get the indices of the dataset that belong to a particular sensor.
         Args:
+            df: robot@home dataframe, pandas df
             sensor_name: name of the sensor, str
         Returns:
             idxs: indices of the dataset that belong to the sensor
         """
         sensor_id = self.rh.name2id(sensor_name, "s")
-        mask = np.array(self.df["sensor_id"] == sensor_id, dtype=bool)
+        mask = np.array(df["sensor_id"] == sensor_id, dtype=bool)
         idxs = np.where(mask)[0]
         return idxs
+    
+    def __loadRHDataframe(self, split):
+        """
+        Load robot@home data frame
+        Args:
+            split: train, val or test split, str
+        Returns:
+            df: rh dataframe; pandas df
+        """
+        # load only labeld RGBD observations
+        df = self.rh.get_sensor_observations('lblrgbd') 
 
+        # get only observations from specific home and room 
+        home_id = self.rh.name2id(self.args.rh.home, "h")
+        room_id = self.rh.name2id(self.args.rh.home+"_"+self.args.rh.room, "r")
+        df = df[(df['home_id'] == home_id) & (df['room_id'] == room_id)]
 
+        # split dataset
+        df = self.splitDataset(
+            df = df, 
+            split_ratio = self.args.dataset.split_ratio, 
+            split_description_path = os.path.join(self.args.dataset.path, 'files', 'rgbd', 
+                                                  self.args.rh.session, self.args.rh.home, self.args.rh.room),
+            split_description_name = 'split_'+self.args.rh.subsession+'.csv'
+        )
+        df = df[df["split"] == split]
+
+        # keep only observations from particular sensor
+        if self.args.dataset.keep_sensor != "all":
+            name_idxs = self.getIdxFromSensorName(df=df, sensor_name=self.args.dataset.keep_sensor)
+            df = df[name_idxs]
+
+        # keep only first N observations
+        if self.args.dataset.keep_N_observations != "all":
+            df = df.iloc[:self.args.dataset.keep_N_observations,:]
+
+        return df
     
 
     

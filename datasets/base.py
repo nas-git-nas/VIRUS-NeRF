@@ -1,6 +1,8 @@
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+import os
+import pandas as pd
 
 
 class BaseDataset(Dataset):
@@ -84,3 +86,72 @@ class BaseDataset(Dataset):
                 sample['rgb'] = rays[:, :3]
 
         return sample
+    
+    def splitDataset(self, df, split_ratio, split_description_path, split_description_name):
+        """
+        Split the dataset into train, val and test sets.
+        Args:
+            df: dataframe containing the dataset
+            split_ratio: dictionary containing the split ratio for each split
+            split_description_path: path to the directory containing the split description; str
+            split_description_name: filename of split description; str
+        Returns:
+            df: dataframe containing the dataset with a new column 'split'
+        """
+        df = df.copy(deep=True) 
+
+        # load split description if it exists already
+        df_description = None
+        if os.path.exists(os.path.join(split_description_path, 'split_description.csv')):    
+            df_description = pd.read_csv(os.path.join(split_description_path, 'split_description.csv'), 
+                                         index_col=0, dtype={'info':str,'train':float, 'val':float, 'test':float})
+        
+        # load split if it exists already
+        if os.path.exists(os.path.join(split_description_path, split_description_name)):
+            # split ratio must be the same as in description (last split)
+            if df_description.loc[split_description_name, 'train']==split_ratio['train'] \
+                and df_description.loc[split_description_name, 'val']==split_ratio['val'] \
+                and df_description.loc[split_description_name, 'test']==split_ratio['test']:
+
+                # load split and merge with df
+                df_split = pd.read_csv(os.path.join(split_description_path, split_description_name))
+                df = pd.merge(df, df_split, on='id', how='left')
+                return df
+
+        # verify that split is correct
+        if split_ratio['train'] + split_ratio['val'] + split_ratio['test'] != 1.0:
+            print(f"ERROR: robot_at_home.py: splitDataset: split ratios do not sum up to 1.0")
+        if split_ratio['train']*10 % 1 != 0 or split_ratio['val']*10 % 1 != 0 or split_ratio['test']*10 % 1 != 0:
+            print(f"ERROR: robot_at_home.py: splitDataset: split ratios must be multiples of 0.1")
+        
+        # get indices for each sensor
+        split_idxs = {"train": np.empty(0, dtype=int), "val": np.empty(0, dtype=int), "test": np.empty(0, dtype=int)}
+        for id in df["sensor_id"].unique():
+            id_idxs = df.index[df["sensor_id"] == id].to_numpy()
+   
+            # get indices for each split
+            partitions = ["train" for _ in range(int(split_ratio['train']*10))] \
+                        + ["val" for _ in range(int(split_ratio['val']*10))] \
+                        + ["test" for _ in range(int(split_ratio['test']*10))]
+            for offset, part in enumerate(partitions):
+                split_idxs[part] = np.concatenate((split_idxs[part], id_idxs[offset::10]))
+
+        # assign split
+        df.insert(1, 'split', None) # create new column for split
+        df.loc[split_idxs["train"], 'split'] = 'train'
+        df.loc[split_idxs["val"], 'split'] = 'val'
+        df.loc[split_idxs["test"], 'split'] = 'test'
+
+        # save split
+        df_split = df[['id', 'split', 'sensor_name']].copy(deep=True)
+        df_split.to_csv(os.path.join(split_description_path, split_description_name), index=False)
+
+        # save split description
+        if df_description is None:
+            df_description = pd.DataFrame(columns=['info','train', 'val', 'test'])
+            df_description.loc["info"] = ["This file contains the split ratios for each split file in the same directory. " \
+                                          + "The Ratios must be a multiple of 0.1 and sum up to 1.0 to ensure correct splitting.", "", "", ""]
+        df_description.loc[split_description_name] = ["-", split_ratio['train'], split_ratio['val'], split_ratio['test']]
+        df_description.to_csv(os.path.join(split_description_path, 'split_description.csv'), index=True)
+
+        return df

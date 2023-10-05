@@ -23,8 +23,10 @@ class HParamsDataset(HParams):
         # hyper parameters
         self.path = None
         self.name = None
-        self.split = None
+        self.split_ratio = None
         self.downsample = None
+        self.keep_N_observations = None
+        self.keep_sensor = None
 
         HParams.__init__(self, name="dataset")
 
@@ -47,6 +49,7 @@ class HParamsTraining(HParams):
         self.ray_sampling_strategy = None
         self.max_steps = None
         self.lr = None
+        self.depth_loss_w = None
         self.random_bg = None
 
         HParams.__init__(self, name="training")
@@ -61,6 +64,7 @@ class HParamsOccGrid(HParams):
 
         HParams.__init__(self, name="occ_grid")
 
+
 class HParamsRobotAtHome(HParams):
     def __init__(self) -> None:
         # hyper parameters
@@ -70,5 +74,23 @@ class HParamsRobotAtHome(HParams):
         self.subsession = None
         self.home_session = None
         self.sensor_model = None
+        self.angle_of_view = None
 
         HParams.__init__(self, name="robot_at_home")
+
+
+class HParamsUSS(HParams):
+    def __init__(self):
+        # hyper parameters
+        self.angle_of_view = None
+
+        HParams.__init__(self, name="uss")
+
+
+class HParamsToF(HParams):
+    def __init__(self):
+        # hyper parameters
+        self.angle_of_view = None
+        self.matrix = None
+
+        HParams.__init__(self, name="tof")
