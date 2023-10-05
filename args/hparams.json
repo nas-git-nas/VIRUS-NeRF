@@ -34,7 +34,7 @@
         "room": "livingroom1",
         "subsession": "subsession_1",
         "home_session": "s1",
-        "sensor_model": "SimpleUSS"
+        "sensor_model": "USS"
     }
     
 }

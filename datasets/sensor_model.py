@@ -123,12 +123,17 @@ class USSModel(SensorModel):
         depths = np.copy(depths) # (N, H*W)
 
         # mask depths
-        depths[:, ~self.mask] = np.nan # (N, H*W)
-        min_idxs = np.nanargmin(depths, axis=1) # (N,)
+        # depths[:, ~self.mask] = np.nan # (N, H*W)
+        min_idxs = np.nanargmin(depths[:, self.mask], axis=1) # (N,)
+        print(min_idxs)
+        print(depths[np.arange(depths.shape[0]), min_idxs])
+        print(f"min_idxs shape: {min_idxs.shape}, num not nan: {np.sum(~np.isnan(min_idxs))}")
 
         # set closest pixel to minimum value
         depths_out = np.full_like(depths, np.nan) # (N, H*W)
         depths_out[np.arange(depths.shape[0]), min_idxs] = depths[np.arange(depths.shape[0]), min_idxs]
+
+        print(f"depths_out shape: {depths_out.shape}, num not nan: {np.sum(~np.isnan(depths_out))}")
 
         return depths_out
     
