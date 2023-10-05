@@ -3,10 +3,10 @@
     {
         "path": "/media/scratch1/schmin/data/robot_at_home",
         "name": "robot_at_home",
-        "split": "train",
+        "split_ratio": {"train": 0.8, "val": 0.1, "test": 0.1},
         "downsample": 1.0,
         "keep_N_observations": "all",
-        "keep_sensor": false
+        "keep_sensor": "all"
     },
     "model":
     {
@@ -21,6 +21,7 @@
         "ray_sampling_strategy": "all_images",
         "max_steps": 1500,
         "lr": 1e-2,
+        "depth_loss_w": 1000.0,
         "random_bg": false
     },
     "occ_grid":
@@ -36,7 +37,17 @@
         "room": "livingroom1",
         "subsession": "subsession_1",
         "home_session": "s1",
-        "sensor_model": "SimpleUSS"
+        "sensor_model": "USS",
+        "angle_of_view": [45, 58]
+    },
+    "uss":
+    {
+        "angle_of_view": [40, 40]
+    },
+    "tof":
+    {
+        "angle_of_view": [42.4, 42.4],
+        "matrix": [8, 8]
     }
     
 }
