@@ -7,7 +7,7 @@ import pandas as pd
 
 def readserial(comport, baudrate, num_meas):
 
-    ser = Serial(comport, baudrate, timeout=0.2) # 1/timeout is the frequency at which the port is read
+    ser = Serial(comport, baudrate, timeout=0.1) # 1/timeout is the frequency at which the port is read
 
     time.sleep(1) # wait for the serial connection to initialize
 
@@ -17,9 +17,11 @@ def readserial(comport, baudrate, num_meas):
         print(f"Ignore: {data}")
 
     meas = []
-    for _ in range(num_meas):
+    while len(meas) < num_meas:
         data = ser.readline().decode().strip()
         print(f"{data}")
+        if data[5:] == '':
+            continue
         meas.append(float(data[5:]))
 
     ser.close()
@@ -28,13 +30,18 @@ def readserial(comport, baudrate, num_meas):
 def convertMeas(meas, sensor):
     if sensor == "MB1603":
         return meas / 1000
+    elif sensor == "URM37":
+        return meas / 100
+    elif sensor == "HC-SR04":
+        return meas / 100
 
 
 def main():
     # measurement parameters
-    sensor = "MB1603"
-    dist = 0.3
-    angle = -30
+    sensor = "MB1603" #"URM37" #"HC-SR04" # 
+    dist = 2
+    angle = 40
+    num_meas = 200
 
     # load data frame
     file_path = os.path.join("data", sensor+".csv")
@@ -44,7 +51,7 @@ def main():
         df = pd.DataFrame()
         
     # make measurement
-    meas = readserial('COM5', 9600, num_meas=30)      
+    meas = readserial('COM5', 9600, num_meas=num_meas)      
     meas = convertMeas(meas, sensor)
 
     # add measurmenet to data frame

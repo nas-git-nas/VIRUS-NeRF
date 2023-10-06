@@ -17,44 +17,56 @@
 
 // # Working Mode: PWM trigger pin  mode.
 
-int URECHO = 3;         // PWM Output 0-50000US,Every 50US represent 1cm
-int URTRIG = 5;         // trigger pin
-
-unsigned int DistanceMeasured = 0;
+int PIN_ECHO = 3;         // PWM Output 0-50000US,Every 50US represent 1cm
+int PIN_TRIG = 4;         // trigger pin
+int PIN_NOISE1 = 5;
+int PIN_NOISE2 = 6;
+unsigned long DELAY = 200000; // delay in us
+bool NOISE = false;
 
 void setup()
 {
   //Serial initialization
   Serial.begin(9600);                        // Sets the baud rate to 9600
-  pinMode(URTRIG, OUTPUT);                   // A low pull on pin COMP/TRIG
-  digitalWrite(URTRIG, HIGH);                // Set to HIGH
-  pinMode(URECHO, INPUT);                    // Sending Enable PWM mode command
+
+  pinMode(PIN_TRIG, OUTPUT);                   // A low pull on pin COMP/TRIG
+  digitalWrite(PIN_TRIG, HIGH);                // Set to HIGH
+  pinMode(PIN_ECHO, INPUT);                    // Sending Enable PWM mode command
+
+  pinMode(PIN_NOISE1, OUTPUT);
+  pinMode(PIN_NOISE2, OUTPUT);
+  digitalWrite(PIN_NOISE1, LOW);
+  digitalWrite(PIN_NOISE2, LOW);
+
   delay(500);
   Serial.println("Init the sensor");
 
 }
 void loop()
 {
-  Serial.print("Distance=");
-  digitalWrite(URTRIG, LOW);
+  if(NOISE) {
+    digitalWrite(PIN_NOISE1, HIGH);
+    digitalWrite(PIN_NOISE2, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(PIN_NOISE1, LOW);
+    digitalWrite(PIN_NOISE2, LOW);
+    delayMicroseconds(2900);
+  }
+
+  digitalWrite(PIN_TRIG, LOW);
   delay(5); // short delay that sensor detects trigger signal
-  digitalWrite(URTRIG, HIGH);              
+  digitalWrite(PIN_TRIG, HIGH);              
 
-  unsigned long LowLevelTime = pulseIn(URECHO, LOW) ;
-  if (LowLevelTime >= 50000)              // the reading is invalid.
-  {
-    Serial.println("Invalid");
-  }
-  else
-  {
-    DistanceMeasured = LowLevelTime / 50;  // every 50us low level stands for 1cm
-    Serial.print(DistanceMeasured);
-    Serial.print("cm     ");
+  unsigned long pulse = pulseIn(PIN_ECHO, LOW) ;
+  unsigned int dist = pulse / 50;  // every 50us low level stands for 1cm
+  Serial.print("meas=");
+  Serial.println(dist);
 
-    Serial.print("Time=");
-    Serial.print(LowLevelTime);
-    Serial.println("us");
-  }
-
+  // unsigned long ellapse_time = micros() - start_time;
+  // Serial.print("Sleep for us:");
+  // Serial.println(DELAY - ellapse_time);
+  // if(DELAY > ellapse_time) {
+  //   delayMicroseconds(DELAY - ellapse_time);
+  // }
   delay(10);
 }
