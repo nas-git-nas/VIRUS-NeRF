@@ -112,28 +112,24 @@ class USSModel(SensorModel):
     def convertDepth(self, depths:np.array):
         """
         Down sample depths from depth per pixel to depth per uss/img.
-        Closest pixel (c1) is chosen with probability of gaussian distribution: p(c1)
-        Second closest depth (c2) is chosen with probability: p(c2) = p(c2) * (1-p(c1))
-        Hence: p(ci) = sum(1-p(cj)) * p(ci) where the sum is over j = 1 ... i-1.
         Args:
             depths: depths per pixel; array of shape (N, H*W)
         Returns:
-            depths_out: depths per uss; array of shape (N, h*w)
+            depths_out: depths per uss; array of shape (N, H*W)
         """
         depths = np.copy(depths) # (N, H*W)
+        depths_m = depths[:, self.mask] # (N, M)
 
-        # mask depths
-        # depths[:, ~self.mask] = np.nan # (N, H*W)
-        min_idxs = np.nanargmin(depths[:, self.mask], axis=1) # (N,)
-        print(min_idxs)
-        print(depths[np.arange(depths.shape[0]), min_idxs])
-        print(f"min_idxs shape: {min_idxs.shape}, num not nan: {np.sum(~np.isnan(min_idxs))}")
+        # get closest pixels inside mask and the corresponding indices
+        d_min = np.nanmin(depths_m, axis=1) # (N,)
+        d_idxs = np.where(depths_m==d_min[:,None]) # (N,), (N,)
+
+        depths_m_out = np.full_like(depths_m, np.nan) # (N, M)
+        depths_m_out[d_idxs[0], d_idxs[1]] = depths_m[d_idxs[0], d_idxs[1]]
 
         # set closest pixel to minimum value
         depths_out = np.full_like(depths, np.nan) # (N, H*W)
-        depths_out[np.arange(depths.shape[0]), min_idxs] = depths[np.arange(depths.shape[0]), min_idxs]
-
-        print(f"depths_out shape: {depths_out.shape}, num not nan: {np.sum(~np.isnan(depths_out))}")
+        depths_out[:, self.mask] = depths_m_out
 
         return depths_out
     

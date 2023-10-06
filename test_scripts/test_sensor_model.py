@@ -91,7 +91,7 @@ def test_USSModel():
     mask = model.mask.reshape(img_wh[1], img_wh[0])
 
     # make single pixels visible
-    depths_out = skimage.measure.block_reduce(depths_out, (1,8,8), np.nanmax) # (N, h, w)
+    depths_out = skimage.measure.block_reduce(depths_out, (1,4,4), np.nanmax) # (N, h, w)
 
     for i in range(depths.shape[0]):
         ax = axes[i,0]
@@ -111,8 +111,8 @@ def test_USSModel():
 
 if __name__ == "__main__":
     # test_ComplexUSSModel()
-    test_ToFModel()
-    # test_USSModel()
+    # test_ToFModel()
+    test_USSModel()
 
 
 

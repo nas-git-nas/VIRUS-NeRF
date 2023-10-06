@@ -177,8 +177,10 @@ class Trainer:
         colour_loss = F.mse_loss(results['rgb'], data['rgb'])
 
         val_idxs = ~torch.isnan(data['depth'])
+        print(f"val_idxs sum: {val_idxs.sum()}")
         depth_loss = self.args.training.depth_loss_w * F.mse_loss(results['depth'][val_idxs], data['depth'][val_idxs])
         if torch.all(torch.isnan(depth_loss)):
+            print("WARNING: depth_loss is nan, set to 0.")
             depth_loss = 0
         
         total_loss = colour_loss + depth_loss
