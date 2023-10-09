@@ -42,7 +42,7 @@
     },
     "USS":
     {
-        "angle_of_view": [40, 40]
+        "angle_of_view": [30, 30]
     },
     "ToF":
     {

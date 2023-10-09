@@ -127,7 +127,6 @@ class USSModel(SensorModel):
         depths_m_out = np.full_like(depths_m, np.nan) # (N, M)
         depths_m_out[d_idxs[0], d_idxs[1]] = depths_m[d_idxs[0], d_idxs[1]]
 
-        # set closest pixel to minimum value
         depths_out = np.full_like(depths, np.nan) # (N, H*W)
         depths_out[:, self.mask] = depths_m_out
 
