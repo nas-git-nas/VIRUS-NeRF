@@ -39,9 +39,9 @@ def convertMeas(meas, sensor):
 def main():
     # measurement parameters
     sensor = "MB1603" #"URM37" #"HC-SR04" # 
-    dist = 2
-    angle = 40
-    num_meas = 200
+    dist = 1
+    angle = 0
+    num_meas = 1000
 
     # load data frame
     file_path = os.path.join("data", sensor+".csv")

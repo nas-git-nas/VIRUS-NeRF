@@ -9,7 +9,7 @@ int PIN_PWM = 3;         // PWM Output pin
 int PIN_NOISE1 = 5;
 int PIN_NOISE2 = 6;
 unsigned long DELAY = 50000; // delay in us
-bool NOISE = false;
+bool NOISE = true;
 
 void setup()
 {
