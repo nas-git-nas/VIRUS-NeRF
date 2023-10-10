@@ -21,7 +21,7 @@
         "ray_sampling_strategy": "all_images",
         "max_steps": 1500,
         "lr": 1e-2,
-        "depth_loss_w": 1000.0,
+        "depth_loss_w": 0.0,
         "random_bg": false
     },
     "occ_grid":
@@ -37,14 +37,14 @@
         "room": "livingroom1",
         "subsession": "subsession_1",
         "home_session": "s1",
-        "sensor_model": "USS",
+        "sensor_model": "RGBD",
         "angle_of_view": [45, 58]
     },
-    "uss":
+    "USS":
     {
-        "angle_of_view": [40, 40]
+        "angle_of_view": [30, 30]
     },
-    "tof":
+    "ToF":
     {
         "angle_of_view": [42.4, 42.4],
         "matrix": [8, 8]
