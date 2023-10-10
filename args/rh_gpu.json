@@ -21,7 +21,7 @@
         "ray_sampling_strategy": "all_images",
         "max_steps": 1500,
         "lr": 1e-2,
-        "depth_loss_w": 0.0,
+        "depth_loss_w": 10.0,
         "random_bg": false
     },
     "occ_grid":
@@ -37,7 +37,7 @@
         "room": "livingroom1",
         "subsession": "subsession_1",
         "home_session": "s1",
-        "sensor_model": "RGBD",
+        "sensor_model": "USS",
         "angle_of_view": [45, 58]
     },
     "USS":
