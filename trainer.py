@@ -176,11 +176,22 @@ class Trainer:
         """
         colour_loss = F.mse_loss(results['rgb'], data['rgb'])
 
-        val_idxs = ~torch.isnan(data['depth'])
-        depth_loss = self.args.training.depth_loss_w * F.mse_loss(results['depth'][val_idxs], data['depth'][val_idxs])
-        if torch.all(torch.isnan(depth_loss)):
-            print("WARNING: trainer:lossFunc: depth_loss is nan, set to 0.")
-            depth_loss = 0
+        # val_idxs = ~torch.isnan(data['depth'])
+        # depth_loss = self.args.training.depth_loss_w * F.mse_loss(results['depth'][val_idxs], data['depth'][val_idxs])
+        # if torch.all(torch.isnan(depth_loss)):
+        #     print("WARNING: trainer:lossFunc: depth_loss is nan, set to 0.")
+        #     depth_loss = 0
+
+        depth_loss = 0.0
+        if self.args.dataset.name == 'robot_at_home':
+            if self.args.rh.sensor_model == 'USS':
+                uss_mask = ~torch.isnan(data['depth'])
+                too_close = results['depth'] < data['depth']
+                depth_loss = F.mse_loss(results['depth'][too_close & uss_mask], data['depth'][too_close & uss_mask])
+            if self.args.rh.sensor_model == 'ToF':
+                val_idxs = ~torch.isnan(data['depth'])
+                depth_loss = F.mse_loss(results['depth'][val_idxs], data['depth'][val_idxs])
+        depth_loss *= self.args.training.depth_loss_w
         
         total_loss = colour_loss + depth_loss
         return total_loss, colour_loss, depth_loss

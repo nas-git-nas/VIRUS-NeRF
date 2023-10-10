@@ -40,11 +40,11 @@
         "sensor_model": "USS",
         "angle_of_view": [45, 58]
     },
-    "uss":
+    "USS":
     {
         "angle_of_view": [40, 40]
     },
-    "tof":
+    "ToF":
     {
         "angle_of_view": [42.4, 42.4],
         "matrix": [8, 8]

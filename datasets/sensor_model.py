@@ -118,17 +118,22 @@ class USSModel(SensorModel):
             depths_out: depths per uss; array of shape (N, H*W)
         """
         depths = np.copy(depths) # (N, H*W)
-        depths_m = depths[:, self.mask] # (N, M)
 
-        # get closest pixels inside mask and the corresponding indices
-        d_min = np.nanmin(depths_m, axis=1) # (N,)
-        d_idxs = np.where(depths_m==d_min[:,None]) # (N,), (N,)
-
-        depths_m_out = np.full_like(depths_m, np.nan) # (N, M)
-        depths_m_out[d_idxs[0], d_idxs[1]] = depths_m[d_idxs[0], d_idxs[1]]
+        d_min = np.nanmin(depths[:, self.mask], axis=1) # (N,)
 
         depths_out = np.full_like(depths, np.nan) # (N, H*W)
-        depths_out[:, self.mask] = depths_m_out
+        depths_out[:, self.mask] = d_min[:,None]  
+
+        # # get closest pixels inside mask and the corresponding indices
+        # depths_m = depths[:, self.mask] # (N, M)
+        # d_min = np.nanmin(depths_m, axis=1) # (N,)
+        # d_idxs = np.where(depths_m==d_min[:,None]) # (N,), (N,)
+
+        # depths_m_out = np.full_like(depths_m, np.nan) # (N, M)
+        # depths_m_out[d_idxs[0], d_idxs[1]] = depths_m[d_idxs[0], d_idxs[1]]
+
+        # depths_out = np.full_like(depths, np.nan) # (N, H*W)
+        # depths_out[:, self.mask] = depths_m_out
 
         return depths_out
     
