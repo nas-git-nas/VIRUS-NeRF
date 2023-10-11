@@ -40,9 +40,9 @@ class RobotAtHomeDataset(BaseDataset):
 
     def __init__(self, args:Args, split:str='train'):
 
-        super().__init__(root_dir=args.dataset.path, split=split, downsample=args.dataset.downsample)
+        super().__init__(args=args, split=split)
 
-        self.args = args
+        # self.args = args
 
         # load dataset
         self.rh = RobotAtHome(

@@ -46,13 +46,18 @@ class HParamsTraining(HParams):
         # hyper parameters
         self.distortion_loss_w = None
         self.batch_size = None
-        self.ray_sampling_strategy = None
+        self.sampling_strategy = None
         self.max_steps = None
         self.lr = None
         self.depth_loss_w = None
         self.random_bg = None
 
         HParams.__init__(self, name="training")
+    
+    def checkArgs(self):
+        if self.sampling_strategy["imgs"] == "all" and self.sampling_strategy["rays"] != "random":
+            self.sampling_strategy["rays"] = "random"
+            print(f"WARNING: HParamsTraining:checkArgs: sampling strategy for rays must be 'random' if sampling strategy for images is 'all' ")
 
 
 class HParamsOccGrid(HParams):

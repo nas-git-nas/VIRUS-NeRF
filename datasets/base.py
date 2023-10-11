@@ -4,6 +4,8 @@ from torch.utils.data import Dataset
 import os
 import pandas as pd
 
+from args.args import Args
+
 
 class BaseDataset(Dataset):
     """
@@ -12,13 +14,11 @@ class BaseDataset(Dataset):
 
     def __init__(
             self, 
-            root_dir, 
+            args:Args, 
             split='train', 
-            downsample=1.0,
         ):
-        self.root_dir = root_dir
+        self.args = args
         self.split = split
-        self.downsample = downsample
 
     def read_intrinsics(self):
         raise NotImplementedError
@@ -38,29 +38,49 @@ class BaseDataset(Dataset):
     def __getitem__(self, idx):
         if self.split.startswith('train'):
             # training pose is retrieved in train.py
-            if self.ray_sampling_strategy == 'all_images':  # randomly select images
-                # img_idxs = np.random.choice(len(self.poses), self.batch_size)
-                img_idxs = torch.randint(
-                    0,
-                    len(self.poses),
-                    size=(self.batch_size,),
-                    device=self.rays.device,
-                )
-            elif self.ray_sampling_strategy == 'same_image':  # randomly select ONE image
-                # img_idxs = np.random.choice(len(self.poses), 1)[0]
-                img_idxs = [idx]
-            # randomly select pixels
-            # pix_idxs = np.random.choice(self.img_wh[0] * self.img_wh[1],
-            #                             self.batch_size)
-            
-            if hasattr(self, 'pixel_sampling_strategy') and self.pixel_sampling_strategy=='entire_image':
-                pix_idxs = torch.arange(
-                    0, self.img_wh[0]*self.img_wh[1], device=self.rays.device
-                )
+            if self.args.training.sampling_strategy["imgs"] == "all":
+                img_idxs = torch.randint(0, len(self.poses), size=(self.args.training.batch_size,), device=self.rays.device)
+            elif self.args.training.sampling_strategy["imgs"] == "same":
+                img_idxs = idx * torch.ones(self.args.training.batch_size, dtype=torch.int64, device=self.rays.device)
             else:
-                pix_idxs = torch.randint(
-                    0, self.img_wh[0]*self.img_wh[1], size=(self.batch_size,), device=self.rays.device
-                )
+                print(f"ERROR: base.py: __getitem__: image sampling strategy must be either 'all' or 'same' " \
+                      f"but is {self.args.training.sampling_strategy['imgs']}")
+
+            # if self.ray_sampling_strategy == 'all_images':  # randomly select images
+            #     # img_idxs = np.random.choice(len(self.poses), self.batch_size)
+            #     img_idxs = torch.randint(
+            #         0,
+            #         len(self.poses),
+            #         size=(self.batch_size,),
+            #         device=self.rays.device,
+            #     )
+            # elif self.ray_sampling_strategy == 'same_image':  # randomly select ONE image
+            #     # img_idxs = np.random.choice(len(self.poses), 1)[0]
+            #     img_idxs = [idx]
+            # # randomly select pixels
+            # # pix_idxs = np.random.choice(self.img_wh[0] * self.img_wh[1],
+            # #                             self.batch_size)
+
+            if self.args.training.sampling_strategy["rays"] == "random":
+                pix_idxs = torch.randint(0, self.img_wh[0]*self.img_wh[1], size=(self.args.training.batch_size,), device=self.rays.device)
+            elif self.args.training.sampling_strategy["rays"] == "ordered":
+                step = self.img_wh[0]*self.img_wh[1] / self.args.training.batch_size
+                pix_idxs = torch.linspace(0, self.img_wh[0]*self.img_wh[1]-1-step, self.args.training.batch_size, device=self.rays.device)
+                rand_offset = step * torch.rand(size=(self.args.training.batch_size,), device=self.rays.device)
+                pix_idxs = torch.round(pix_idxs + rand_offset).to(torch.int64)
+                pix_idxs = torch.clamp(pix_idxs, min=0, max=self.img_wh[0]*self.img_wh[1]-1)
+            else:
+                print(f"ERROR: base.py: __getitem__: pixel sampling strategy must be either 'random' or 'ordered' " \
+                      f"but is {self.args.training.sampling_strategy['pixels']}")
+            
+            # if hasattr(self, 'pixel_sampling_strategy') and self.pixel_sampling_strategy=='entire_image':
+            #     pix_idxs = torch.arange(
+            #         0, self.img_wh[0]*self.img_wh[1], device=self.rays.device
+            #     )
+            # else:
+            #     pix_idxs = torch.randint(
+            #         0, self.img_wh[0]*self.img_wh[1], size=(self.batch_size,), device=self.rays.device
+            #     )
 
 
             rays = self.rays[img_idxs, pix_idxs]
