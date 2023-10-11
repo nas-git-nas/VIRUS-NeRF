@@ -9,8 +9,13 @@ def convertColName(col_name):
     angle = float(col_name.split("_")[1][:-3])
     return dist, angle
 
-def linInterpolate(data, num_fills=20):
-    d = [np.linspace(data[i], data[i+1], num_fills) for i in range(len(data)-1)]
+def linInterpolate(data, num_fills=20, check_for_invalid_data=True):
+    d = []
+    for i in range(len(data)-1): 
+        if check_for_invalid_data and (data[i] == 0 or data[i+1] == 0):
+            d.append(np.zeros((num_fills)))
+        else:
+            d.append(np.linspace(data[i], data[i+1], num_fills))
     return np.array(d).flatten()
 
 def correctMeas(meas, first_meas):

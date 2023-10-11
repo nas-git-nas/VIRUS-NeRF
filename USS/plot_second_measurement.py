@@ -1,17 +1,11 @@
 import numpy as np
-import pandas as pd
-import os
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
-from matplotlib.patches import Polygon
 
 from helpers import correctMeas, loadData
 
 
-
 def main():
-    # the relative mean absolute error of valid measurements must be within 50% of the target distance
-    detection_thr = 0.5
 
     # get distances and angles
     dists = [0.25, 0.5, 1.0, 2.0]
@@ -23,7 +17,7 @@ def main():
     # Create colormap
     cmap = plt.colormaps.get_cmap('plasma')
     # cNorm  = plt.Normalize(vmin=0, vmax=0.3)
-    cNorm = LogNorm(vmin=0.01, vmax=0.3)
+    cNorm = LogNorm(vmin=0.01, vmax=1.0)
 
     # Create a figure and axis with polar projection
     fig, axis = plt.subplots(ncols=len(surfaces), nrows=len(objects), figsize=(9,9))
@@ -40,7 +34,6 @@ def main():
                 # get mean, std and ratio for each distance and angle
                 means = np.zeros((len(dists)), dtype=float)
                 stds = np.zeros((len(dists)), dtype=float)
-                ratios = np.zeros((len(dists)), dtype=float)
                 ma_error = np.zeros((len(dists)), dtype=float)
                 rma_error = np.zeros((len(dists)), dtype=float)
                 for i, dist in enumerate(dists):
@@ -48,15 +41,11 @@ def main():
                         meas = df[f"{dist}m_{int(angle)}deg"].values
                     elif f"{int(dist)}m_{int(angle)}deg" in df.columns:
                         meas = df[f"{int(dist)}m_{int(angle)}deg"].values
-                    else:
-                        ratios[i] = 0
-                        continue
 
                     meas = correctMeas(meas=meas, first_meas=False)
 
                     means[i] = np.mean(meas)
                     stds[i] = np.std(meas)
-                    ratios[i] = len(meas[(meas > dist*(1-detection_thr)) & (meas < dist*(1+detection_thr))])/len(meas)
                     ma_error[i] = np.mean(np.abs(meas - dist))
                     rma_error[i] = np.mean(np.abs(meas - dist)) / dist
                 
@@ -77,10 +66,6 @@ def main():
                     ax.set_xticklabels([])
 
                 ax.grid(axis='y', linewidth=0.5)
-
-                # if k == len(objects)-1:
-                #     ax.set_xlabel('Distance [m]', fontsize=12, y=0.7)
-
                 ax.set_xlim([-0.3, 2.3])
                 ax.set_ylim([0,2.25])
 
@@ -96,6 +81,8 @@ def main():
     cbar.set_label('Mean Absolute Error [m]')  # Label for the colorbar
 
     plt.subplots_adjust(hspace=0.1, wspace=0.08, right=0.75)
+    plt.savefig("plots/all_sensors.pdf")
+    plt.savefig("plots/all_sensors.png")
     plt.show()
 
 
