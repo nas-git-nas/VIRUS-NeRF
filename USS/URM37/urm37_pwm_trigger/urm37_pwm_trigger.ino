@@ -58,7 +58,7 @@ void loop()
   digitalWrite(PIN_TRIG, HIGH);              
 
   unsigned long pulse = pulseIn(PIN_ECHO, LOW) ;
-  unsigned int dist = pulse / 50;  // every 50us low level stands for 1cm
+  unsigned int dist = round(float(pulse) / 50);  // every 50us low level stands for 1cm
   Serial.print("meas=");
   Serial.println(dist);
 

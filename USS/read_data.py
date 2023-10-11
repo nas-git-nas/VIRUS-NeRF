@@ -33,15 +33,15 @@ def convertMeas(meas, sensor):
     elif sensor == "URM37":
         return meas / 100
     elif sensor == "HC-SR04":
-        return meas / 100
+        return meas / 1000
 
 
 def main():
     # measurement parameters
-    sensor = "MB1603" #"URM37" #"HC-SR04" # 
-    dist = 1
+    sensor = "HC-SR04" #"MB1603" #"URM37" #"HC-SR04" # 
+    dist = 0.25
     angle = 0
-    num_meas = 1000
+    num_meas = 200
 
     # load data frame
     file_path = os.path.join("data", sensor+".csv")
@@ -51,7 +51,7 @@ def main():
         df = pd.DataFrame()
         
     # make measurement
-    meas = readserial('COM5', 9600, num_meas=num_meas)      
+    meas = readserial('COM8', 9600, num_meas=num_meas)      
     meas = convertMeas(meas, sensor)
 
     # add measurmenet to data frame
