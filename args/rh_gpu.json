@@ -18,7 +18,7 @@
     {
         "distortion_loss_w": 0.0,
         "batch_size": 8192,
-        "ray_sampling_strategy": "all_images",
+        "sampling_strategy": {"imgs": "same", "rays": "ordered"},
         "max_steps": 1500,
         "lr": 1e-2,
         "depth_loss_w": 10.0,

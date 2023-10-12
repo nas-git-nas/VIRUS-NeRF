@@ -401,7 +401,7 @@ class TrainerRH(Trainer):
         return 0.0
 
 def test_trainer():
-    trainer = TrainerRH(hparams_file="rh_windows.json")
+    trainer = TrainerRH(hparams_file="rh_gpu.json")
     trainer.train()
     trainer.evaluate()
 
