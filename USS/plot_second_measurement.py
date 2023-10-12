@@ -29,7 +29,7 @@ def main():
                 ax = axis[k,l]
 
                 # load dataframe
-                df = loadData(sensor=sensor, object=object, surface=surface, first_meas=False)
+                df = loadData(sensor=sensor, object=object, surface=surface, measurement="second")
 
                 # get mean, std and ratio for each distance and angle
                 means = np.zeros((len(dists)), dtype=float)

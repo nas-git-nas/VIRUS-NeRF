@@ -23,11 +23,14 @@ def correctMeas(meas, first_meas):
         return meas - 0.04 # first measurement
     return meas - 0.005 # second measurement
 
-def loadData(sensor, object, surface, first_meas):
+def loadData(sensor, object, surface, measurement):
     file_name = sensor + '_' + object
     if surface == 'plexiglas':
         file_name += '_plex'  
 
-    if first_meas:      
+    if measurement == "first":      
         return pd.read_csv(os.path.join("data", "firstMeasurement", file_name+".csv"))
-    return pd.read_csv(os.path.join("data", "secondMeasurement", file_name+".csv"))
+    elif measurement == "second":
+        return pd.read_csv(os.path.join("data", "secondMeasurement", file_name+".csv"))
+    elif measurement == "third":
+        return pd.read_csv(os.path.join("data", "thirdMeasurement", file_name+".csv"))

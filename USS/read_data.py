@@ -39,7 +39,7 @@ def convertMeas(meas, sensor):
 def main():
     # measurement parameters
     sensor = "HC-SR04" #"MB1603" #"URM37" #"HC-SR04" # 
-    dist = 0.25
+    dist = 2
     angle = 0
     num_meas = 200
 
