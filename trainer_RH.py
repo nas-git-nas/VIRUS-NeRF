@@ -335,46 +335,70 @@ class TrainerRH(Trainer):
             colour_loss: colour loss value; float
             depth_loss: depth loss value; float
         """
-        colour_loss = F.mse_loss(results['rgb'], data['rgb'])
+        colour_loss = self.__colorLoss(results=results, data=data)
+        depth_loss = self.__depthLoss(results=results, data=data)
+        
+        total_loss = colour_loss + self.args.training.depth_loss_w * depth_loss
+        return total_loss, colour_loss, depth_loss
 
+
+    def __colorLoss(self, results, data):
+        """
+        Loss function for training
+        Args:
+            results: dict of rendered images
+            data: dict of ground truth images
+        Returns:
+            colour_loss: colour loss value; float
+        """
+        return F.mse_loss(results['rgb'], data['rgb'])
+    
+    def __depthLoss(self, results, data):
+        """
+        Loss function for training
+        Args:
+            results: dict of rendered images
+            data: dict of ground truth images
+        Returns:
+            depth_loss: depth loss value; float
+        """
         # val_idxs = ~torch.isnan(data['depth'])
         # depth_loss = self.args.training.depth_loss_w * F.mse_loss(results['depth'][val_idxs], data['depth'][val_idxs])
         # if torch.all(torch.isnan(depth_loss)):
         #     print("WARNING: trainer:lossFunc: depth_loss is nan, set to 0.")
         #     depth_loss = 0
 
-        depth_loss = 0.0
         if self.args.rh.sensor_model == 'USS':
             uss_mask = ~torch.isnan(data['depth'])
-            too_close = results['depth'] < data['depth']
-            if torch.any(too_close & uss_mask):
-                depth_loss = F.mse_loss(results['depth'][too_close & uss_mask], data['depth'][too_close & uss_mask])
-            else:
-                # depth_loss = (torch.min(results['depth']) - data['depth'][uss_mask][0])**2
+            # too_close = results['depth'] < data['depth']
+            # if torch.any(too_close & uss_mask):
+            #     depth_loss = F.mse_loss(results['depth'][too_close & uss_mask], data['depth'][too_close & uss_mask])
+            # else:
+            #     # depth_loss = (torch.min(results['depth']) - data['depth'][uss_mask][0])**2
 
-                # conv_mask_size = 3
-                # conv_mask = torch.ones(1,1,conv_mask_size,conv_mask_size).to(self.args.device)
-                # W, H = self.train_dataset.img_wh
-                # depth_results = torch.zeros(H*W).to(self.args.device) # (H*W)
-                # depth_results[data['pix_idxs']] = results['depth']
-                # depth_conv = F.conv2d(depth_results.reshape(H, W), weight=conv_mask, padding='same').reshape(H, W) # (H, W)
-                # depth_conv = depth_conv.reshape(H*W)[data['pix_idxs']] # (N,)
+            #     # conv_mask_size = 3
+            #     # conv_mask = torch.ones(1,1,conv_mask_size,conv_mask_size).to(self.args.device)
+            #     # W, H = self.train_dataset.img_wh
+            #     # depth_results = torch.zeros(H*W).to(self.args.device) # (H*W)
+            #     # depth_results[data['pix_idxs']] = results['depth']
+            #     # depth_conv = F.conv2d(depth_results.reshape(H, W), weight=conv_mask, padding='same').reshape(H, W) # (H, W)
+            #     # depth_conv = depth_conv.reshape(H*W)[data['pix_idxs']] # (N,)
 
-                depths_w = torch.exp( -(results['depth'][uss_mask] - torch.min(results['depth'][uss_mask]))/0.1 )
-                depth_loss = torch.sum(depths_w * torch.abs(results['depth'][uss_mask] - data['depth'][uss_mask]))
+            #     depths_w = torch.exp( -(results['depth'][uss_mask] - torch.min(results['depth'][uss_mask]))/0.1 )
+            #     depths_w = depths_w / torch.sum(depths_w)
+            #     depth_loss = torch.sum(depths_w * torch.abs(results['depth'][uss_mask] - data['depth'][uss_mask]))
+            # return depth_loss
 
-
-
+            threshold = 0.5
+            depth_error = torch.abs(results['depth'] - data['depth'])
+            depth_mask = depth_error < 2*threshold
+            return torch.mean( 0.5 * (1 - torch.cos(np.pi * depth_error[uss_mask & depth_mask] / threshold)) )
 
         if self.args.rh.sensor_model == 'ToF':
             val_idxs = ~torch.isnan(data['depth'])
-            depth_loss = F.mse_loss(results['depth'][val_idxs], data['depth'][val_idxs])
-        depth_loss *= self.args.training.depth_loss_w
+            return F.mse_loss(results['depth'][val_idxs], data['depth'][val_idxs])
         
-        total_loss = colour_loss + depth_loss
-        return total_loss, colour_loss, depth_loss
-
-
+        return 0.0
 
 def test_trainer():
     trainer = TrainerRH(hparams_file="rh_gpu.json")
