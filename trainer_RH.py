@@ -350,7 +350,23 @@ class TrainerRH(Trainer):
             if torch.any(too_close & uss_mask):
                 depth_loss = F.mse_loss(results['depth'][too_close & uss_mask], data['depth'][too_close & uss_mask])
             else:
-                depth_loss = (torch.min(results['depth']) - data['depth'][uss_mask][0])**2
+                # depth_loss = (torch.min(results['depth']) - data['depth'][uss_mask][0])**2
+
+                # conv_mask_size = 3
+                # conv_mask = torch.ones(1,1,conv_mask_size,conv_mask_size).to(self.args.device)
+                # W, H = self.train_dataset.img_wh
+                # depth_results = torch.zeros(H*W).to(self.args.device) # (H*W)
+                # depth_results[data['pix_idxs']] = results['depth']
+                # depth_conv = F.conv2d(depth_results.reshape(H, W), weight=conv_mask, padding='same').reshape(H, W) # (H, W)
+                # depth_conv = depth_conv.reshape(H*W)[data['pix_idxs']] # (N,)
+
+                depths_w = torch.exp( -(results['depth'][uss_mask] - torch.min(results['depth'][uss_mask]))/0.1 )
+                depths_w = depths_w / torch.sum(depths_w)
+                depth_loss = torch.sum(depths_w * torch.abs(results['depth'][uss_mask] - data['depth'][uss_mask]))
+
+
+
+
         if self.args.rh.sensor_model == 'ToF':
             val_idxs = ~torch.isnan(data['depth'])
             depth_loss = F.mse_loss(results['depth'][val_idxs], data['depth'][val_idxs])
