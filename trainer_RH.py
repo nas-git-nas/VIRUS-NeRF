@@ -389,10 +389,23 @@ class TrainerRH(Trainer):
             #     depth_loss = torch.sum(depths_w * torch.abs(results['depth'][uss_mask] - data['depth'][uss_mask]))
             # return depth_loss
 
-            threshold = 0.2
-            depth_error = torch.abs(results['depth'] - data['depth'])
-            depth_mask = depth_error < threshold
-            return torch.mean( 0.5 * (1 - torch.cos(2*np.pi * depth_error[uss_mask & depth_mask] / threshold)) )
+            # threshold = 0.2
+            # depth_error = torch.abs(results['depth'] - data['depth'])
+            # depth_mask = depth_error < threshold
+            # return torch.mean( 0.5 * (1 - torch.cos(2*np.pi * depth_error[uss_mask & depth_mask] / threshold)) )
+
+            threshold = 0.1
+
+            depth_error = results['depth'][uss_mask] - data['depth'][uss_mask]
+            cos_region_mask = (depth_error > -0.5*threshold) & (depth_error < threshold)
+            lin_region_mask = depth_error <= -0.5*threshold
+
+            losses = (2*threshold/np.pi) * torch.ones_like(depth_error).to(self.args.device)
+            losses_cos = (threshold/np.pi) * (1 - torch.cos(2*np.pi * depth_error[cos_region_mask] / (2*threshold)).to(self.args.device))
+            losses_lin = (2*threshold/np.pi) * (0.5 - np.pi/4 - depth_error[lin_region_mask] * np.pi / (2*threshold))
+            losses[cos_region_mask] = losses_cos
+            losses[lin_region_mask] = losses_lin
+            return torch.mean(losses)
 
         if self.args.rh.sensor_model == 'ToF':
             val_idxs = ~torch.isnan(data['depth'])
