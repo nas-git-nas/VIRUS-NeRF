@@ -361,7 +361,6 @@ class TrainerRH(Trainer):
                 # depth_conv = depth_conv.reshape(H*W)[data['pix_idxs']] # (N,)
 
                 depths_w = torch.exp( -(results['depth'][uss_mask] - torch.min(results['depth'][uss_mask]))/0.1 )
-                depths_w = depths_w / torch.sum(depths_w)
                 depth_loss = torch.sum(depths_w * torch.abs(results['depth'][uss_mask] - data['depth'][uss_mask]))
 
 
