@@ -206,7 +206,7 @@ def test_plotTrainerRHSlice():
 
 
 def test_plotTrainerRHScan():
-    save_path = "results/robot_at_home/trained_models/20231012_1243"
+    save_path = "results/robot_at_home/trained_models/20231012_1546"
     trainer = TrainerRH(hparams_file=os.path.join("..", save_path, "hparams.json"))
     trainer.loadCheckpoint(ckpt_path=os.path.join(save_path, "model.pth"))
 

@@ -338,7 +338,8 @@ class TrainerRH(Trainer):
         colour_loss = self.__colorLoss(results=results, data=data)
         depth_loss = self.__depthLoss(results=results, data=data)
         
-        total_loss = colour_loss + self.args.training.depth_loss_w * depth_loss
+        depth_loss = depth_loss * self.args.training.depth_loss_w
+        total_loss = colour_loss + depth_loss
         return total_loss, colour_loss, depth_loss
 
 
@@ -389,10 +390,23 @@ class TrainerRH(Trainer):
             #     depth_loss = torch.sum(depths_w * torch.abs(results['depth'][uss_mask] - data['depth'][uss_mask]))
             # return depth_loss
 
-            threshold = 0.5
-            depth_error = torch.abs(results['depth'] - data['depth'])
-            depth_mask = depth_error < 2*threshold
-            return torch.mean( 0.5 * (1 - torch.cos(np.pi * depth_error[uss_mask & depth_mask] / threshold)) )
+            # threshold = 0.5
+            # depth_error = torch.abs(results['depth'] - data['depth'])
+            # depth_mask = depth_error < 2*threshold
+            # return torch.mean( 0.5 * (1 - torch.cos(np.pi * depth_error[uss_mask & depth_mask] / threshold)) )
+        
+            threshold = 0.1
+
+            depth_error = results['depth'][uss_mask] - data['depth'][uss_mask]
+            cos_region_mask = (depth_error > -0.5*threshold) & (depth_error < threshold)
+            lin_region_mask = depth_error <= -0.5*threshold
+
+            losses = (2*threshold/np.pi) * torch.ones_like(depth_error).to(self.args.device)
+            losses_cos = (threshold/np.pi) * (1 - torch.cos(2*np.pi * depth_error[cos_region_mask] / (2*threshold)).to(self.args.device))
+            losses_lin = (2*threshold/np.pi) * (0.5 - np.pi/4 - depth_error[lin_region_mask] * np.pi / (2*threshold))
+            losses[cos_region_mask] = losses_cos
+            losses[lin_region_mask] = losses_lin
+            return torch.mean(losses)
 
         if self.args.rh.sensor_model == 'ToF':
             val_idxs = ~torch.isnan(data['depth'])
@@ -401,7 +415,7 @@ class TrainerRH(Trainer):
         return 0.0
 
 def test_trainer():
-    trainer = TrainerRH(hparams_file="rh_gpu.json")
+    trainer = TrainerRH(hparams_file="rh_windows.json")
     trainer.train()
     trainer.evaluate()
 
