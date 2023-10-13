@@ -33,14 +33,8 @@ class Metrics():
         ).to(self.args.device)
 
     @abstractmethod
-    def __convertData(self, data):
+    def convertData(self):
         pass
-
-    def getEvalMetrics(self):
-        return np.copy(self._eval_metrics)
-    
-    def setEvalMetrics(self, eval_metrics:list):
-        self._eval_metrics = np.copy(eval_metrics)
 
     def evaluate(
             self, 
@@ -70,10 +64,11 @@ class Metrics():
             data = self.__copyData(data=data)
 
         # check that all required data is provided
-        self.__checkData(data=data)
+        self.__checkData(data=data, eval_metrics=eval_metrics)
 
         # convert data to right format and coordinate system
-        data = self.__convertData(data=data, convert_to_world_coords=convert_to_world_coords)
+        if 'depth' in data: # TODO: change condition and function
+            data = self.convertData(data=data, eval_metrics=eval_metrics, convert_to_world_coords=convert_to_world_coords)
 
         dict = {}
         for metric in eval_metrics:
@@ -207,8 +202,8 @@ class Metrics():
         """
         Calculate nearest neighbour distance between pos_w and pos_w_gt
         Args:
-            pos_w: predicted position in world coordinate system; either numpy array or torch tensor (N, M, 2)
-            pos_w_gt: ground truth position in world coordinate system; either numpy array or torch tensor (N, M, 2)
+            pos: predicted position in world coordinate system; either numpy array or torch tensor (N, M, 2)
+            pos_gt: ground truth position in world coordinate system; either numpy array or torch tensor (N, M, 2)
         Returns:
             nn_dists: nearest neighbour distances; either numpy array or torch tensor (N,)
             mnn: mean of nearest neighbour distances; float
@@ -218,7 +213,7 @@ class Metrics():
         else:
             nn_dists = np.zeros_like(pos)
         
-        for i in range(pos.shape[0]):
+        for i in range(pos.shape[0]): # TODO: pos should have shape (N, M, 2)
             if torch.is_tensor(pos):
                 _, dists = self.nnTorch(tensor1=pos_gt[i], tensor2=pos[i])
             else:
@@ -313,29 +308,31 @@ class Metrics():
     def __checkData(
             self,
             data:dict,
+            eval_metrics:list,
     ):
         """
         Check if data dictionary contains all required keys.
         Args:
             data: data dictionary
+            eval_metrics: list of metrics to evaluate; list of str
         """
-        if 'nn' in self._eval_metrics:
-            if (not data.has_key('rays_o')) or (not data.has_key('scan_angles')):
+        if 'nn' in eval_metrics:
+            if (not 'rays_o' in data) or (not 'scan_angles' in data):
                 print("WARNING: rays_o and scan_angles must be provided for metric 'nn'")
-                self._eval_metrics.remove('nn')
+                eval_metrics.remove('nn')
 
-        if ('nn' in self._eval_metrics) or ('mse' in self._eval_metrics) or ('mae' in self._eval_metrics) or ('mare' in self._eval_metrics):
-            if (not data.has_key('depth')) or (not data.has_key('depth_gt')):
+        if ('nn' in eval_metrics) or ('mse' in eval_metrics) or ('mae' in eval_metrics) or ('mare' in eval_metrics):
+            if (not 'depth' in data) or (not 'depth_gt' in data):
                 print("WARNING: pos must be provided for metrics 'nn', 'mse', 'mae', 'mare'")
-                self._eval_metrics.remove('nn')
-                self._eval_metrics.remove('mse')
-                self._eval_metrics.remove('mae')
-                self._eval_metrics.remove('mare')
+                eval_metrics.remove('nn')
+                eval_metrics.remove('mse')
+                eval_metrics.remove('mae')
+                eval_metrics.remove('mare')
 
-        if ('psnr' in self._eval_metrics) or ('ssim' in self._eval_metrics):
-            if (not data.has_key('rgb')) or (not data.has_key('rgb_gt')):
+        if ('psnr' in eval_metrics) or ('ssim' in eval_metrics):
+            if (not 'rgb' in data) or (not 'rgb_gt' in data):
                 print("WARNING: rgb and rgb_gt must be provided for metrics 'psnr', 'ssim'")
-                self._eval_metrics.remove('psnr')
-                self._eval_metrics.remove('ssim')
+                eval_metrics.remove('psnr')
+                eval_metrics.remove('ssim')
 
     

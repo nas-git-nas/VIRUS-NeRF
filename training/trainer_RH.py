@@ -13,6 +13,7 @@ from einops import rearrange
 import torch.nn.functional as F
 from abc import abstractmethod
 import matplotlib.pyplot as plt
+from alive_progress import alive_bar
 
 # from gui import NGPGUI
 from datasets import dataset_dict
@@ -137,8 +138,13 @@ class TrainerRH(Trainer):
         Returns:
             metrics_dict: dict of metrics
         """
+        print("Evaluating color error")
         W, H = self.test_dataset.img_wh
-        pix_idxs = np.arange(W*H)
+        N = img_idxs.shape[0]
+
+        # repeat image indices and pixel indices
+        img_idxs = img_idxs.repeat(W*H) # (N*W*H,)
+        pix_idxs = np.tile(np.arange(W*H), N) # (N*W*H,)
 
         # get poses, direction and color ground truth
         poses = self.test_dataset.poses[img_idxs]
@@ -149,7 +155,7 @@ class TrainerRH(Trainer):
         rays_o, rays_d = get_rays(
             directions=directions, 
             c2w=poses
-        )
+        ) # (N*W*H, 3), (N*W*H, 3)
 
         # render rays to get color
         rgb = torch.empty(0, 3).to(self.args.device)
@@ -200,7 +206,9 @@ class TrainerRH(Trainer):
             metrics_dict: dict of metrics
             data_w: dict of data in world coordinates
         """
-        # create scan rays
+        print("Evaluating depth error")
+
+        # create scan rays for averaging over different heights
         rays_o, rays_d = self.createScanRays(
             img_idxs=img_idxs,
             res_angular=self.args.eval.res_angular,
@@ -221,6 +229,16 @@ class TrainerRH(Trainer):
         # average dpeth over different heights
         depths = depths.detach().cpu().numpy().reshape(-1, self.args.eval.num_avg_heights) # (N*M, A)
         depth = np.nanmean(depths, axis=1) # (N*M,)
+
+        # create scan rays (without averaging over different heights)
+        rays_o, rays_d = self.createScanRays(
+            img_idxs=img_idxs,
+            res_angular=self.args.eval.res_angular,
+            num_avg_heights=1,
+            height_tolerance=0.0,
+        ) # (N*M, 3), (N*M, 3)
+        rays_o = rays_o.detach().cpu().numpy() # (N*M, 3)
+        rays_d = rays_d.detach().cpu().numpy() # (N*M, 3)
 
         # get ground truth depth
         scan_map_gt, depth_gt, scan_angles = self.test_dataset.scene.getSliceScan(
@@ -322,17 +340,19 @@ class TrainerRH(Trainer):
             num_batches = rays_o.shape[0] // batch_size + 1
 
         # render rays in batches
-        for i in range(num_batches):
-            batch_start = i * batch_size
-            batch_end = min((i+1) * batch_size, rays_o.shape[0])
-            results = render(
-                self.model, 
-                rays_o=rays_o[batch_start:batch_end], 
-                rays_d=rays_d[batch_start:batch_end],
-                test_time=test_time,
-                exp_step_factor=self.args.exp_step_factor,
-            )
-            yield results
+        with alive_bar(num_batches, bar = 'bubbles', receipt=False) as bar:
+            for i in range(num_batches):
+                batch_start = i * batch_size
+                batch_end = min((i+1) * batch_size, rays_o.shape[0])
+                results = render(
+                    self.model, 
+                    rays_o=rays_o[batch_start:batch_end], 
+                    rays_d=rays_d[batch_start:batch_end],
+                    test_time=test_time,
+                    exp_step_factor=self.args.exp_step_factor,
+                )
+                bar()
+                yield results
     
     def __printStats(self, results, data, step, loss, color_loss, depth_loss, tic):
         """

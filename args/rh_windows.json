@@ -26,11 +26,11 @@
     },
     "evaluation":
     {
-        "batch_size": 8192,
+        "batch_size": 16384,
         "res_map": 256,
         "res_angular": 256,
-        "num_test_pts": 10,
-        "num_plot_pts": 3,
+        "num_test_pts": 1,
+        "num_plot_pts": 1,
         "num_avg_heights": 10,
         "height_tolerance": 0.1
     },

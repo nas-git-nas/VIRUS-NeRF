@@ -22,15 +22,17 @@ class MetricsRH(Metrics):
         Metrics.__init__(self, args=args, img_wh=img_wh)
         self.rh_scene = rh_scene
 
-    def __convertData(
+    def convertData(
             self, 
             data:dict,
+            eval_metrics:list,
             convert_to_world_coords:bool,
         ):
         """
         Convert data to world coordinates and get position of depths in world coordinates.
         Args:
             data: data dictionary
+            eval_metrics: evaluation metrics; list of str
             convert_to_world_coords: convert depth to world coordinates (meters); bool
         Returns:
             data: data dictionary
@@ -48,7 +50,7 @@ class MetricsRH(Metrics):
                 rays_o = self.rh_scene.c2wTransformation(pos=rays_o, copy=False)
 
         # convert depth to position in world coordinate system
-        if 'nn' in self._eval_metrics:
+        if 'nn' in eval_metrics:
             if torch.is_tensor(depth):
                 depth = depth.clone().detach().numpy()
                 depth_gt = depth_gt.clone().detach().numpy()
