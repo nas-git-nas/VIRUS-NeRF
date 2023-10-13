@@ -24,6 +24,7 @@ from modules.networks import NGP
 from modules.distortion import distortion_loss
 from modules.rendering import MAX_SAMPLES, render
 from modules.utils import depth2img, save_deployment_model
+from training.metrics import Metrics
 
 from torchmetrics import (
     PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
@@ -110,7 +111,12 @@ class Trainer:
             optimizer=self.optimizer,
             T_max=self.args.training.max_steps,
             eta_min=self.args.training.lr/30,
-    )
+        )
+
+        # metrics
+        self.metrics = Metrics(
+            rh_scene=self.train_dataset.rh_scene,
+        )
 
     @abstractmethod
     def train(self):

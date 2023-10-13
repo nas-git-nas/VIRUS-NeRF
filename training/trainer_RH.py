@@ -23,6 +23,7 @@ from modules.distortion import distortion_loss
 from modules.rendering import MAX_SAMPLES, render
 from modules.utils import depth2img, save_deployment_model
 from helpers.geometric_fcts import findNearestNeighbour
+from training.metrics_rh import MetricsRH
 
 from torchmetrics import (
     PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
@@ -42,6 +43,12 @@ class TrainerRH(Trainer):
         self.val_ssim = StructuralSimilarityIndexMeasure(
             data_range=1
         ).to(self.args.device)
+
+        # metrics
+        self.metrics = MetricsRH(
+            rh_scene=self.train_dataset.rh_scene,
+            eval_metrics=['rmse', 'mae', 'mare', 'nn'],
+        )
 
     def train(self):
         # training loop
@@ -244,11 +251,17 @@ class TrainerRH(Trainer):
             f"depth_mare={error['depth_mare']:.3f} | "
         )
 
-    def evaluateDepth(self, res:int=256, res_angular=256, np_test_pts=None, height_tolerance:float=0.1):
+    def evaluateDepth(
+            self, 
+            res:int=256, 
+            res_angular:int=256, 
+            np_test_pts=None, 
+            height_tolerance:float=0.1
+    ):
         """
         Evaluate depth error.
         Args:
-            res: map_gt size; int
+            res: map size; int
             res_angular: number of angular samples (M); int
         Returns:
             depth_mse: mean squared depth error; float
@@ -263,38 +276,37 @@ class TrainerRH(Trainer):
             test_pts_idxs = np.linspace(0, len(sensor_img_idxs)-1, np_test_pts, dtype=int)
             sensor_img_idxs = sensor_img_idxs[test_pts_idxs]
 
-        sensor_img_idxs = torch.tensor(sensor_img_idxs, dtype=torch.long, device=self.args.device)
-        tolerance_c = self.test_dataset.scene.w2cTransformation(pos=height_tolerance, only_scale=True, copy=True)
+        # create scan rays
+        num_avg_heights = 10 # TODO: args
+        rays_o, rays_d = self.createScanRays(
+            img_idxs=sensor_img_idxs,
+            res_angular=res_angular,
+            num_avg_heights=num_avg_heights,
+            height_tolerance=height_tolerance,
+        ) # (N*M*A, 3), (N*M*A, 3)
 
-        with torch.autocast(device_type='cuda', dtype=torch.float16):
-            # get rays
-            rays_o = self.test_dataset.poses[sensor_img_idxs, :3, 3].detach().clone() # (N, 3)
-            rays_o = torch.repeat_interleave(rays_o, res_angular, dim=0) # (N*M, 3)
+        # render rays in batches
+        if rays_o.shape[0] % self.args.training.batch_size == 0:
+            num_batches = rays_o.shape[0] // self.args.training.batch_size
+        else:
+            num_batches = rays_o.shape[0] // self.args.training.batch_size + 1
 
-            rays_d = torch.linspace(-np.pi, np.pi-2*np.pi/res_angular, res_angular, 
-                                    dtype=torch.float32, device=self.args.device) # (M,)
-            rays_d = torch.stack((torch.cos(rays_d), torch.sin(rays_d), torch.zeros_like(rays_d)), axis=1) # (M, 3)
-            rays_d = rays_d.repeat(len(sensor_img_idxs), 1) # (N*M, 3)
+        depth = np.zeros((rays_o.shape[0],)) # (N*M*A,)
+        for i in range(num_batches):
+            batch_start = i * self.args.training.batch_size
+            batch_end = min((i+1) * self.args.training.batch_size, rays_o.shape[0])
+            results = render(
+                self.model, 
+                rays_o=rays_o[batch_start:batch_end], 
+                rays_d=rays_d[batch_start:batch_end],
+                test_time=True,
+                exp_step_factor=self.args.exp_step_factor,
+            )
+            depth[batch_start:batch_end] = results['depth'].detach().cpu().numpy()
 
-            depths = []
-            for h in np.linspace(-tolerance_c, tolerance_c, 10):
-                # get rays
-                tol = torch.tensor([0.0, 0.0, h], dtype=torch.float32, device=self.args.device)
-                rays_o_h = rays_o + tol # (N*M, 3)
-
-                # render image
-                results = render(
-                    self.model, 
-                    rays_o_h, 
-                    rays_d,
-                    test_time=True,
-                    exp_step_factor=self.args.exp_step_factor,
-                )
-                depths.append(results['depth'].detach().cpu().numpy())
-
-        rays_o = rays_o.detach().cpu().numpy()
-        rays_d = rays_d.detach().cpu().numpy()
-        depth = np.array(depths).mean(axis=0) # (N*M,)
+        # average dpeth over different heights
+        depth = depth.reshape(-1, num_avg_heights) # (N*M, A)
+        depth = np.nanmean(depth, axis=1) # (N*M,)
 
         # get ground truth depth
         scan_map_gt, depth_gt, scan_angles = self.test_dataset.scene.getSliceScan(res=res, rays_o=rays_o, rays_d=rays_d, rays_o_in_world_coord=False, height_tolerance=height_tolerance)
@@ -302,13 +314,68 @@ class TrainerRH(Trainer):
         # convert depth to world coordinates (meters)
         depth_w = self.test_dataset.scene.c2wTransformation(pos=depth, only_scale=True, copy=True)
         depth_w_gt = self.test_dataset.scene.c2wTransformation(pos=depth_gt, only_scale=True, copy=True)
+        rays_o_w = self.test_dataset.scene.c2wTransformation(pos=rays_o, copy=True) # (N*M*A, 3)
+        data_w = {
+            'depth': depth_w,
+            'depth_gt': depth_w_gt,
+            'rays_o': rays_o_w,
+            'scan_angles': scan_angles,
+            'scan_map_gt': scan_map_gt,
+        }
 
         # calculate mean squared depth error
-        depth_mae = np.nanmean(np.abs(depth_w - depth_w_gt))
-        depth_mare = np.nanmean(np.abs((depth_w - depth_w_gt)/ depth_w_gt))
-        error = {"depth_mae": depth_mae, "depth_mare": depth_mare}
+        metrics_dict = self.metrics.evaluate(
+            data=data_w,
+            convert_to_world_coords=False,
+            copy=True,
+        )
 
-        return error, depth_w, depth_w_gt, scan_map_gt, rays_o, scan_angles
+        return metrics_dict, data_w
+    
+
+    def createScanRays(
+            self,
+            img_idxs:np.array,
+            res_angular:int,
+            num_avg_heights:int=1,
+            height_tolerance:float=0.1,
+    ):
+        """
+        Create scan rays for gievn image indices.
+        Args:
+            img_idxs: image indices; array of int (N,)
+            res_angular: number of angular samples (M); int
+            num_avg_heights: number of heights to average over (A); int
+            height_tolerance: height tolerance in world coordinates (meters); float
+        Returns:
+            rays_o: ray origins; array of shape (N*M*A, 3)
+            rays_d: ray directions; array of shape (N*M*A, 3)
+        """
+        # get rays
+        rays_o = self.test_dataset.poses[img_idxs, :3, 3].detach().clone() # (N, 3)
+        rays_o = torch.repeat_interleave(rays_o, res_angular, dim=0) # (N*M, 3)
+
+        # get directions
+        rays_d = torch.linspace(-np.pi, np.pi-2*np.pi/res_angular, res_angular, 
+                                dtype=torch.float32, device=self.args.device) # (M,)
+        rays_d = torch.stack((torch.cos(rays_d), torch.sin(rays_d), torch.zeros_like(rays_d)), axis=1) # (M, 3)
+        rays_d = rays_d.repeat(len(img_idxs), 1) # (N*M, 3)
+
+        if num_avg_heights == 1:
+            return rays_o, rays_d
+        
+        # convert height tolerance to cube coordinates
+        h_tol_c = self.test_dataset.scene.w2cTransformation(pos=height_tolerance, only_scale=True, copy=True)
+
+        # get rays for different heights
+        rays_o_avg = torch.zeros(len(img_idxs)*res_angular, num_avg_heights, 3).to(self.args.device) # (N*M, A, 3)
+        rays_d_avg = torch.zeros(len(img_idxs)*res_angular, num_avg_heights, 3).to(self.args.device) # (N*M, A, 3)   
+        for i, h in enumerate(np.linspace(-h_tol_c, h_tol_c, num_avg_heights)):
+            h_tensor = torch.tensor([0.0, 0.0, h], dtype=torch.float32, device=self.args.device)
+            rays_o_avg[:,i,:] = rays_o + h_tensor
+            rays_d_avg[:,i,:] = rays_d
+
+        return rays_o_avg.reshape(-1, 3), rays_d_avg.reshape(-1, 3) # (N*M*A, 3), (N*M*A, 3)
 
     def lossFunc(self, results, data):
         """
