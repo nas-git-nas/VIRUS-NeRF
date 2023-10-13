@@ -60,6 +60,20 @@ class HParamsTraining(HParams):
             print(f"WARNING: HParamsTraining:checkArgs: sampling strategy for rays must be 'random' if sampling strategy for images is 'all' ")
 
 
+class HParamsEvaluation(HParams):
+    def __init__(self) -> None:
+        # hyper parameters
+        self.batch_size = None
+        self.res_map = None
+        self.res_angular = None
+        self.num_test_pts = None
+        self.num_plot_pts = None
+        self.num_avg_heights = None
+        self.height_tolerance = None
+
+        HParams.__init__(self, name="evaluation")
+
+
 class HParamsOccGrid(HParams):
     def __init__(self) -> None:
         # hyper parameters

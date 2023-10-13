@@ -19,10 +19,20 @@
         "distortion_loss_w": 0.0,
         "batch_size": 8192,
         "sampling_strategy": {"imgs": "all", "rays": "random"},
-        "max_steps": 10,
+        "max_steps": 2,
         "lr": 1e-2,
         "depth_loss_w": 1000.0,
         "random_bg": false
+    },
+    "evaluation":
+    {
+        "batch_size": 8192,
+        "res_map": 256,
+        "res_angular": 256,
+        "num_test_pts": 10,
+        "num_plot_pts": 3,
+        "num_avg_heights": 10,
+        "height_tolerance": 0.1
     },
     "occ_grid":
     {

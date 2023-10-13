@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 import shutil
 
-from args.h_params import HParamsDataset, HParamsModel, HParamsTraining, HParamsOccGrid, HParamsRobotAtHome, HParamsUSS, HParamsToF
+from args.h_params import HParamsDataset, HParamsModel, HParamsTraining, HParamsEvaluation, HParamsOccGrid, HParamsRobotAtHome, HParamsUSS, HParamsToF
 
 
 class Args():
@@ -13,6 +13,7 @@ class Args():
         self.dataset = HParamsDataset()
         self.model = HParamsModel()
         self.training = HParamsTraining()
+        self.eval = HParamsEvaluation()
         self.occ_grid = HParamsOccGrid()
 
         # set hyper parameters
@@ -20,6 +21,7 @@ class Args():
         self.dataset.setHParams(hparams)
         self.model.setHParams(hparams)
         self.training.setHParams(hparams)
+        self.eval.setHParams(hparams)
         self.occ_grid.setHParams(hparams)
 
         if self.dataset.name == "robot_at_home":
