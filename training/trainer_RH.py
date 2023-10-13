@@ -15,7 +15,6 @@ from abc import abstractmethod
 import matplotlib.pyplot as plt
 
 from gui import NGPGUI
-from opt import get_opts
 from datasets import dataset_dict
 from datasets.ray_utils import get_rays
 
@@ -390,11 +389,12 @@ class TrainerRH(Trainer):
             #     depth_loss = torch.sum(depths_w * torch.abs(results['depth'][uss_mask] - data['depth'][uss_mask]))
             # return depth_loss
 
-            # threshold = 0.5
+
+            # threshold = 0.2
             # depth_error = torch.abs(results['depth'] - data['depth'])
-            # depth_mask = depth_error < 2*threshold
-            # return torch.mean( 0.5 * (1 - torch.cos(np.pi * depth_error[uss_mask & depth_mask] / threshold)) )
-        
+            # depth_mask = depth_error < threshold
+            # return torch.mean( 0.5 * (1 - torch.cos(2*np.pi * depth_error[uss_mask & depth_mask] / threshold)) )
+
             threshold = 0.1
 
             depth_error = results['depth'][uss_mask] - data['depth'][uss_mask]
