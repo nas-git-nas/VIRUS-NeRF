@@ -14,6 +14,7 @@ import torch.nn.functional as F
 from abc import abstractmethod
 import matplotlib.pyplot as plt
 from alive_progress import alive_bar
+from contextlib import nullcontext
 
 # from gui import NGPGUI
 from datasets import dataset_dict
@@ -83,9 +84,16 @@ class TrainerRH(Trainer):
             self.grad_scaler.update()
             self.scheduler.step()
 
-            # TODO: print progress
-            # if step % 100 == 0:
-            #     self.__printStats(results=results, data=data, step=step, loss=loss, color_loss=color_loss, depth_loss=depth_loss, tic=tic)
+            if step % 1 == 0:
+                self.__evaluateStep(
+                    results=results, 
+                    data=data, 
+                    step=step, 
+                    loss=loss, 
+                    color_loss=color_loss, 
+                    depth_loss=depth_loss, 
+                    tic=tic
+                )
 
         self.saveModel()
 
@@ -138,7 +146,6 @@ class TrainerRH(Trainer):
         Returns:
             metrics_dict: dict of metrics
         """
-        print("Evaluating color error")
         W, H = self.test_dataset.img_wh
         N = img_idxs.shape[0]
 
@@ -160,7 +167,7 @@ class TrainerRH(Trainer):
         # render rays to get color
         rgb = torch.empty(0, 3).to(self.args.device)
         depth = torch.empty(0).to(self.args.device)
-        for results in self.__renderBatches(
+        for results in self.__batchifyRender(
                 rays_o=rays_o,
                 rays_d=rays_d,
                 test_time=True,
@@ -206,8 +213,6 @@ class TrainerRH(Trainer):
             metrics_dict: dict of metrics
             data_w: dict of data in world coordinates
         """
-        print("Evaluating depth error")
-
         # create scan rays for averaging over different heights
         rays_o, rays_d = self.createScanRays(
             img_idxs=img_idxs,
@@ -218,7 +223,7 @@ class TrainerRH(Trainer):
 
         # render rays to get depth
         depths = torch.empty(0).to(self.args.device)
-        for results in self.__renderBatches(
+        for results in self.__batchifyRender(
                 rays_o=rays_o,
                 rays_d=rays_d,
                 test_time=True,
@@ -267,10 +272,189 @@ class TrainerRH(Trainer):
             eval_metrics=['rmse', 'mae', 'mare', 'nn'],
             convert_to_world_coords=False,
             copy=True,
+            num_test_pts=len(img_idxs),
         )
 
         return metrics_dict, data_w
     
+    def evaluatePlot(
+            self,
+            data_w:dict,
+    ):
+        # downsample data
+        if self.args.eval.num_plot_pts > self.args.eval.num_test_pts:
+            print(f"WARNING: trainer_RH.evaluatePlot(): num_plot_pts={self.args.eval.num_plot_pts} "
+                  f"should be smaller or equal than num_test_pts={self.args.eval.num_test_pts}")
+            self.args.eval.num_plot_pts = self.args.eval.num_test_pts
+        idxs_temp = np.linspace(0, self.args.eval.num_test_pts-1, self.args.eval.num_plot_pts, dtype=int)
+        depth_w = data_w['depth'][idxs_temp]
+        rays_o_w = data_w['rays_o'][idxs_temp]
+
+        # create scan maps
+        scan_maps = self.__createScanMaps(
+            rays_o=rays_o_w,
+            depth=depth_w,
+            scan_angles=data_w['scan_angles'],
+        ) # (N, M, M)
+        scan_map_gt = data_w['scan_map_gt'] # (M, M)
+
+        # create density maps
+        density_map_gt = self.test_dataset.scene.getSliceMap(
+            height=np.mean(rays_o_w[:,2]), 
+            res=self.args.eval.res_map, 
+            height_tolerance=self.args.eval.height_tolerance, 
+            height_in_world_coord=True
+        )
+        density_map = trainer.evaluateSlice(res=res, height_w=np.mean(rays_o_w[:,2]), tolerance_w=height_tolerance) 
+        density_map[density_map < 10] = 0.0
+        density_map[density_map >= 10] = 1.0  
+
+
+        # plot
+        fig, axes = plt.subplots(ncols=1+self.args.eval.num_plot_pts, nrows=4, figsize=(9,9))
+
+        scale = self.args.model.scale
+        extent = self.test_dataset.scene.c2wTransformation(pos=np.array([[-scale,-scale],[scale,scale]]), copy=False)
+        extent = extent.T.flatten()
+
+        scan_maps_comb = np.zeros((self.args.eval.num_plot_pts,self.args.eval.res_map,self.args.eval.res_map))
+        for i in range(self.args.eval.num_plot_pts):
+            scan_maps_comb[i] = scan_map_gt + 2*scan_maps[i]
+        density_map_comb = slice_map_gt + 2*density_map
+
+        # reshape
+        
+
+        ax = axes[0,0]
+        ax.imshow(slice_map_gt.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(density_map_comb))
+        ax.set_ylabel(f'GT', weight='bold')
+        ax.set_title(f'Density', weight='bold')
+        ax.set_xlabel(f'x [m]')
+
+        ax = axes[1,0]
+        ax.imshow(2*density_map.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(density_map_comb))
+        ax.set_ylabel(f'NeRF', weight='bold')
+        ax.set_xlabel(f'x [m]')
+
+        ax = axes[2,0]
+        ax.imshow(density_map_comb.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(density_map_comb))
+        ax.set_ylabel(f'GT + NeRF', weight='bold')
+        ax.set_xlabel(f'x [m]')
+
+        fig.delaxes(axes[3,0])
+        
+        rays_o_w = rays_o_w.reshape((-1, self.args.eval.res_angular, 3))
+        for i in range(self.args.eval.num_plot_pts):
+            ax = axes[0,i+1]
+            ax.imshow(scan_map_gt.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(scan_maps_comb[i]))
+            ax.scatter(rays_o_w[i,0,0], rays_o_w[i,0,1], c='w', s=5)
+            ax.scatter(rays_o_w[:,0,0], rays_o_w[:,0,1], c='w', s=5, alpha=0.1)
+            ax.set_title(f'Scan {i+1}', weight='bold')
+            ax.set_xlabel(f'x [m]')
+            ax.set_ylabel(f'y [m]')
+
+            ax = axes[1,i+1]
+            ax.imshow(2*scan_maps[i].T,origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(scan_maps_comb[i]))
+            # for i in range(0, rays_o_w.shape[0], nb_pts_step):
+            #     for j in range(depth_pos_w.shape[1]):
+            #         ax.plot([rays_o_w[i,j,0], depth_pos_w[i,j,0]], [rays_o_w[i,j,1], depth_pos_w[i,j,1]], c='w', linewidth=0.1)
+            ax.scatter(rays_o_w[i,0,0], rays_o_w[i,0,1], c='w', s=5)
+            ax.scatter(rays_o_w[:,0,0], rays_o_w[:,0,1], c='w', s=5, alpha=0.1)
+            ax.set_xlabel(f'x [m]')
+            ax.set_ylabel(f'y [m]')
+            
+            ax = axes[2,i+1]
+            ax.imshow(scan_maps_comb[i].T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(scan_maps_comb[i]))
+            # for i in range(0, rays_o_w.shape[0], nb_pts_step):
+            #     for j in range(depth_pos_w.shape[1]):
+            #         ax.plot([rays_o_w[i,j,0], depth_pos_w[i,j,0]], [rays_o_w[i,j,1], depth_pos_w[i,j,1]], c='w', linewidth=0.1)
+            ax.scatter(rays_o_w[i,0,0], rays_o_w[i,0,1], c='w', s=5)
+            ax.scatter(rays_o_w[:,0,0], rays_o_w[:,0,1], c='w', s=5, alpha=0.1)
+            ax.set_xlabel(f'x [m]')
+            ax.set_ylabel(f'y [m]')
+
+            ax = axes[3,i+1]
+            ax.hist(nn_dists[i], bins=50)
+            ax.vlines(np.nanmean(nn_dists[i]), ymin=0, ymax=20, colors='r', linestyles='dashed', label=f'avg.={np.nanmean(nn_dists[i]):.2f}')
+            if i == 0:
+                ax.set_ylabel(f'Nearest Neighbour', weight='bold')
+            else:
+                ax.set_ylabel(f'# elements')
+            ax.set_xlim([0, np.nanmax(nn_dists)])
+            ax.set_ylim([0, 25])
+            ax.set_xlabel(f'distance [m]')
+            ax.legend()
+            ax.set_box_aspect(1)
+        
+        plt.tight_layout()
+        plt.savefig(os.path.join(save_path, "scan.pdf"))
+        plt.show()
+
+    def __getMapDensity(self, res, height_w, tolerance_w):
+        """
+        Evaluate slice density.
+        Args:
+            res: number of samples in each dimension; int
+            height_w: height of slice in world coordinates (meters); float
+            tolerance_w: tolerance in world coordinates (meters); float
+        Returns:
+            density_map: density map of slice; array of shape (res,res)
+        """
+        pos_avg = self.createMapPos(
+            res_map=self.args.eval.res_map,
+            height_w=height_w,
+            tolerance_w=tolerance_w,
+        ) # (L*L*A, 3)
+
+        # render rays to get depth
+        density_map = torch.empty(0).to(self.args.device)
+        for density_batch in self.__batchifyDensity(
+                pos=pos_avg,
+                batch_size=self.args.eval.batch_size,
+                test_time=True,
+            ):
+            density_map = torch.cat((density_map, density_batch), dim=0)
+
+        density_map = density.detach().cpu().numpy().reshape(-1, self.args.eval.num_avg_heights) # (L*L, A)
+        density_map = np.nanmean(density, axis=1) # (L*L,)
+
+        # threshold density map
+        density_map[density_map < 10] = 0.0
+        density_map[density_map >= 10] = 1.0
+
+        return density_map
+    
+    def createMapPos(
+            self,
+            res_map:int,
+            height_w:float,
+            tolerance_w:float,
+    ):
+        """
+        Create map positions to evaluate density for different heights.
+        Args:
+            res_map: number of samples in each dimension (L); int
+            height_w: height of slice in world coordinates (meters); float
+            tolerance_w: tolerance in world coordinates (meters); float
+        Returns:
+            pos_avg: map positions for different heights; array of shape (L*L*A, 3)
+        """
+        # convert distances from meters to cube coordinates
+        height_c = self.train_dataset.scene.w2cTransformation(pos=np.array([[0.0, 0.0, height_w]]), copy=True)[0,2]
+        tolerance_c = self.train_dataset.scene.w2cTransformation(pos=tolerance_w, only_scale=True, copy=True)
+
+        # create map positions
+        pos = torch.linspace(self.test_dataset.scene.w2c_params["cube_min"], self.test_dataset.scene.w2c_params["cube_max"], res_map).to(self.args.device) # (L,)
+        m1, m2 = torch.meshgrid(pos, pos) # (L, L), (L, L)
+        pos = torch.stack((m1.reshape(-1), m2.reshape(-1)), dim=1) # (L*L, 2)
+
+        # create map positions for different heights
+        pos_avg = torch.zeros(res_map*res_map, self.args.eval.num_avg_heights, 3).to(self.args.device) # (L*L, A, 3)
+        for i, h_tol in enumerate(np.linspace(-tolerance_c, tolerance_c, self.args.eval.num_avg_heights)):
+            pos_avg[:,i,:2] = pos
+            pos_avg[:,i,2] = height_c + h_tol
+
+        return pos_avg.reshape(-1, 2) # (L*L*A, 3)
 
     def createScanRays(
             self,
@@ -316,7 +500,118 @@ class TrainerRH(Trainer):
 
         return rays_o_avg.reshape(-1, 3), rays_d_avg.reshape(-1, 3) # (N*M*A, 3), (N*M*A, 3)
     
-    def __renderBatches(
+    def __createScanMaps(
+            self,
+            rays_o:np.array,
+            depth:np.array,
+            scan_angles:np.array,
+    ):
+        """
+        Create scan maps for given rays and depths.
+        Args:
+            rays_o: ray origins in world coordinates (meters); numpy array of shape (N*M, 3)
+            depth: depths in wolrd coordinates (meters); numpy array of shape (N*M,)
+            scan_angles: scan angles; numpy array of shape (M,)
+        Returns:
+            scan_maps: scan maps; numpy array of shape (N, M, M)
+        """
+        M = scan_angles.shape[0]
+        N = rays_o.shape[0] // M
+        if rays_o.shape[0] % M != 0:
+            print(f"ERROR: trainer_RH.__createScanMaps(): rays_o.shape[0]={rays_o.shape[0]} % M={M} != 0")
+        
+        # convert depth to position in world coordinate system and then to map indices
+        pos = self.test_dataset.scene.convertDepth2Pos(rays_o=rays_o, scan_depth=depth, scan_angles=scan_angles) # (N*M, 2)
+        idxs = self.test_dataset.scene.w2idxTransformation(pos=pos, res=M) # (N*M, 2)
+        idxs = idxs.reshape(N, M, 2) # (N, M, 2)
+
+        # create scan map
+        scan_maps = np.zeros((N, M, M))
+        for i in range(N):
+            scan_maps[i, idxs[i,:,0], idxs[i,:,1]] = 1.0
+
+        return scan_maps # (N, M, M)
+    
+    def __evaluateStep(
+            self, 
+            results:dict, 
+            data:dict, 
+            step:int, 
+            loss:float, 
+            color_loss:float, 
+            depth_loss:float, 
+            tic:time.time,
+    ):
+        """
+        Print statistics about the current training step.
+        Args:
+            results: dict of rendered images
+                'opacity': sum(transmittance*alpha); array of shape: (N,)
+                'depth': sum(transmittance*alpha*t__i); array of shape: (N,)
+                'rgb': sum(transmittance*alpha*rgb_i); array of shape: (N, 3)
+                'total_samples': total samples for all rays; int
+                where   transmittance = exp( -sum(sigma_i * delta_i) )
+                        alpha = 1 - exp(-sigma_i * delta_i)
+                        delta_i = t_i+1 - t_i
+            data: dict of ground truth images
+                'img_idxs': image indices; array of shape (N,) or (1,) if same image
+                'pix_idxs': pixel indices; array of shape (N,)
+                'pose': poses; array of shape (N, 3, 4)
+                'direction': directions; array of shape (N, 3)
+                'rgb': pixel colours; array of shape (N, 3)
+                'depth': pixel depths; array of shape (N,)
+            step: current training step; int
+            loss: loss value; float
+            color_loss: color loss value; float
+            depth_loss: depth loss value; float
+            tic: training starting time; time.time()
+        """
+        # evaluate color and depth of one random image
+        img_idxs = np.array([np.random.randint(0, len(self.test_dataset))])
+        depth_metrics, data_w = self.evaluateDepth(img_idxs=img_idxs)
+
+        with torch.no_grad():
+            mse = F.mse_loss(results['rgb'], data['rgb'])
+            psnr = -10.0 * torch.log(mse) / np.log(10.0)
+
+        print(
+            f"time={(time.time()-tic):.2f}s | "
+            f"step={step} | "
+            f"lr={(self.optimizer.param_groups[0]['lr']):.5f} | "
+            f"loss={loss:.4f} | "
+            f"color_loss={color_loss:.4f} | "
+            f"depth_loss={depth_loss:.4f} | "
+            f"psnr={psnr:.2f} | "
+            f"depth_mnn={depth_metrics['mnn']} | "
+        )
+
+        # # calculate peak-signal-to-noise ratio
+        # with torch.no_grad():
+        #     mse = F.mse_loss(results['rgb'], data['rgb'])
+        #     psnr = -10.0 * torch.log(mse) / np.log(10.0)
+        #     error, _, _, _, _, _ = self.evaluateDepth()
+
+        # # print statistics
+        # print(
+        #     f"time={(time.time()-tic):.2f}s | "
+        #     f"step={step} | "
+        #     f"psnr={psnr:.2f} | "
+        #     f"loss={loss:.4f} | "
+        #     f"color_loss={color_loss:.4f} | "
+        #     f"depth_loss={depth_loss:.4f} | "
+        #     # number of rays
+        #     f"rays={len(data['rgb'])} | "
+        #     # ray marching samples per ray (occupied space on the ray)
+        #     f"rm_s={results['rm_samples'] / len(data['rgb']):.1f} | "
+        #     # volume rendering samples per ray 
+        #     # (stops marching when transmittance drops below 1e-4)
+        #     f"vr_s={results['vr_samples'] / len(data['rgb']):.1f} | "
+        #     f"lr={(self.optimizer.param_groups[0]['lr']):.5f} | "
+        #     f"depth_mae={error['depth_mae']:.3f} | "
+        #     f"depth_mare={error['depth_mare']:.3f} | "
+        # )
+    
+    def __batchifyRender(
             self,
             rays_o:torch.Tensor,
             rays_d:torch.Tensor,
@@ -334,25 +629,59 @@ class TrainerRH(Trainer):
             results: dict of rendered images of current batch
         """
         # calculate number of batches
-        if rays_o.shape[0] % batch_size == 0:
-            num_batches = rays_o.shape[0] // batch_size
+        N = rays_o.shape[0]
+        if N % batch_size == 0:
+            num_batches = N // batch_size
         else:
-            num_batches = rays_o.shape[0] // batch_size + 1
+            num_batches = N // batch_size + 1
 
         # render rays in batches
-        with alive_bar(num_batches, bar = 'bubbles', receipt=False) as bar:
-            for i in range(num_batches):
-                batch_start = i * batch_size
-                batch_end = min((i+1) * batch_size, rays_o.shape[0])
-                results = render(
-                    self.model, 
-                    rays_o=rays_o[batch_start:batch_end], 
-                    rays_d=rays_d[batch_start:batch_end],
-                    test_time=test_time,
-                    exp_step_factor=self.args.exp_step_factor,
-                )
-                bar()
-                yield results
+        with torch.no_grad() if test_time else nullcontext():
+            with alive_bar(num_batches, bar = 'bubbles', receipt=False) as bar:
+                for i in range(num_batches):
+                    batch_start = i * batch_size
+                    batch_end = min((i+1) * batch_size, N)
+                    results = render(
+                        self.model, 
+                        rays_o=rays_o[batch_start:batch_end], 
+                        rays_d=rays_d[batch_start:batch_end],
+                        test_time=test_time,
+                        exp_step_factor=self.args.exp_step_factor,
+                    )
+                    bar()
+                    yield results
+
+    def __batchifyDensity(
+            self,
+            pos:torch.Tensor,
+            test_time:bool,
+            batch_size:int,
+    ):
+        """
+        Batchify density rendering process.
+        Args:
+            pos: ray origins; tensor of shape (N, 3)
+            test_time: test time rendering; bool
+            batch_size: batch size; int 
+        Yields:
+            sigmas: density of current batch; tensor of shape (N,)
+        """
+        # calculate number of batches
+        N = pos.shape[0]
+        if N % batch_size == 0:
+            num_batches = N // batch_size
+        else:
+            num_batches = N // batch_size + 1
+
+        # render rays in batches
+        with torch.no_grad() if test_time else nullcontext():
+            with alive_bar(num_batches, bar = 'bubbles', receipt=False) as bar:
+                for i in range(num_batches):
+                    batch_start = i * batch_size
+                    batch_end = min((i+1) * batch_size, N)
+                    sigmas = self.model.density(pos[batch_start:batch_end])
+                    bar()
+                    yield sigmas
     
     def __printStats(self, results, data, step, loss, color_loss, depth_loss, tic):
         """

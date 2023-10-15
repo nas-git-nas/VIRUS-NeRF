@@ -9,6 +9,7 @@ from torchmetrics import (
 
 from datasets.robot_at_home_scene import RobotAtHomeScene
 from args.args import Args
+from helpers.geometric_fcts import findNearestNeighbour
 
 class Metrics():
     def __init__(
@@ -41,7 +42,8 @@ class Metrics():
             data:dict,
             eval_metrics:list,
             convert_to_world_coords:bool=True, 
-            copy:bool=True
+            copy:bool=True,
+            num_test_pts:int=None,
         ) -> dict:
         """
         Evaluate metrics listed in eval_metrics.
@@ -56,6 +58,7 @@ class Metrics():
             eval_metrics: list of metrics to evaluate; list of str
             convert_to_world_coords: convert depth to world coordinates (meters); bool
             copy: whether or not to copy input arrays/tensors; bool
+            num_test_pts: number of points to evaluate metrics on; int
         Returns:
             dict: dictionary containing the metrics; dict
         """
@@ -64,11 +67,16 @@ class Metrics():
             data = self.__copyData(data=data)
 
         # check that all required data is provided
-        self.__checkData(data=data, eval_metrics=eval_metrics)
+        self.__checkData(data=data, eval_metrics=eval_metrics, num_test_pts=num_test_pts)
 
         # convert data to right format and coordinate system
         if 'depth' in data: # TODO: change condition and function
-            data = self.convertData(data=data, eval_metrics=eval_metrics, convert_to_world_coords=convert_to_world_coords)
+            data = self.convertData(
+                data=data, 
+                eval_metrics=eval_metrics, 
+                convert_to_world_coords=convert_to_world_coords,
+                num_test_pts=num_test_pts,
+            )
 
         dict = {}
         for metric in eval_metrics:
@@ -79,7 +87,7 @@ class Metrics():
             elif metric == 'mare':
                 dict['mare'] = self.__mare(depth=data['depth'], depth_gt=data['depth_gt'])
             elif metric == 'nn':
-                nn_dists, mnn = self.__nn(pos=data['pos'], pos_gt=data['pos_gt'])
+                nn_dists, mnn = self.__nn(pos=data['pos'], pos_gt=data['pos_gt'], num_test_pts=num_test_pts)
                 dict['nn_dists'] = nn_dists
                 dict['mnn'] = mnn
             elif metric == 'psnr':
@@ -196,34 +204,26 @@ class Metrics():
     
     def __nn(
             self, 
-            pos, 
-            pos_gt
+            pos:np.array, 
+            pos_gt:np.array,
+            num_test_pts:int,
         ):
         """
         Calculate nearest neighbour distance between pos_w and pos_w_gt
         Args:
             pos: predicted position in world coordinate system; either numpy array or torch tensor (N, M, 2)
             pos_gt: ground truth position in world coordinate system; either numpy array or torch tensor (N, M, 2)
+            num_test_pts: number of test points (N); int
         Returns:
             nn_dists: nearest neighbour distances; either numpy array or torch tensor (N,)
             mnn: mean of nearest neighbour distances; float
         """
-        if torch.is_tensor(pos):
-            nn_dists = torch.zeros_like(pos)
-        else:
-            nn_dists = np.zeros_like(pos)
-        
-        for i in range(pos.shape[0]): # TODO: pos should have shape (N, M, 2)
-            if torch.is_tensor(pos):
-                _, dists = self.nnTorch(tensor1=pos_gt[i], tensor2=pos[i])
-            else:
-                _, dists = self.nnNumpy(array1=pos_gt[i], array2=pos[i])
+        nn_dists = np.zeros((num_test_pts, pos.shape[1]))
+        for i in range(num_test_pts):
+            _, dists = findNearestNeighbour(array1=pos_gt[i], array2=pos[i])
             nn_dists[i] = dists
 
-        if torch.is_tensor(pos):
-            mnn = torch.mean(nn_dists).item()
-        else:
-            mnn = np.mean(nn_dists)
+        mnn = np.mean(nn_dists)
 
         return nn_dists, mnn
     
@@ -309,6 +309,7 @@ class Metrics():
             self,
             data:dict,
             eval_metrics:list,
+            num_test_pts:int,
     ):
         """
         Check if data dictionary contains all required keys.
@@ -328,6 +329,11 @@ class Metrics():
                 eval_metrics.remove('mse')
                 eval_metrics.remove('mae')
                 eval_metrics.remove('mare')
+
+        if 'nnn' in eval_metrics:
+            if num_test_pts is None:
+                print("WARNING: num_test_pts must be provided for metric 'nnn'")
+                eval_metrics.remove('nnn')
 
         if ('psnr' in eval_metrics) or ('ssim' in eval_metrics):
             if (not 'rgb' in data) or (not 'rgb_gt' in data):
