@@ -815,6 +815,10 @@ class TrainerRH(Trainer):
         #     print("WARNING: trainer:lossFunc: depth_loss is nan, set to 0.")
         #     depth_loss = 0
 
+        if self.args.rh.sensor_model == 'RGBD' or self.args.rh.sensor_model == 'ToF':
+            val_idxs = ~torch.isnan(data['depth'])
+            return F.mse_loss(results['depth'][val_idxs], data['depth'][val_idxs])
+
         if self.args.rh.sensor_model == 'USS':
             uss_mask = ~torch.isnan(data['depth'])
             # too_close = results['depth'] < data['depth']
@@ -854,10 +858,6 @@ class TrainerRH(Trainer):
             losses[cos_region_mask] = losses_cos
             losses[lin_region_mask] = losses_lin
             return torch.mean(losses)
-
-        if self.args.rh.sensor_model == 'ToF':
-            val_idxs = ~torch.isnan(data['depth'])
-            return F.mse_loss(results['depth'][val_idxs], data['depth'][val_idxs])
         
         return 0.0
 
