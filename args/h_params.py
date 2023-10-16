@@ -67,7 +67,8 @@ class HParamsEvaluation(HParams):
         self.res_map = None
         self.res_angular = None
         self.eval_every_n_steps = None
-        self.num_test_pts = None
+        self.num_color_pts = None
+        self.num_depth_pts = None
         self.num_plot_pts = None
         self.num_avg_heights = None
         self.height_tolerance = None
