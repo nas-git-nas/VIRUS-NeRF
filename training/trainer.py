@@ -8,13 +8,14 @@ import warnings
 import torch
 import imageio
 import numpy as np
+import pandas as pd
 import taichi as ti
 from einops import rearrange
 import torch.nn.functional as F
 from abc import abstractmethod
 
-from gui import NGPGUI
-from opt import get_opts
+# from gui import NGPGUI
+# from opt import get_opts
 from args.args import Args
 from datasets import dataset_dict
 from datasets.ray_utils import get_rays
@@ -24,6 +25,7 @@ from modules.networks import NGP
 from modules.distortion import distortion_loss
 from modules.rendering import MAX_SAMPLES, render
 from modules.utils import depth2img, save_deployment_model
+
 
 from torchmetrics import (
     PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
@@ -110,7 +112,7 @@ class Trainer:
             optimizer=self.optimizer,
             T_max=self.args.training.max_steps,
             eta_min=self.args.training.lr/30,
-    )
+        )
 
     @abstractmethod
     def train(self):
@@ -126,7 +128,7 @@ class Trainer:
 
     def saveModel(self):
         """
-        Save model
+        Save model, args and logs
         """
         print(f"Saving model to {self.args.save_dir}")
         torch.save(
@@ -134,6 +136,9 @@ class Trainer:
             os.path.join(self.args.save_dir, 'model.pth'),
         )
         self.args.saveJson()
+
+        logs_df = pd.DataFrame(self.logs)
+        logs_df.to_csv(os.path.join(self.args.save_dir, 'logs.csv'), index=False)
 
     def loadCheckpoint(self, ckpt_path:str):
         """

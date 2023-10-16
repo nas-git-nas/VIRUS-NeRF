@@ -92,7 +92,7 @@ def plotTrainerRHScan(trainer:TrainerRH, res:int, res_angular:int, np_test_pts:i
     pos_w = trainer.test_dataset.scene.convertDepth2Pos(rays_o_w, depth_w, scan_angles)
     pos_w_gt = trainer.test_dataset.scene.convertDepth2Pos(rays_o_w, depth_w_gt, scan_angles)
 
-    # calculate RMSE and RMSRE (mean squared relative error)
+    #
     depth_w = depth_w.reshape(np_test_pts, res_angular)
     depth_w_gt = depth_w_gt.reshape(np_test_pts, res_angular)
     pos_w = pos_w.reshape(np_test_pts, res_angular, 2)
@@ -206,7 +206,7 @@ def test_plotTrainerRHSlice():
 
 
 def test_plotTrainerRHScan():
-    save_path = "results/robot_at_home/trained_models/20231012_1243"
+    save_path = "results/robot_at_home/trained_models/20231012_1546"
     trainer = TrainerRH(hparams_file=os.path.join("..", save_path, "hparams.json"))
     trainer.loadCheckpoint(ckpt_path=os.path.join(save_path, "model.pth"))
 
