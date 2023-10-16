@@ -338,7 +338,8 @@ class TrainerRH(Trainer):
         colour_loss = self.__colorLoss(results=results, data=data)
         depth_loss = self.__depthLoss(results=results, data=data)
         
-        total_loss = colour_loss + self.args.training.depth_loss_w * depth_loss
+        depth_loss = depth_loss * self.args.training.depth_loss_w
+        total_loss = colour_loss + depth_loss
         return total_loss, colour_loss, depth_loss
 
 
