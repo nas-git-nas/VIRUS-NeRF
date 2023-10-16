@@ -254,8 +254,8 @@ class Metrics():
             self.val_psnr(rgb_img, rgb_img_gt)
             test_psnrs.append(self.val_psnr.compute())
             self.val_psnr.reset()
-
-        return np.sum(test_psnrs) / len(test_psnrs)
+        psnrs = sum(test_psnrs) / len(test_psnrs)
+        return psnrs.detach().cpu().item()
 
     def _ssim(
             self,
@@ -284,7 +284,8 @@ class Metrics():
             test_ssims.append(self.val_ssim.compute())
             self.val_ssim.reset()
 
-        return np.sum(test_ssims) / len(test_ssims)
+        ssims = sum(test_ssims) / len(test_ssims)
+        return ssims.detach().cpu().item()
     
     def _copyData(
             self,

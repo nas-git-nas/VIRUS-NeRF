@@ -119,11 +119,13 @@ class TrainerRH(Trainer):
         img_idxs_sensor = self.test_dataset.getIdxFromSensorName(df=self.test_dataset.df, sensor_name="RGBD_1")
 
         # keep only a certain number of points
-        if self.args.eval.num_test_pts != "all":
-            idxs_temp = np.linspace(0, len(img_idxs)-1, self.args.eval.num_test_pts, dtype=int)
+        if self.args.eval.num_color_pts != "all":
+            idxs_temp = np.random.randint(0, len(img_idxs), self.args.eval.num_color_pts)
+            # idxs_temp = np.linspace(0, len(img_idxs)-1, self.args.eval.num_color_pts, dtype=int)
             img_idxs = img_idxs[idxs_temp]
 
-            idxs_temp = np.linspace(0, len(img_idxs_sensor)-1, self.args.eval.num_test_pts, dtype=int)
+        if self.args.eval.num_depth_pts != "all":
+            idxs_temp = np.linspace(0, len(img_idxs_sensor)-1, self.args.eval.num_depth_pts, dtype=int)
             img_idxs_sensor = img_idxs_sensor[idxs_temp]
 
         # evaluate color and depth
@@ -306,22 +308,22 @@ class TrainerRH(Trainer):
             data_w: data dictionary in world coordinates
             metrics_dict: metrics dictionary
         """
-        N = self.args.eval.num_test_pts
         M = self.args.eval.res_angular
-        if data_w['depth'].shape[0] != N*M:
+        N = data_w['depth'].shape[0] // M
+        if data_w['depth'].shape[0] % M != 0:
             print(f"ERROR: trainer_RH.evaluatePlot(): data_w['depth'].shape[0]={data_w['depth'].shape[0]} "
-                  f"should be equal to N={N}*M={M} = {N*M}")
+                  f"should be a multiple of M={M}")
         
         # downsample data
         depth_w = data_w['depth'].reshape((N, M)) # (N, M)
         rays_o_w = data_w['rays_o'].reshape((N, M, 3)) # (N, M, 3)
         scan_angles = data_w['scan_angles'].reshape((N, M)) # (N, M)
         nn_dists = metrics_dict['nn_dists'] # (N, M)
-        if self.args.eval.num_plot_pts > self.args.eval.num_test_pts:
+        if self.args.eval.num_plot_pts > N:
             print(f"WARNING: trainer_RH.evaluatePlot(): num_plot_pts={self.args.eval.num_plot_pts} "
-                  f"should be smaller or equal than num_test_pts={self.args.eval.num_test_pts}")
-            self.args.eval.num_plot_pts = self.args.eval.num_test_pts
-        elif self.args.eval.num_plot_pts < self.args.eval.num_test_pts:
+                  f"should be smaller or equal than N={N}")
+            self.args.eval.num_plot_pts = N
+        elif self.args.eval.num_plot_pts < N:
             idxs_temp = np.linspace(0, depth_w.shape[0]-1, self.args.eval.num_plot_pts, dtype=int)
             depth_w = depth_w[idxs_temp]
             rays_o_w = rays_o_w[idxs_temp]

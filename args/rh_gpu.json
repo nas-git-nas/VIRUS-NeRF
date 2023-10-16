@@ -19,7 +19,7 @@
         "distortion_loss_w": 0.0,
         "batch_size": 8192,
         "sampling_strategy": {"imgs": "all", "rays": "random"},
-        "max_steps": 50,
+        "max_steps": 1500,
         "lr": 1e-2,
         "depth_loss_w": 0.05,
         "random_bg": false
@@ -30,8 +30,9 @@
         "res_map": 256,
         "res_angular": 256,
         "eval_every_n_steps": 100,
-        "num_test_pts": "all",
-        "num_plot_pts": 4,
+        "num_color_pts": 10,
+        "num_depth_pts": "all",
+        "num_plot_pts": 3,
         "num_avg_heights": 10,
         "height_tolerance": 0.1,
         "density_map_thr": 10
@@ -49,7 +50,7 @@
         "room": "livingroom1",
         "subsession": "subsession_1",
         "home_session": "s1",
-        "sensor_model": "USS",
+        "sensor_model": "RGBD",
         "angle_of_view": [45, 58]
     },
     "USS":
