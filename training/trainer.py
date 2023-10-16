@@ -8,6 +8,7 @@ import warnings
 import torch
 import imageio
 import numpy as np
+import pandas as pd
 import taichi as ti
 from einops import rearrange
 import torch.nn.functional as F
@@ -127,7 +128,7 @@ class Trainer:
 
     def saveModel(self):
         """
-        Save model
+        Save model, args and logs
         """
         print(f"Saving model to {self.args.save_dir}")
         torch.save(
@@ -135,6 +136,9 @@ class Trainer:
             os.path.join(self.args.save_dir, 'model.pth'),
         )
         self.args.saveJson()
+
+        logs_df = pd.DataFrame(self.logs)
+        logs_df.to_csv(os.path.join(self.args.save_dir, 'logs.csv'), index=False)
 
     def loadCheckpoint(self, ckpt_path:str):
         """

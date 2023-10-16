@@ -8,6 +8,7 @@ import warnings
 import torch
 import imageio
 import numpy as np
+import pandas as pd
 import taichi as ti
 from einops import rearrange
 import torch.nn.functional as F
@@ -42,6 +43,17 @@ class TrainerRH(Trainer):
             rh_scene=self.train_dataset.scene,
             img_wh=self.train_dataset.img_wh,
         )
+
+        # logs
+        self.logs = {
+            'time': [],
+            'step': [],
+            'loss': [],
+            'color_loss': [],
+            'depth_loss': [],
+            'psnr': [],
+            'mnn': [],
+        }
 
     def train(self):
         """
@@ -84,16 +96,15 @@ class TrainerRH(Trainer):
             self.grad_scaler.update()
             self.scheduler.step()
 
-            if step % 1 == 0:
-                self.__evaluateStep(
-                    results=results, 
-                    data=data, 
-                    step=step, 
-                    loss=loss, 
-                    color_loss=color_loss, 
-                    depth_loss=depth_loss, 
-                    tic=tic
-                )
+            self._evaluateStep(
+                results=results, 
+                data=data, 
+                step=step, 
+                loss=loss, 
+                color_loss=color_loss, 
+                depth_loss=depth_loss, 
+                tic=tic
+            )
 
         self.saveModel()
 
@@ -106,7 +117,6 @@ class TrainerRH(Trainer):
         # get indices of all test points and of one particular sensor
         img_idxs = np.arange(len(self.test_dataset))
         img_idxs_sensor = self.test_dataset.getIdxFromSensorName(df=self.test_dataset.df, sensor_name="RGBD_1")
-        img_idxs_plot = np.copy(img_idxs_sensor)
 
         # keep only a certain number of points
         if self.args.eval.num_test_pts != "all":
@@ -116,22 +126,29 @@ class TrainerRH(Trainer):
             idxs_temp = np.linspace(0, len(img_idxs_sensor)-1, self.args.eval.num_test_pts, dtype=int)
             img_idxs_sensor = img_idxs_sensor[idxs_temp]
 
-        if self.args.eval.num_plot_pts != "all":
-            idxs_temp = np.linspace(0, len(img_idxs_plot)-1, self.args.eval.num_plot_pts, dtype=int)
-            img_idxs_plot = img_idxs_plot[idxs_temp]
-
         # evaluate color and depth
-        color_metrics = self.evaluateColor(img_idxs=img_idxs)
+        metrics_dict = self.evaluateColor(img_idxs=img_idxs)
         depth_metrics, data_w = self.evaluateDepth(img_idxs=img_idxs_sensor)
-        metrics_dict = color_metrics.update(depth_metrics)
+        metrics_dict.update(depth_metrics)
 
+        # print and save metrics
         print(
             f"evaluation: " \
-            + f"psnr_avg={color_metrics['psnr']} | " \
-            + f"ssim_avg={color_metrics['ssim']} | " \
-            + f"depth_mae={depth_metrics['mae']} | " \
-            + f"depth_mare={depth_metrics['mare']} | " \
-            + f"depth_mnn={depth_metrics['mnn']} | " \
+            + f"psnr_avg={metrics_dict['psnr']} | " \
+            + f"ssim_avg={metrics_dict['ssim']} | " \
+            + f"depth_mae={metrics_dict['mae']} | " \
+            + f"depth_mare={metrics_dict['mare']} | " \
+            + f"depth_mnn={metrics_dict['mnn']} | " \
+        )
+        metrics_df = metrics_dict.copy()
+        del metrics_df['nn_dists']
+        metrics_df = pd.DataFrame(metrics_df, index=[0])
+        metrics_df.to_csv(os.path.join(self.args.save_dir, "metrics.csv"), index=False)
+
+        # create plots
+        self.evaluatePlot(
+            data_w=data_w, 
+            metrics_dict=metrics_dict
         )
 
     @torch.no_grad()
@@ -167,7 +184,7 @@ class TrainerRH(Trainer):
         # render rays to get color
         rgb = torch.empty(0, 3).to(self.args.device)
         depth = torch.empty(0).to(self.args.device)
-        for results in self.__batchifyRender(
+        for results in self._batchifyRender(
                 rays_o=rays_o,
                 rays_d=rays_d,
                 test_time=True,
@@ -223,7 +240,7 @@ class TrainerRH(Trainer):
 
         # render rays to get depth
         depths = torch.empty(0).to(self.args.device)
-        for results in self.__batchifyRender(
+        for results in self._batchifyRender(
                 rays_o=rays_o,
                 rays_d=rays_d,
                 test_time=True,
@@ -257,7 +274,7 @@ class TrainerRH(Trainer):
         # convert depth to world coordinates (meters)
         depth_w = self.test_dataset.scene.c2wTransformation(pos=depth, only_scale=True, copy=True)
         depth_w_gt = self.test_dataset.scene.c2wTransformation(pos=depth_gt, only_scale=True, copy=True)
-        rays_o_w = self.test_dataset.scene.c2wTransformation(pos=rays_o, copy=True) # (N*M*A, 3)
+        rays_o_w = self.test_dataset.scene.c2wTransformation(pos=rays_o, copy=True) # (N*M, 3)
         data_w = {
             'depth': depth_w,
             'depth_gt': depth_w_gt,
@@ -277,26 +294,50 @@ class TrainerRH(Trainer):
 
         return metrics_dict, data_w
     
+    @torch.no_grad()
     def evaluatePlot(
             self,
             data_w:dict,
+            metrics_dict:dict,
     ):
+        """
+        Plot scan and density maps.
+        Args:
+            data_w: data dictionary in world coordinates
+            metrics_dict: metrics dictionary
+        """
+        N = self.args.eval.num_test_pts
+        M = self.args.eval.res_angular
+        if data_w['depth'].shape[0] != N*M:
+            print(f"ERROR: trainer_RH.evaluatePlot(): data_w['depth'].shape[0]={data_w['depth'].shape[0]} "
+                  f"should be equal to N={N}*M={M} = {N*M}")
+        
         # downsample data
+        depth_w = data_w['depth'].reshape((N, M)) # (N, M)
+        rays_o_w = data_w['rays_o'].reshape((N, M, 3)) # (N, M, 3)
+        scan_angles = data_w['scan_angles'].reshape((N, M)) # (N, M)
+        nn_dists = metrics_dict['nn_dists'] # (N, M)
         if self.args.eval.num_plot_pts > self.args.eval.num_test_pts:
             print(f"WARNING: trainer_RH.evaluatePlot(): num_plot_pts={self.args.eval.num_plot_pts} "
                   f"should be smaller or equal than num_test_pts={self.args.eval.num_test_pts}")
             self.args.eval.num_plot_pts = self.args.eval.num_test_pts
-        idxs_temp = np.linspace(0, self.args.eval.num_test_pts-1, self.args.eval.num_plot_pts, dtype=int)
-        depth_w = data_w['depth'][idxs_temp]
-        rays_o_w = data_w['rays_o'][idxs_temp]
+        elif self.args.eval.num_plot_pts < self.args.eval.num_test_pts:
+            idxs_temp = np.linspace(0, depth_w.shape[0]-1, self.args.eval.num_plot_pts, dtype=int)
+            depth_w = depth_w[idxs_temp]
+            rays_o_w = rays_o_w[idxs_temp]
+            scan_angles = scan_angles[idxs_temp]
+            nn_dists = nn_dists[idxs_temp]  
+        depth_w = depth_w.flatten() # (N*M,)
+        rays_o_w = rays_o_w.reshape((-1, 3)) # (N*M, 3)
+        scan_angles = scan_angles.flatten() # (N*M,)
 
         # create scan maps
-        scan_maps = self.__createScanMaps(
+        scan_maps = self._createScanMaps(
             rays_o=rays_o_w,
             depth=depth_w,
-            scan_angles=data_w['scan_angles'],
-        ) # (N, M, M)
-        scan_map_gt = data_w['scan_map_gt'] # (M, M)
+            scan_angles=scan_angles,
+        ) # (N, L, L)
+        scan_map_gt = data_w['scan_map_gt'] # (L, L)
 
         # create density maps
         density_map_gt = self.test_dataset.scene.getSliceMap(
@@ -304,11 +345,20 @@ class TrainerRH(Trainer):
             res=self.args.eval.res_map, 
             height_tolerance=self.args.eval.height_tolerance, 
             height_in_world_coord=True
-        )
-        density_map = trainer.evaluateSlice(res=res, height_w=np.mean(rays_o_w[:,2]), tolerance_w=height_tolerance) 
-        density_map[density_map < 10] = 0.0
-        density_map[density_map >= 10] = 1.0  
+        ) # (L, L)
+        density_map = self.interfereDensityMap(
+            res_map=self.args.eval.res_map,
+            height_w=np.mean(rays_o_w[:,2]),
+            num_avg_heights=self.args.eval.num_avg_heights,
+            tolerance_w=self.args.eval.height_tolerance,
+            density_map_thr=self.args.eval.density_map_thr,
+        ) # (L, L)
 
+        # create combined maps
+        scan_maps_comb = np.zeros((self.args.eval.num_plot_pts,self.args.eval.res_map,self.args.eval.res_map))
+        for i in range(self.args.eval.num_plot_pts):
+            scan_maps_comb[i] = scan_map_gt + 2*scan_maps[i]
+        density_map_comb = density_map_gt + 2*density_map
 
         # plot
         fig, axes = plt.subplots(ncols=1+self.args.eval.num_plot_pts, nrows=4, figsize=(9,9))
@@ -317,16 +367,8 @@ class TrainerRH(Trainer):
         extent = self.test_dataset.scene.c2wTransformation(pos=np.array([[-scale,-scale],[scale,scale]]), copy=False)
         extent = extent.T.flatten()
 
-        scan_maps_comb = np.zeros((self.args.eval.num_plot_pts,self.args.eval.res_map,self.args.eval.res_map))
-        for i in range(self.args.eval.num_plot_pts):
-            scan_maps_comb[i] = scan_map_gt + 2*scan_maps[i]
-        density_map_comb = slice_map_gt + 2*density_map
-
-        # reshape
-        
-
         ax = axes[0,0]
-        ax.imshow(slice_map_gt.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(density_map_comb))
+        ax.imshow(density_map_gt.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(density_map_comb))
         ax.set_ylabel(f'GT', weight='bold')
         ax.set_title(f'Density', weight='bold')
         ax.set_xlabel(f'x [m]')
@@ -387,47 +429,60 @@ class TrainerRH(Trainer):
             ax.set_box_aspect(1)
         
         plt.tight_layout()
-        plt.savefig(os.path.join(save_path, "scan.pdf"))
-        plt.show()
+        plt.savefig(os.path.join(self.args.save_dir, "maps.pdf"))
+        plt.savefig(os.path.join(self.args.save_dir, "maps.png"))
 
-    def __getMapDensity(self, res, height_w, tolerance_w):
+    def interfereDensityMap(
+            self, 
+            res_map:int, 
+            height_w:float, 
+            num_avg_heights:int,
+            tolerance_w:float,
+            density_map_thr:float,
+    ):
         """
         Evaluate slice density.
         Args:
-            res: number of samples in each dimension; int
+            res_map: number of samples in each dimension (L); int
             height_w: height of slice in world coordinates (meters); float
+            num_avg_heights: number of heights to average over (A); int
             tolerance_w: tolerance in world coordinates (meters); float
+            density_map_thr: threshold for density map; float
         Returns:
-            density_map: density map of slice; array of shape (res,res)
+            density_map: density map of slice; array of shape (L, L)
         """
+        # create position grid
         pos_avg = self.createMapPos(
-            res_map=self.args.eval.res_map,
+            res_map=res_map,
             height_w=height_w,
+            num_avg_heights=num_avg_heights,
             tolerance_w=tolerance_w,
         ) # (L*L*A, 3)
 
-        # render rays to get depth
+        # interfere density map
         density_map = torch.empty(0).to(self.args.device)
-        for density_batch in self.__batchifyDensity(
+        for density_batch in self._batchifyDensity(
                 pos=pos_avg,
                 batch_size=self.args.eval.batch_size,
                 test_time=True,
             ):
             density_map = torch.cat((density_map, density_batch), dim=0)
 
-        density_map = density.detach().cpu().numpy().reshape(-1, self.args.eval.num_avg_heights) # (L*L, A)
-        density_map = np.nanmean(density, axis=1) # (L*L,)
+        density_map = density_map.detach().cpu().numpy().reshape(-1, num_avg_heights) # (L*L, A)
+        density_map = np.nanmean(density_map, axis=1) # (L*L,)
+        density_map = density_map.reshape(res_map, res_map) # (L, L)
 
         # threshold density map
-        density_map[density_map < 10] = 0.0
-        density_map[density_map >= 10] = 1.0
+        density_map[density_map < density_map_thr] = 0.0
+        density_map[density_map >= density_map_thr] = 1.0
 
-        return density_map
+        return density_map # (L, L)
     
     def createMapPos(
             self,
             res_map:int,
             height_w:float,
+            num_avg_heights:int,
             tolerance_w:float,
     ):
         """
@@ -435,6 +490,7 @@ class TrainerRH(Trainer):
         Args:
             res_map: number of samples in each dimension (L); int
             height_w: height of slice in world coordinates (meters); float
+            num_avg_heights: number of heights to average over (A); int
             tolerance_w: tolerance in world coordinates (meters); float
         Returns:
             pos_avg: map positions for different heights; array of shape (L*L*A, 3)
@@ -449,12 +505,12 @@ class TrainerRH(Trainer):
         pos = torch.stack((m1.reshape(-1), m2.reshape(-1)), dim=1) # (L*L, 2)
 
         # create map positions for different heights
-        pos_avg = torch.zeros(res_map*res_map, self.args.eval.num_avg_heights, 3).to(self.args.device) # (L*L, A, 3)
+        pos_avg = torch.zeros(res_map*res_map, num_avg_heights, 3).to(self.args.device) # (L*L, A, 3)
         for i, h_tol in enumerate(np.linspace(-tolerance_c, tolerance_c, self.args.eval.num_avg_heights)):
             pos_avg[:,i,:2] = pos
             pos_avg[:,i,2] = height_c + h_tol
 
-        return pos_avg.reshape(-1, 2) # (L*L*A, 3)
+        return pos_avg.reshape(-1, 3) # (L*L*A, 3)
 
     def createScanRays(
             self,
@@ -500,7 +556,7 @@ class TrainerRH(Trainer):
 
         return rays_o_avg.reshape(-1, 3), rays_d_avg.reshape(-1, 3) # (N*M*A, 3), (N*M*A, 3)
     
-    def __createScanMaps(
+    def _createScanMaps(
             self,
             rays_o:np.array,
             depth:np.array,
@@ -511,14 +567,14 @@ class TrainerRH(Trainer):
         Args:
             rays_o: ray origins in world coordinates (meters); numpy array of shape (N*M, 3)
             depth: depths in wolrd coordinates (meters); numpy array of shape (N*M,)
-            scan_angles: scan angles; numpy array of shape (M,)
+            scan_angles: scan angles; numpy array of shape (N*M,)
         Returns:
             scan_maps: scan maps; numpy array of shape (N, M, M)
         """
-        M = scan_angles.shape[0]
+        M = self.args.eval.res_angular
         N = rays_o.shape[0] // M
         if rays_o.shape[0] % M != 0:
-            print(f"ERROR: trainer_RH.__createScanMaps(): rays_o.shape[0]={rays_o.shape[0]} % M={M} != 0")
+            print(f"ERROR: trainer_RH._createScanMaps(): rays_o.shape[0]={rays_o.shape[0]} % M={M} != 0")
         
         # convert depth to position in world coordinate system and then to map indices
         pos = self.test_dataset.scene.convertDepth2Pos(rays_o=rays_o, scan_depth=depth, scan_angles=scan_angles) # (N*M, 2)
@@ -532,7 +588,8 @@ class TrainerRH(Trainer):
 
         return scan_maps # (N, M, M)
     
-    def __evaluateStep(
+    @torch.no_grad()
+    def _evaluateStep(
             self, 
             results:dict, 
             data:dict, 
@@ -566,24 +623,37 @@ class TrainerRH(Trainer):
             depth_loss: depth loss value; float
             tic: training starting time; time.time()
         """
-        # evaluate color and depth of one random image
-        img_idxs = np.array([np.random.randint(0, len(self.test_dataset))])
-        depth_metrics, data_w = self.evaluateDepth(img_idxs=img_idxs)
+        # log parameters
+        self.logs['time'].append(time.time()-tic)
+        self.logs['step'].append(step)
+        self.logs['loss'].append(loss.item())
+        self.logs['color_loss'].append(color_loss.item())
+        self.logs['depth_loss'].append(depth_loss.item())
+        self.logs['psnr'].append(np.nan)
+        self.logs['mnn'].append(np.nan)
 
-        with torch.no_grad():
+        # make intermediate evaluation
+        if step % self.args.eval.eval_every_n_steps == 0:
+            # evaluate color and depth of one random image
+            img_idxs = np.array([np.random.randint(0, len(self.test_dataset))])
+            depth_metrics, data_w = self.evaluateDepth(img_idxs=img_idxs)
+
+            # calculate peak-signal-to-noise ratio
             mse = F.mse_loss(results['rgb'], data['rgb'])
             psnr = -10.0 * torch.log(mse) / np.log(10.0)
 
-        print(
-            f"time={(time.time()-tic):.2f}s | "
-            f"step={step} | "
-            f"lr={(self.optimizer.param_groups[0]['lr']):.5f} | "
-            f"loss={loss:.4f} | "
-            f"color_loss={color_loss:.4f} | "
-            f"depth_loss={depth_loss:.4f} | "
-            f"psnr={psnr:.2f} | "
-            f"depth_mnn={depth_metrics['mnn']} | "
-        )
+            self.logs['psnr'][-1] = psnr.item()
+            self.logs['mnn'][-1] = depth_metrics['mnn']
+            print(
+                f"time={(time.time()-tic):.2f}s | "
+                f"step={step} | "
+                f"lr={(self.optimizer.param_groups[0]['lr']):.5f} | "
+                f"loss={loss:.4f} | "
+                f"color_loss={color_loss:.4f} | "
+                f"depth_loss={depth_loss:.4f} | "
+                f"psnr={psnr:.2f} | "
+                f"depth_mnn={depth_metrics['mnn']} | "
+            )
 
         # # calculate peak-signal-to-noise ratio
         # with torch.no_grad():
@@ -611,7 +681,7 @@ class TrainerRH(Trainer):
         #     f"depth_mare={error['depth_mare']:.3f} | "
         # )
     
-    def __batchifyRender(
+    def _batchifyRender(
             self,
             rays_o:torch.Tensor,
             rays_d:torch.Tensor,
@@ -651,7 +721,7 @@ class TrainerRH(Trainer):
                     bar()
                     yield results
 
-    def __batchifyDensity(
+    def _batchifyDensity(
             self,
             pos:torch.Tensor,
             test_time:bool,
@@ -683,56 +753,7 @@ class TrainerRH(Trainer):
                     bar()
                     yield sigmas
     
-    def __printStats(self, results, data, step, loss, color_loss, depth_loss, tic):
-        """
-        Print statistics about the current training step.
-        Args:
-            results: dict of rendered images
-                'opacity': sum(transmittance*alpha); array of shape: (N,)
-                'depth': sum(transmittance*alpha*t__i); array of shape: (N,)
-                'rgb': sum(transmittance*alpha*rgb_i); array of shape: (N, 3)
-                'total_samples': total samples for all rays; int
-                where   transmittance = exp( -sum(sigma_i * delta_i) )
-                        alpha = 1 - exp(-sigma_i * delta_i)
-                        delta_i = t_i+1 - t_i
-            data: dict of ground truth images
-                'img_idxs': image indices; array of shape (N,) or (1,) if same image
-                'pix_idxs': pixel indices; array of shape (N,)
-                'pose': poses; array of shape (N, 3, 4)
-                'direction': directions; array of shape (N, 3)
-                'rgb': pixel colours; array of shape (N, 3)
-                'depth': pixel depths; array of shape (N,)
-            step: current training step; int
-            loss: loss value; float
-            color_loss: color loss value; float
-            depth_loss: depth loss value; float
-            tic: training starting time; time.time()
-        """
-        # calculate peak-signal-to-noise ratio
-        with torch.no_grad():
-            mse = F.mse_loss(results['rgb'], data['rgb'])
-            psnr = -10.0 * torch.log(mse) / np.log(10.0)
-            error, _, _, _, _, _ = self.evaluateDepth()
-
-        # print statistics
-        print(
-            f"time={(time.time()-tic):.2f}s | "
-            f"step={step} | "
-            f"psnr={psnr:.2f} | "
-            f"loss={loss:.4f} | "
-            f"color_loss={color_loss:.4f} | "
-            f"depth_loss={depth_loss:.4f} | "
-            # number of rays
-            f"rays={len(data['rgb'])} | "
-            # ray marching samples per ray (occupied space on the ray)
-            f"rm_s={results['rm_samples'] / len(data['rgb']):.1f} | "
-            # volume rendering samples per ray 
-            # (stops marching when transmittance drops below 1e-4)
-            f"vr_s={results['vr_samples'] / len(data['rgb']):.1f} | "
-            f"lr={(self.optimizer.param_groups[0]['lr']):.5f} | "
-            f"depth_mae={error['depth_mae']:.3f} | "
-            f"depth_mare={error['depth_mare']:.3f} | "
-        )
+    
 
     def lossFunc(self, results, data):
         """
@@ -758,15 +779,15 @@ class TrainerRH(Trainer):
             colour_loss: colour loss value; float
             depth_loss: depth loss value; float
         """
-        colour_loss = self.__colorLoss(results=results, data=data)
-        depth_loss = self.__depthLoss(results=results, data=data)
+        colour_loss = self._colorLoss(results=results, data=data)
+        depth_loss = self._depthLoss(results=results, data=data)
         
         depth_loss = depth_loss * self.args.training.depth_loss_w
         total_loss = colour_loss + depth_loss
         return total_loss, colour_loss, depth_loss
 
 
-    def __colorLoss(self, results, data):
+    def _colorLoss(self, results, data):
         """
         Loss function for training
         Args:
@@ -777,7 +798,7 @@ class TrainerRH(Trainer):
         """
         return F.mse_loss(results['rgb'], data['rgb'])
     
-    def __depthLoss(self, results, data):
+    def _depthLoss(self, results, data):
         """
         Loss function for training
         Args:
@@ -944,3 +965,54 @@ class TrainerRH(Trainer):
     #     density = np.array(density).mean(axis=0)
 
     #     return density
+
+    # def _printStats(self, results, data, step, loss, color_loss, depth_loss, tic):
+    #     """
+    #     Print statistics about the current training step.
+    #     Args:
+    #         results: dict of rendered images
+    #             'opacity': sum(transmittance*alpha); array of shape: (N,)
+    #             'depth': sum(transmittance*alpha*t__i); array of shape: (N,)
+    #             'rgb': sum(transmittance*alpha*rgb_i); array of shape: (N, 3)
+    #             'total_samples': total samples for all rays; int
+    #             where   transmittance = exp( -sum(sigma_i * delta_i) )
+    #                     alpha = 1 - exp(-sigma_i * delta_i)
+    #                     delta_i = t_i+1 - t_i
+    #         data: dict of ground truth images
+    #             'img_idxs': image indices; array of shape (N,) or (1,) if same image
+    #             'pix_idxs': pixel indices; array of shape (N,)
+    #             'pose': poses; array of shape (N, 3, 4)
+    #             'direction': directions; array of shape (N, 3)
+    #             'rgb': pixel colours; array of shape (N, 3)
+    #             'depth': pixel depths; array of shape (N,)
+    #         step: current training step; int
+    #         loss: loss value; float
+    #         color_loss: color loss value; float
+    #         depth_loss: depth loss value; float
+    #         tic: training starting time; time.time()
+    #     """
+    #     # calculate peak-signal-to-noise ratio
+    #     with torch.no_grad():
+    #         mse = F.mse_loss(results['rgb'], data['rgb'])
+    #         psnr = -10.0 * torch.log(mse) / np.log(10.0)
+    #         error, _, _, _, _, _ = self.evaluateDepth()
+
+    #     # print statistics
+    #     print(
+    #         f"time={(time.time()-tic):.2f}s | "
+    #         f"step={step} | "
+    #         f"psnr={psnr:.2f} | "
+    #         f"loss={loss:.4f} | "
+    #         f"color_loss={color_loss:.4f} | "
+    #         f"depth_loss={depth_loss:.4f} | "
+    #         # number of rays
+    #         f"rays={len(data['rgb'])} | "
+    #         # ray marching samples per ray (occupied space on the ray)
+    #         f"rm_s={results['rm_samples'] / len(data['rgb']):.1f} | "
+    #         # volume rendering samples per ray 
+    #         # (stops marching when transmittance drops below 1e-4)
+    #         f"vr_s={results['vr_samples'] / len(data['rgb']):.1f} | "
+    #         f"lr={(self.optimizer.param_groups[0]['lr']):.5f} | "
+    #         f"depth_mae={error['depth_mae']:.3f} | "
+    #         f"depth_mare={error['depth_mare']:.3f} | "
+    #     )

@@ -66,10 +66,12 @@ class HParamsEvaluation(HParams):
         self.batch_size = None
         self.res_map = None
         self.res_angular = None
+        self.eval_every_n_steps = None
         self.num_test_pts = None
         self.num_plot_pts = None
         self.num_avg_heights = None
         self.height_tolerance = None
+        self.density_map_thr = None
 
         HParams.__init__(self, name="evaluation")
 

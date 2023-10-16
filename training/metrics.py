@@ -64,10 +64,10 @@ class Metrics():
         """
         # copy input arrays/tensors
         if copy:
-            data = self.__copyData(data=data)
+            data = self._copyData(data=data)
 
         # check that all required data is provided
-        self.__checkData(data=data, eval_metrics=eval_metrics, num_test_pts=num_test_pts)
+        self._checkData(data=data, eval_metrics=eval_metrics, num_test_pts=num_test_pts)
 
         # convert data to right format and coordinate system
         if 'depth' in data: # TODO: change condition and function
@@ -81,19 +81,19 @@ class Metrics():
         dict = {}
         for metric in eval_metrics:
             if metric == 'rmse':
-                dict['rmse'] = self.__rmse(depth=data['depth'], depth_gt=data['depth_gt'])
+                dict['rmse'] = self._rmse(depth=data['depth'], depth_gt=data['depth_gt'])
             elif metric == 'mae':
-                dict['mae'] = self.__mae(depth=data['depth'], depth_gt=data['depth_gt'])
+                dict['mae'] = self._mae(depth=data['depth'], depth_gt=data['depth_gt'])
             elif metric == 'mare':
-                dict['mare'] = self.__mare(depth=data['depth'], depth_gt=data['depth_gt'])
+                dict['mare'] = self._mare(depth=data['depth'], depth_gt=data['depth_gt'])
             elif metric == 'nn':
-                nn_dists, mnn = self.__nn(pos=data['pos'], pos_gt=data['pos_gt'], num_test_pts=num_test_pts)
+                nn_dists, mnn = self._nn(pos=data['pos'], pos_gt=data['pos_gt'], num_test_pts=num_test_pts)
                 dict['nn_dists'] = nn_dists
                 dict['mnn'] = mnn
             elif metric == 'psnr':
-                dict['psnr'] = self.__psnr(rgb=data['rgb'], rgb_gt=data['rgb_gt'])
+                dict['psnr'] = self._psnr(rgb=data['rgb'], rgb_gt=data['rgb_gt'])
             elif metric == 'ssim':
-                dict['ssim'] = self.__ssim(rgb=data['rgb'], rgb_gt=data['rgb_gt'])
+                dict['ssim'] = self._ssim(rgb=data['rgb'], rgb_gt=data['rgb_gt'])
             else:
                 print(f"WARNING: metric {metric} not implemented")
 
@@ -151,7 +151,7 @@ class Metrics():
         
         return nn_idxs, nn_dists
     
-    def __rmse(
+    def _rmse(
             self,
             depth, 
             depth_gt
@@ -168,7 +168,7 @@ class Metrics():
             return torch.sqrt(torch.nanmean((depth - depth_gt)**2)).item()
         return np.sqrt(np.nanmean((depth - depth_gt)**2))
 
-    def __mae(
+    def _mae(
             self, 
             depth, 
             depth_gt
@@ -185,7 +185,7 @@ class Metrics():
             return torch.nanmean(torch.abs(depth - depth_gt)).item()
         return np.nanmean(np.abs(depth - depth_gt))
     
-    def __mare(
+    def _mare(
             self, 
             depth, 
             depth_gt
@@ -202,7 +202,7 @@ class Metrics():
             return torch.nanmean(torch.abs((depth - depth_gt)/ depth_gt)).item()
         return np.nanmean(np.abs((depth - depth_gt)/ depth_gt))
     
-    def __nn(
+    def _nn(
             self, 
             pos:np.array, 
             pos_gt:np.array,
@@ -228,7 +228,7 @@ class Metrics():
         return nn_dists, mnn
     
 
-    def __psnr(
+    def _psnr(
             self,
             rgb:torch.tensor,
             rgb_gt:torch.tensor,
@@ -257,7 +257,7 @@ class Metrics():
 
         return np.sum(test_psnrs) / len(test_psnrs)
 
-    def __ssim(
+    def _ssim(
             self,
             rgb:torch.tensor,
             rgb_gt:torch.tensor,
@@ -286,7 +286,7 @@ class Metrics():
 
         return np.sum(test_ssims) / len(test_ssims)
     
-    def __copyData(
+    def _copyData(
             self,
             data:dict,
     ):
@@ -305,7 +305,7 @@ class Metrics():
                 data_copy[key] = np.copy(value)
         return data_copy
     
-    def __checkData(
+    def _checkData(
             self,
             data:dict,
             eval_metrics:list,
