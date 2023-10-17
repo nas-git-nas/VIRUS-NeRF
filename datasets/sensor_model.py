@@ -110,8 +110,9 @@ class USSModel(SensorModel):
         self.mask = np.sqrt(m1**2 + m2**2) < r # (H, W)
         self.mask = self.mask.flatten() # (H*W,)  
 
-        self.imgs_min_depth = torch.ones((num_imgs), dtype=torch.float32) * np.inf
-        self.imgs_min_idx = torch.ones((num_imgs), dtype=torch.int32) * -1
+        self.imgs_min_depth = torch.ones((num_imgs), dtype=torch.float32).to(self.args.device) * np.inf
+        self.imgs_min_idx = torch.ones((num_imgs), dtype=torch.int32).to(self.args.device) * -1
+        self.imgs_min_counts = torch.zeros((num_imgs), dtype=torch.int32).to(self.args.device)
 
     def convertDepth(self, depths:np.array):
         """
@@ -163,8 +164,11 @@ class USSModel(SensorModel):
         pix_idxs = data['pix_idxs'][uss_mask] # (n,)
         depths = results['depth'][uss_mask] # (n,)
 
+        self.imgs_min_counts[img_idxs] += 1
+        weights = torch.exp(-self.imgs_min_counts[img_idxs]/500).to(self.args.device)
+
         # increase imgs_min_depth to avoid stagnation
-        self.imgs_min_depth *= 1 + np.exp(-10 * (step/self.args.training.max_steps))
+        self.imgs_min_depth[img_idxs] *= 1 + weights
         
         # determine minimum depth per image of batch
         min_depth_batch = torch.ones((len(self.imgs_min_depth), len(img_idxs)), dtype=torch.float).to(self.args.device) * np.inf # (num_imgs, n)
@@ -190,7 +194,7 @@ class USSModel(SensorModel):
         ) # (num_imgs,)
         self.imgs_min_depth = min_depth_temp     
 
-        return self.imgs_min_depth.clone().detach()
+        return self.imgs_min_depth.clone().detach(), weights
     
 
 
