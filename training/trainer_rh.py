@@ -106,6 +106,8 @@ class TrainerRH(Trainer):
                 tic=tic
             )
 
+            self._plotOccGrid()
+
         self.saveModel()
 
     def evaluate(self):
@@ -335,7 +337,7 @@ class TrainerRH(Trainer):
 
         # create scan maps
         scan_maps = self._createScanMaps(
-            rays_o=rays_o_w,
+            rays_o_w=rays_o_w,
             depth=depth_w,
             scan_angles=scan_angles,
         ) # (N, L, L)
@@ -508,9 +510,9 @@ class TrainerRH(Trainer):
 
         # create map positions for different heights
         pos_avg = torch.zeros(res_map*res_map, num_avg_heights, 3).to(self.args.device) # (L*L, A, 3)
-        for i, h_tol in enumerate(np.linspace(-tolerance_c, tolerance_c, self.args.eval.num_avg_heights)):
+        for i, h in enumerate(np.linspace(height_c-tolerance_c, height_c+tolerance_c, self.args.eval.num_avg_heights)):
             pos_avg[:,i,:2] = pos
-            pos_avg[:,i,2] = height_c + h_tol
+            pos_avg[:,i,2] = h
 
         return pos_avg.reshape(-1, 3) # (L*L*A, 3)
 
@@ -560,26 +562,26 @@ class TrainerRH(Trainer):
     
     def _createScanMaps(
             self,
-            rays_o:np.array,
+            rays_o_w:np.array,
             depth:np.array,
             scan_angles:np.array,
     ):
         """
         Create scan maps for given rays and depths.
         Args:
-            rays_o: ray origins in world coordinates (meters); numpy array of shape (N*M, 3)
+            rays_o_w: ray origins in world coordinates (meters); numpy array of shape (N*M, 3)
             depth: depths in wolrd coordinates (meters); numpy array of shape (N*M,)
             scan_angles: scan angles; numpy array of shape (N*M,)
         Returns:
             scan_maps: scan maps; numpy array of shape (N, M, M)
         """
         M = self.args.eval.res_angular
-        N = rays_o.shape[0] // M
-        if rays_o.shape[0] % M != 0:
-            print(f"ERROR: trainer_RH._createScanMaps(): rays_o.shape[0]={rays_o.shape[0]} % M={M} != 0")
+        N = rays_o_w.shape[0] // M
+        if rays_o_w.shape[0] % M != 0:
+            print(f"ERROR: trainer_RH._createScanMaps(): rays_o.shape[0]={rays_o_w.shape[0]} % M={M} != 0")
         
         # convert depth to position in world coordinate system and then to map indices
-        pos = self.test_dataset.scene.convertDepth2Pos(rays_o=rays_o, scan_depth=depth, scan_angles=scan_angles) # (N*M, 2)
+        pos = self.test_dataset.scene.convertDepth2Pos(rays_o=rays_o_w, scan_depth=depth, scan_angles=scan_angles) # (N*M, 2)
         idxs = self.test_dataset.scene.w2idxTransformation(pos=pos, res=M) # (N*M, 2)
         idxs = idxs.reshape(N, M, 2) # (N, M, 2)
 
@@ -654,7 +656,7 @@ class TrainerRH(Trainer):
                 f"color_loss={color_loss:.4f} | "
                 f"depth_loss={depth_loss:.4f} | "
                 f"psnr={psnr:.2f} | "
-                f"depth_mnn={depth_metrics['mnn']} | "
+                f"depth_mnn={(depth_metrics['mnn']):.2f} | "
             )
 
         # # calculate peak-signal-to-noise ratio
@@ -755,7 +757,41 @@ class TrainerRH(Trainer):
                     bar()
                     yield sigmas
     
-    
+    def _plotOccGrid(
+            self,
+    ):
+        height_c = 0.0
+
+        grid_size = self.model.grid_size
+        occ_grid_3d = self.model.density_grid[0]
+        cells = self.model.get_all_cells()[0]
+        idxs = cells[0]
+        coords = cells[1]
+
+        # convert height from cube to occupancy grid coordinates
+        height_o = grid_size * (height_c+self.args.model.scale) / (2*self.args.model.scale) 
+        height_o = int(np.round(height_o))
+
+        # keep only indices of given height
+        idxs = idxs[coords[:,2] == height_o]
+        coords = coords[coords[:,2] == height_o]
+
+        occ_grid_2d = np.zeros((grid_size, grid_size))
+        occ_grid_2d[coords[:,0], coords[:,1]] = occ_grid_3d[idxs]
+
+        print(f"occ_grid.shape={occ_grid_3d.shape}")
+        print(f"indices shape={idxs.shape}, coords shape={coords.shape}")
+
+        # plot occupancy grid
+        fig, axes = plt.subplots(ncols=1, nrows=1, figsize=(9,4))
+        ax = axes
+        ax.imshow(occ_grid_2d.T, origin='lower', cmap='viridis', vmin=0, vmax=1)
+        ax.set_xlabel(f'x [m]')
+        ax.set_ylabel(f'y [m]')
+        ax.set_title(f'Occupancy Grid at height={height_c}')
+
+        plt.tight_layout()
+        plt.show()
 
     def lossFunc(self, results, data):
         """

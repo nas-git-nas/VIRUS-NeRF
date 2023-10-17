@@ -34,13 +34,13 @@
         "num_depth_pts": 6,
         "num_plot_pts": 3,
         "num_avg_heights": 10,
-        "height_tolerance": 0.1,
+        "height_tolerance": 0.005,
         "density_map_thr": 10
     },
     "occ_grid":
     {
         "warmup_steps": 256,
-        "update_interval": 16,
+        "update_interval": 1,
         "max_res": 1024
     },
     "robot_at_home":
