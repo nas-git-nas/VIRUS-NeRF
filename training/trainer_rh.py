@@ -473,7 +473,7 @@ class TrainerRH(Trainer):
             density_map = torch.cat((density_map, density_batch), dim=0)
 
         density_map = density_map.detach().cpu().numpy().reshape(-1, num_avg_heights) # (L*L, A)
-        density_map = np.nanmean(density_map, axis=1) # (L*L,)
+        density_map = np.nanmax(density_map, axis=1) # (L*L,)
         density_map = density_map.reshape(res_map, res_map) # (L, L)
 
         # threshold density map
@@ -872,26 +872,32 @@ class TrainerRH(Trainer):
             depth_tolerance = torch.tensor(depth_tolerance, device=self.args.device, dtype=torch.float32)
             uss_mask = ~torch.isnan(data['depth'])
             depth_mask = results['depth'] < depths_min + depth_tolerance  
-            close_mask = results['depth'] < data['depth']
+            close_mask = results['depth'] < data['depth'] - depth_tolerance  
 
             # calculate loss
+            depth_loss = torch.tensor(0.0, device=self.args.device, dtype=torch.float32)
+
             depth_data = data['depth'][uss_mask & depth_mask]
             w = weights[uss_mask & depth_mask]
             depth_results = results['depth'][uss_mask & depth_mask]
             if torch.any(uss_mask & depth_mask):
-                min_loss = torch.mean((1-w) * (depth_results-depth_data)**2)
+                min_loss = torch.mean(w * (depth_results-depth_data)**2)
+                depth_loss += min_loss
+                if step%25 == 0:
+                    print(f"min_loss: {min_loss}")
 
             depth_data = data['depth'][uss_mask & close_mask]
-            w = weights[uss_mask & close_mask]
             depth_results = results['depth'][uss_mask & close_mask]
             if torch.any(uss_mask & close_mask):
-                close_loss = torch.mean(w * (depth_results-depth_data)**2)
+                close_loss = torch.mean((depth_results-depth_data)**2)
+                depth_loss += close_loss
+                if step%25 == 0:
+                    print(f"close_loss: {close_loss}")
 
             if step%25 == 0:
                 print(f"depth mask sum: {torch.sum(uss_mask & depth_mask)}, close mask sum: {torch.sum(uss_mask & close_mask)}, weights mean: {torch.mean(weights)}")
-                print(f"min_loss: {min_loss}, close_loss: {close_loss}")
             
-            return min_loss + close_loss
+            return depth_loss
         
         return torch.tensor(0.0, device=self.args.device, dtype=torch.float32)
 

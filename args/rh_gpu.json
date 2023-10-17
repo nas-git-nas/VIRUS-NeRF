@@ -21,7 +21,7 @@
         "sampling_strategy": {"imgs": "all", "rays": "random"},
         "max_steps": 1500,
         "lr": 1e-2,
-        "depth_loss_w": 10,
+        "depth_loss_w": 100,
         "random_bg": false
     },
     "evaluation":
