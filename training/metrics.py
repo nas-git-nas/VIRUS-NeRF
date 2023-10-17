@@ -223,7 +223,7 @@ class Metrics():
             _, dists = findNearestNeighbour(array1=pos_gt[i], array2=pos[i])
             nn_dists[i] = dists
 
-        mnn = np.mean(nn_dists)
+        mnn = np.nanmean(nn_dists)
 
         return nn_dists, mnn
     
