@@ -863,28 +863,35 @@ class TrainerRH(Trainer):
                 results=results,
                 data=data,
                 step=step,
-            ) # (num_test_imgs,)
+            ) # (num_test_imgs,), (num_test_imgs,)
             depths_min = imgs_depth_min[data['img_idxs']] # (N,)
+            weights = weights[data['img_idxs']] # (N,)
 
             # mask data
             depth_tolerance = self.train_dataset.scene.w2cTransformation(pos=0.03, only_scale=True, copy=True)
             depth_tolerance = torch.tensor(depth_tolerance, device=self.args.device, dtype=torch.float32)
             uss_mask = ~torch.isnan(data['depth'])
             depth_mask = results['depth'] < depths_min + depth_tolerance  
+            close_mask = results['depth'] < data['depth']
 
             # calculate loss
+            depth_data = data['depth'][uss_mask & depth_mask]
+            w = weights[uss_mask & depth_mask]
+            depth_results = results['depth'][uss_mask & depth_mask]
             if torch.any(uss_mask & depth_mask):
-                min_loss = F.mse_loss(data['depth'][uss_mask & depth_mask], results['depth'][uss_mask & depth_mask])
+                min_loss = torch.mean((1-w) * (depth_results-depth_data)**2)
 
-            close_mask = results['depth'] < data['depth']
+            depth_data = data['depth'][uss_mask & close_mask]
+            w = weights[uss_mask & close_mask]
+            depth_results = results['depth'][uss_mask & close_mask]
             if torch.any(uss_mask & close_mask):
-                close_loss = F.mse_loss(data['depth'][uss_mask & close_mask], results['depth'][uss_mask & close_mask])
+                close_loss = torch.mean(w * (depth_results-depth_data)**2)
 
             if step%25 == 0:
-                print(f"mask sum: {torch.sum(uss_mask & depth_mask)}, weights mean: {torch.mean(weights)}")
+                print(f"depth mask sum: {torch.sum(uss_mask & depth_mask)}, close mask sum: {torch.sum(uss_mask & close_mask)}, weights mean: {torch.mean(weights)}")
                 print(f"min_loss: {min_loss}, close_loss: {close_loss}")
             
-            return weights*min_loss + (1-weights)*close_loss
+            return min_loss + close_loss
         
         return torch.tensor(0.0, device=self.args.device, dtype=torch.float32)
 

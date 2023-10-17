@@ -157,6 +157,7 @@ class USSModel(SensorModel):
             step: current step; int
         Returns:
             imgs_depth_min: minimum depth per image; tensor of shape (num_imgs,)
+            weights: weights for loss; tensor of shape (num_imgs,)
         """
         # mask data
         uss_mask = ~torch.isnan(data['depth']) # (N,)
@@ -165,10 +166,10 @@ class USSModel(SensorModel):
         depths = results['depth'][uss_mask] # (n,)
 
         self.imgs_min_counts[img_idxs] += 1
-        weights = torch.exp(-self.imgs_min_counts[img_idxs]/500).to(self.args.device)
+        weights = torch.exp(-self.imgs_min_counts/500).to(self.args.device)
 
         # increase imgs_min_depth to avoid stagnation
-        self.imgs_min_depth[img_idxs] *= 1 + weights
+        self.imgs_min_depth *= 1 + weights
         
         # determine minimum depth per image of batch
         min_depth_batch = torch.ones((len(self.imgs_min_depth), len(img_idxs)), dtype=torch.float).to(self.args.device) * np.inf # (num_imgs, n)
