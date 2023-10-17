@@ -21,7 +21,7 @@
         "sampling_strategy": {"imgs": "all", "rays": "random"},
         "max_steps": 1500,
         "lr": 1e-2,
-        "depth_loss_w": 0.05,
+        "depth_loss_w": 10,
         "random_bg": false
     },
     "evaluation":
@@ -34,7 +34,7 @@
         "num_depth_pts": "all",
         "num_plot_pts": 3,
         "num_avg_heights": 10,
-        "height_tolerance": 0.1,
+        "height_tolerance": 0.005,
         "density_map_thr": 10
     },
     "occ_grid":
