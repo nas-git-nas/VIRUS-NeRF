@@ -85,7 +85,7 @@ class TrainerRH(Trainer):
                 )
 
                 # calculate loss
-                loss, color_loss, depth_loss = self.lossFunc(results=results, data=data)
+                loss, color_loss, depth_loss = self.lossFunc(results=results, data=data, step=step)
                 if self.args.training.distortion_loss_w > 0:
                     loss += self.args.training.distortion_loss_w * distortion_loss(results).mean()
 
@@ -106,7 +106,7 @@ class TrainerRH(Trainer):
                 tic=tic
             )
 
-            self._plotOccGrid()
+            # self._plotOccGrid()
 
         self.saveModel()
 
@@ -757,43 +757,43 @@ class TrainerRH(Trainer):
                     bar()
                     yield sigmas
     
-    def _plotOccGrid(
-            self,
-    ):
-        height_c = 0.0
+    # def _plotOccGrid(
+    #         self,
+    # ):
+    #     height_c = 0.0
 
-        grid_size = self.model.grid_size
-        occ_grid_3d = self.model.density_grid[0]
-        cells = self.model.get_all_cells()[0]
-        idxs = cells[0]
-        coords = cells[1]
+    #     grid_size = self.model.grid_size
+    #     occ_grid_3d = self.model.density_grid[0]
+    #     cells = self.model.get_all_cells()[0]
+    #     idxs = cells[0]
+    #     coords = cells[1]
 
-        # convert height from cube to occupancy grid coordinates
-        height_o = grid_size * (height_c+self.args.model.scale) / (2*self.args.model.scale) 
-        height_o = int(np.round(height_o))
+    #     # convert height from cube to occupancy grid coordinates
+    #     height_o = grid_size * (height_c+self.args.model.scale) / (2*self.args.model.scale) 
+    #     height_o = int(np.round(height_o))
 
-        # keep only indices of given height
-        idxs = idxs[coords[:,2] == height_o]
-        coords = coords[coords[:,2] == height_o]
+    #     # keep only indices of given height
+    #     idxs = idxs[coords[:,2] == height_o]
+    #     coords = coords[coords[:,2] == height_o]
 
-        occ_grid_2d = np.zeros((grid_size, grid_size))
-        occ_grid_2d[coords[:,0], coords[:,1]] = occ_grid_3d[idxs]
+    #     occ_grid_2d = np.zeros((grid_size, grid_size))
+    #     occ_grid_2d[coords[:,0], coords[:,1]] = occ_grid_3d[idxs]
 
-        print(f"occ_grid.shape={occ_grid_3d.shape}")
-        print(f"indices shape={idxs.shape}, coords shape={coords.shape}")
+    #     print(f"occ_grid.shape={occ_grid_3d.shape}")
+    #     print(f"indices shape={idxs.shape}, coords shape={coords.shape}")
 
-        # plot occupancy grid
-        fig, axes = plt.subplots(ncols=1, nrows=1, figsize=(9,4))
-        ax = axes
-        ax.imshow(occ_grid_2d.T, origin='lower', cmap='viridis', vmin=0, vmax=1)
-        ax.set_xlabel(f'x [m]')
-        ax.set_ylabel(f'y [m]')
-        ax.set_title(f'Occupancy Grid at height={height_c}')
+    #     # plot occupancy grid
+    #     fig, axes = plt.subplots(ncols=1, nrows=1, figsize=(9,4))
+    #     ax = axes
+    #     ax.imshow(occ_grid_2d.T, origin='lower', cmap='viridis', vmin=0, vmax=1)
+    #     ax.set_xlabel(f'x [m]')
+    #     ax.set_ylabel(f'y [m]')
+    #     ax.set_title(f'Occupancy Grid at height={height_c}')
 
-        plt.tight_layout()
-        plt.show()
+    #     plt.tight_layout()
+    #     plt.show()
 
-    def lossFunc(self, results, data):
+    def lossFunc(self, results, data, step):
         """
         Loss function for training
         Args:
@@ -812,13 +812,14 @@ class TrainerRH(Trainer):
                 'direction': directions; array of shape (N, 3)
                 'rgb': pixel colours; array of shape (N, 3)
                 'depth': pixel depths; array of shape (N,)
+            step: current training step; int
         Returns:
             total_loss: loss value; float
             colour_loss: colour loss value; float
             depth_loss: depth loss value; float
         """
         colour_loss = self._colorLoss(results=results, data=data)
-        depth_loss = self._depthLoss(results=results, data=data)
+        depth_loss = self._depthLoss(results=results, data=data, step=step)
         
         depth_loss = depth_loss * self.args.training.depth_loss_w
         total_loss = colour_loss + depth_loss
@@ -836,12 +837,13 @@ class TrainerRH(Trainer):
         """
         return F.mse_loss(results['rgb'], data['rgb'])
     
-    def _depthLoss(self, results, data):
+    def _depthLoss(self, results, data, step):
         """
         Loss function for training
         Args:
             results: dict of rendered images
             data: dict of ground truth images
+            step: current training step; int
         Returns:
             depth_loss: depth loss value; float
         """
@@ -856,46 +858,31 @@ class TrainerRH(Trainer):
             return F.mse_loss(results['depth'][val_idxs], data['depth'][val_idxs])
 
         if self.args.rh.sensor_model == 'USS':
+            # get minimum depth per image for batch 
+            imgs_depth_min = self.train_dataset.sensor_model.updateDepthMin(
+                results=results,
+                data=data,
+                step=step,
+            ) # (num_test_imgs,)
+            depths_min = imgs_depth_min[data['img_idxs']] # (N,)
+
+            # mask data
+            depth_tolerance = 0.01
             uss_mask = ~torch.isnan(data['depth'])
-            # too_close = results['depth'] < data['depth']
-            # if torch.any(too_close & uss_mask):
-            #     depth_loss = F.mse_loss(results['depth'][too_close & uss_mask], data['depth'][too_close & uss_mask])
-            # else:
-            #     # depth_loss = (torch.min(results['depth']) - data['depth'][uss_mask][0])**2
+            depth_mask = results['depth'] < depths_min + depth_tolerance  
 
-            #     # conv_mask_size = 3
-            #     # conv_mask = torch.ones(1,1,conv_mask_size,conv_mask_size).to(self.args.device)
-            #     # W, H = self.train_dataset.img_wh
-            #     # depth_results = torch.zeros(H*W).to(self.args.device) # (H*W)
-            #     # depth_results[data['pix_idxs']] = results['depth']
-            #     # depth_conv = F.conv2d(depth_results.reshape(H, W), weight=conv_mask, padding='same').reshape(H, W) # (H, W)
-            #     # depth_conv = depth_conv.reshape(H*W)[data['pix_idxs']] # (N,)
+            # print(f"mask sum: {torch.sum(uss_mask & depth_mask)}")
+            # print(f"img depth min avg: {torch.mean(imgs_depth_min)}")
 
-            #     depths_w = torch.exp( -(results['depth'][uss_mask] - torch.min(results['depth'][uss_mask]))/0.1 )
-            #     depths_w = depths_w / torch.sum(depths_w)
-            #     depth_loss = torch.sum(depths_w * torch.abs(results['depth'][uss_mask] - data['depth'][uss_mask]))
-            # return depth_loss
+            # error_idxs = results['depth'][uss_mask] < depths_min[uss_mask] - 0.0001
+            # if torch.any(error_idxs):
+            #     print(f"ERROR: sum: {torch.sum(error_idxs)}")
 
-
-            # threshold = 0.2
-            # depth_error = torch.abs(results['depth'] - data['depth'])
-            # depth_mask = depth_error < threshold
-            # return torch.mean( 0.5 * (1 - torch.cos(2*np.pi * depth_error[uss_mask & depth_mask] / threshold)) )
-
-            threshold = 0.1
-
-            depth_error = results['depth'][uss_mask] - data['depth'][uss_mask]
-            cos_region_mask = (depth_error > -0.5*threshold) & (depth_error < threshold)
-            lin_region_mask = depth_error <= -0.5*threshold
-
-            losses = (2*threshold/np.pi) * torch.ones_like(depth_error).to(self.args.device)
-            losses_cos = (threshold/np.pi) * (1 - torch.cos(2*np.pi * depth_error[cos_region_mask] / (2*threshold)).to(self.args.device))
-            losses_lin = (2*threshold/np.pi) * (0.5 - np.pi/4 - depth_error[lin_region_mask] * np.pi / (2*threshold))
-            losses[cos_region_mask] = losses_cos
-            losses[lin_region_mask] = losses_lin
-            return torch.mean(losses)
+            # calculate loss
+            if torch.any(uss_mask & depth_mask):
+                return F.mse_loss(data['depth'][uss_mask & depth_mask], depths_min[uss_mask & depth_mask])
         
-        return 0.0
+        return torch.tensor(0.0, device=self.args.device, dtype=torch.float32)
 
 
 
@@ -1054,3 +1041,66 @@ class TrainerRH(Trainer):
     #         f"depth_mae={error['depth_mae']:.3f} | "
     #         f"depth_mare={error['depth_mare']:.3f} | "
     #     )
+
+
+
+        # def _depthLoss(self, results, data):
+        # """
+        # Loss function for training
+        # Args:
+        #     results: dict of rendered images
+        #     data: dict of ground truth images
+        # Returns:
+        #     depth_loss: depth loss value; float
+        # """
+        # # val_idxs = ~torch.isnan(data['depth'])
+        # # depth_loss = self.args.training.depth_loss_w * F.mse_loss(results['depth'][val_idxs], data['depth'][val_idxs])
+        # # if torch.all(torch.isnan(depth_loss)):
+        # #     print("WARNING: trainer:lossFunc: depth_loss is nan, set to 0.")
+        # #     depth_loss = 0
+
+        # if self.args.rh.sensor_model == 'RGBD' or self.args.rh.sensor_model == 'ToF':
+        #     val_idxs = ~torch.isnan(data['depth'])
+        #     return F.mse_loss(results['depth'][val_idxs], data['depth'][val_idxs])
+
+        # if self.args.rh.sensor_model == 'USS':
+        #     uss_mask = ~torch.isnan(data['depth'])
+        #     # too_close = results['depth'] < data['depth']
+        #     # if torch.any(too_close & uss_mask):
+        #     #     depth_loss = F.mse_loss(results['depth'][too_close & uss_mask], data['depth'][too_close & uss_mask])
+        #     # else:
+        #     #     # depth_loss = (torch.min(results['depth']) - data['depth'][uss_mask][0])**2
+
+        #     #     # conv_mask_size = 3
+        #     #     # conv_mask = torch.ones(1,1,conv_mask_size,conv_mask_size).to(self.args.device)
+        #     #     # W, H = self.train_dataset.img_wh
+        #     #     # depth_results = torch.zeros(H*W).to(self.args.device) # (H*W)
+        #     #     # depth_results[data['pix_idxs']] = results['depth']
+        #     #     # depth_conv = F.conv2d(depth_results.reshape(H, W), weight=conv_mask, padding='same').reshape(H, W) # (H, W)
+        #     #     # depth_conv = depth_conv.reshape(H*W)[data['pix_idxs']] # (N,)
+
+        #     #     depths_w = torch.exp( -(results['depth'][uss_mask] - torch.min(results['depth'][uss_mask]))/0.1 )
+        #     #     depths_w = depths_w / torch.sum(depths_w)
+        #     #     depth_loss = torch.sum(depths_w * torch.abs(results['depth'][uss_mask] - data['depth'][uss_mask]))
+        #     # return depth_loss
+
+
+        #     # threshold = 0.2
+        #     # depth_error = torch.abs(results['depth'] - data['depth'])
+        #     # depth_mask = depth_error < threshold
+        #     # return torch.mean( 0.5 * (1 - torch.cos(2*np.pi * depth_error[uss_mask & depth_mask] / threshold)) )
+
+        #     threshold = 0.1
+
+        #     depth_error = results['depth'][uss_mask] - data['depth'][uss_mask]
+        #     cos_region_mask = (depth_error > -0.5*threshold) & (depth_error < threshold)
+        #     lin_region_mask = depth_error <= -0.5*threshold
+
+        #     losses = (2*threshold/np.pi) * torch.ones_like(depth_error).to(self.args.device)
+        #     losses_cos = (threshold/np.pi) * (1 - torch.cos(2*np.pi * depth_error[cos_region_mask] / (2*threshold)).to(self.args.device))
+        #     losses_lin = (2*threshold/np.pi) * (0.5 - np.pi/4 - depth_error[lin_region_mask] * np.pi / (2*threshold))
+        #     losses[cos_region_mask] = losses_cos
+        #     losses[lin_region_mask] = losses_lin
+        #     return torch.mean(losses)
+        
+        # return 0.0

@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 import matplotlib.pyplot as plt
 from abc import abstractmethod
 import skimage.measure
@@ -97,7 +98,7 @@ class ToFModel(SensorModel):
 
 
 class USSModel(SensorModel):
-    def __init__(self, args, img_wh) -> None:
+    def __init__(self, args, img_wh, num_imgs) -> None:
         SensorModel.__init__(self, args, img_wh)
         # define USS opening angle
         r = self.AoV2pixel(aov_sensor=args.uss.angle_of_view) / 2
@@ -108,6 +109,9 @@ class USSModel(SensorModel):
         m2 = m2 - self.W/2
         self.mask = np.sqrt(m1**2 + m2**2) < r # (H, W)
         self.mask = self.mask.flatten() # (H*W,)  
+
+        self.imgs_min_depth = torch.ones((num_imgs), dtype=torch.float32) * np.inf
+        self.imgs_min_idx = torch.ones((num_imgs), dtype=torch.int32) * -1
 
     def convertDepth(self, depths:np.array):
         """
@@ -136,6 +140,57 @@ class USSModel(SensorModel):
         # depths_out[:, self.mask] = depths_m_out
 
         return depths_out
+    
+
+    def updateDepthMin(
+            self, 
+            results:dict, 
+            data:dict,
+            step:int,
+    ):
+        """
+        Update the minimum depth of each image and the corresponding pixel index.
+        Args:
+            results: results of inference; dict
+            data: data; dict
+            step: current step; int
+        Returns:
+            imgs_depth_min: minimum depth per image; tensor of shape (num_imgs,)
+        """
+        # mask data
+        uss_mask = ~torch.isnan(data['depth']) # (N,)
+        img_idxs = data['img_idxs'][uss_mask] # (n,)
+        pix_idxs = data['pix_idxs'][uss_mask] # (n,)
+        depths = results['depth'][uss_mask] # (n,)
+
+        # increase imgs_min_depth to avoid stagnation
+        self.imgs_min_depth *= 1 + np.exp(-10 * (step/self.args.training.max_steps))
+        
+        # determine minimum depth per image of batch
+        min_depth_batch = torch.ones((len(self.imgs_min_depth), len(img_idxs)), dtype=torch.float).to(self.args.device) * np.inf # (num_imgs, n)
+        min_depth_batch[img_idxs, np.arange(len(img_idxs))] = depths
+        min_idx_batch = torch.argmin(min_depth_batch, dim=1) # (num_imgs,)
+        min_idx_pix = pix_idxs[min_idx_batch] # (num_imgs,)
+        min_depth_batch = min_depth_batch[torch.arange(len(min_idx_batch)), min_idx_batch] # (num_imgs,)
+
+        # update minimum depth and minimum indices
+        min_depth_temp = torch.where(
+            condition=(min_idx_pix == self.imgs_min_idx),
+            input=min_depth_batch,
+            other=torch.minimum(self.imgs_min_depth, min_depth_batch)
+        ) # (num_imgs,)
+        self.imgs_min_idx = torch.where(
+            condition=(min_idx_pix == self.imgs_min_idx),
+            input=min_idx_pix,
+            other=torch.where(
+                condition=(self.imgs_min_depth <= min_depth_batch),
+                input=self.imgs_min_idx,
+                other=min_idx_pix
+            )
+        ) # (num_imgs,)
+        self.imgs_min_depth = min_depth_temp     
+
+        return self.imgs_min_depth.clone().detach()
     
 
 

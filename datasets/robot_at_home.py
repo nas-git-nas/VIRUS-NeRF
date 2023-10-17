@@ -65,7 +65,11 @@ class RobotAtHomeDataset(BaseDataset):
         if self.args.rh.sensor_model == "ToF":
             self.sensor_model = ToFModel(args=args, img_wh=self.img_wh)
         elif self.args.rh.sensor_model == "USS":
-            self.sensor_model = USSModel(args=args, img_wh=self.img_wh)
+            self.sensor_model = USSModel(
+                args=args, 
+                img_wh=self.img_wh,
+                num_imgs=self.df.shape[0],
+            )
         else:
             self.sensor_model = None
 

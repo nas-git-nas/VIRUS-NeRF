@@ -19,9 +19,9 @@
         "distortion_loss_w": 0.0,
         "batch_size": 8192,
         "sampling_strategy": {"imgs": "all", "rays": "random"},
-        "max_steps": 4,
+        "max_steps": 50,
         "lr": 1e-2,
-        "depth_loss_w": 1000.0,
+        "depth_loss_w": 10.0,
         "random_bg": false
     },
     "evaluation":
@@ -40,7 +40,7 @@
     "occ_grid":
     {
         "warmup_steps": 256,
-        "update_interval": 1,
+        "update_interval": 16,
         "max_res": 1024
     },
     "robot_at_home":
@@ -50,7 +50,7 @@
         "room": "livingroom1",
         "subsession": "subsession_1",
         "home_session": "s1",
-        "sensor_model": "RGBD",
+        "sensor_model": "USS",
         "angle_of_view": [45, 58]
     },
     "USS":
