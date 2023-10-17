@@ -859,7 +859,7 @@ class TrainerRH(Trainer):
 
         if self.args.rh.sensor_model == 'USS':
             # get minimum depth per image for batch 
-            imgs_depth_min, weights = self.train_dataset.sensor_model.updateDepthMin(
+            imgs_depth_min = self.train_dataset.sensor_model.updateDepthMin(
                 results=results,
                 data=data,
                 step=step,
@@ -867,24 +867,20 @@ class TrainerRH(Trainer):
             depths_min = imgs_depth_min[data['img_idxs']] # (N,)
 
             # mask data
-            depth_tolerance = self.train_dataset.scene.w2cTransformation(pos=0.03, only_scale=True, copy=True)
-            depth_tolerance = torch.tensor(depth_tolerance, device=self.args.device, dtype=torch.float32)
+            depth_tolerance = 0.01
             uss_mask = ~torch.isnan(data['depth'])
             depth_mask = results['depth'] < depths_min + depth_tolerance  
 
+            print(f"mask sum: {torch.sum(uss_mask & depth_mask)}")
+            # print(f"img depth min avg: {torch.mean(imgs_depth_min)}")
+
+            # error_idxs = results['depth'][uss_mask] < depths_min[uss_mask] - 0.0001
+            # if torch.any(error_idxs):
+            #     print(f"ERROR: sum: {torch.sum(error_idxs)}")
+
             # calculate loss
             if torch.any(uss_mask & depth_mask):
-                min_loss = F.mse_loss(data['depth'][uss_mask & depth_mask], results['depth'][uss_mask & depth_mask])
-
-            close_mask = results['depth'] < data['depth']
-            if torch.any(uss_mask & close_mask):
-                close_loss = F.mse_loss(data['depth'][uss_mask & close_mask], results['depth'][uss_mask & close_mask])
-
-            if step%25 == 0:
-                print(f"mask sum: {torch.sum(uss_mask & depth_mask)}, weights mean: {torch.mean(weights)}")
-                print(f"min_loss: {min_loss}, close_loss: {close_loss}")
-            
-            return weights*min_loss + (1-weights)*close_loss
+                return F.mse_loss(data['depth'][uss_mask & depth_mask], depths_min[uss_mask & depth_mask])
         
         return torch.tensor(0.0, device=self.args.device, dtype=torch.float32)
 
