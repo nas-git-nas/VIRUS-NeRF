@@ -147,14 +147,12 @@ class USSModel(SensorModel):
             self, 
             results:dict, 
             data:dict,
-            step:int,
     ):
         """
         Update the minimum depth of each image and the corresponding pixel index.
         Args:
             results: results of inference; dict
             data: data; dict
-            step: current step; int
         Returns:
             imgs_depth_min: minimum depth per image; tensor of shape (num_imgs,)
             weights: weights for loss; tensor of shape (num_imgs,)

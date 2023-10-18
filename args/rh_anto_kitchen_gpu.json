@@ -1,0 +1,66 @@
+{
+    "dataset":
+    {
+        "path": "/media/scratch1/schmin/data/robot_at_home",
+        "name": "robot_at_home",
+        "split_ratio": {"train": 0.8, "val": 0.1, "test": 0.1},
+        "downsample": 1.0,
+        "keep_N_observations": "all",
+        "keep_sensor": "all"
+    },
+    "model":
+    {
+        "ckpt_path": false, 
+        "scale": 0.5,
+        "encoder_type": "hash"
+    },
+    "training":
+    {
+        "distortion_loss_w": 0.0,
+        "batch_size": 8192,
+        "sampling_strategy": {"imgs": "all", "rays": "closest"},
+        "max_steps": 1500,
+        "lr": 1e-2,
+        "depth_loss_w": 100,
+        "random_bg": false
+    },
+    "evaluation":
+    {
+        "batch_size": 16384,
+        "res_map": 256,
+        "res_angular": 256,
+        "eval_every_n_steps": 100,
+        "num_color_pts": 10,
+        "num_depth_pts": "all",
+        "num_plot_pts": 3,
+        "num_avg_heights": 10,
+        "height_tolerance": 0.005,
+        "density_map_thr": 10
+    },
+    "occ_grid":
+    {
+        "warmup_steps": 256,
+        "update_interval": 16,
+        "max_res": 1024
+    },
+    "robot_at_home":
+    {
+        "session": "session_2",
+        "home": "anto",
+        "room": "kitchen1",
+        "subsession": "subsession_1",
+        "home_session": "s1",
+        "sensor_model": "USS",
+        "angle_of_view": [45, 58]
+    },
+    "USS":
+    {
+        "angle_of_view": [30, 30]
+    },
+    "ToF":
+    {
+        "angle_of_view": [42.4, 42.4],
+        "matrix": [8, 8]
+    }
+    
+}
