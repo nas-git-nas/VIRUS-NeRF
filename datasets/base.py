@@ -71,8 +71,9 @@ class BaseDataset(Dataset):
                 pix_idxs = torch.clamp(pix_idxs, min=0, max=self.img_wh[0]*self.img_wh[1]-1)
             elif self.args.training.sampling_strategy["rays"] == "closest":
                 pix_idxs = torch.randint(0, self.img_wh[0]*self.img_wh[1], size=(self.args.training.batch_size,), device=self.rays.device)
+                num_min_idxs = int(0.005 * self.args.training.batch_size)
                 pix_min_idxs = self.sensor_model.imgs_min_idx
-                pix_idxs[:100] = pix_min_idxs[img_idxs[:100]]
+                pix_idxs[:num_min_idxs] = pix_min_idxs[img_idxs[:num_min_idxs]]
             else:
                 print(f"ERROR: base.py: __getitem__: pixel sampling strategy must be either 'random' or 'ordered' " \
                       f"but is {self.args.training.sampling_strategy['pixels']}")
