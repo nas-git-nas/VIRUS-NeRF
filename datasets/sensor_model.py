@@ -169,8 +169,8 @@ class USSModel(SensorModel):
         # weights = torch.exp(-self.imgs_min_counts/1000).to(self.args.device)
         weights = 1 - 1/(1 + self.imgs_min_counts/100)
 
-        # increase imgs_min_depth to avoid stagnation
-        self.imgs_min_depth[img_idxs] *= 1 + 1/(1 + self.imgs_min_counts[img_idxs])
+        # # increase imgs_min_depth to avoid stagnation
+        # self.imgs_min_depth[img_idxs] *= 1 + 1/(1 + self.imgs_min_counts[img_idxs])
         
         # determine minimum depth per image of batch
         min_depth_batch = torch.ones((len(self.imgs_min_depth), len(img_idxs)), dtype=torch.float).to(self.args.device) * np.inf # (num_imgs, n)

@@ -41,7 +41,7 @@ class BaseDataset(Dataset):
             if self.args.training.sampling_strategy["imgs"] == "all":
                 img_idxs = torch.randint(0, len(self.poses), size=(self.args.training.batch_size,), device=self.rays.device)
             elif self.args.training.sampling_strategy["imgs"] == "same":
-                img_idxs = idx * torch.ones(self.args.training.batch_size, dtype=torch.int64, device=self.rays.device)
+                img_idxs = idx * torch.ones(self.args.training.batch_size, dtype=torch.int64, device=self.rays.device)               
             else:
                 print(f"ERROR: base.py: __getitem__: image sampling strategy must be either 'all' or 'same' " \
                       f"but is {self.args.training.sampling_strategy['imgs']}")
@@ -69,6 +69,10 @@ class BaseDataset(Dataset):
                 rand_offset = step * torch.rand(size=(self.args.training.batch_size,), device=self.rays.device)
                 pix_idxs = torch.round(pix_idxs + rand_offset).to(torch.int64)
                 pix_idxs = torch.clamp(pix_idxs, min=0, max=self.img_wh[0]*self.img_wh[1]-1)
+            elif self.args.training.sampling_strategy["rays"] == "closest":
+                pix_idxs = torch.randint(0, self.img_wh[0]*self.img_wh[1], size=(self.args.training.batch_size,), device=self.rays.device)
+                pix_min_idxs = self.sensor_model.imgs_min_idx
+                pix_idxs[:100] = pix_min_idxs[img_idxs[:100]]
             else:
                 print(f"ERROR: base.py: __getitem__: pixel sampling strategy must be either 'random' or 'ordered' " \
                       f"but is {self.args.training.sampling_strategy['pixels']}")
