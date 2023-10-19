@@ -19,7 +19,8 @@
         "distortion_loss_w": 0.0,
         "batch_size": 8192,
         "sampling_strategy": {"imgs": "all", "rays": "closest"},
-        "max_steps": 50,
+        "sensors": ["RGBD", "ToF", "USS"],
+        "max_steps": 4,
         "lr": 1e-2,
         "depth_loss_w": 10.0,
         "random_bg": false
@@ -49,8 +50,10 @@
         "home": "anto",
         "room": "kitchen1",
         "subsession": "subsession_1",
-        "home_session": "s1",
-        "sensor_model": "USS",
+        "home_session": "s1"
+    },
+    "RGBD":
+    {
         "angle_of_view": [45, 58]
     },
     "USS":

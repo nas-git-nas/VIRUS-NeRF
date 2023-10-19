@@ -3,9 +3,9 @@ import torch
 import matplotlib.pyplot as plt
 from abc import abstractmethod
 import skimage.measure
+from typing import TypedDict
 
 from args.args import Args
-
 
 
 class SensorModel():
@@ -48,8 +48,28 @@ class SensorModel():
         Returns:
             num_pixels: width in pixels; int
         """
-        num_pixels = np.min((self.W, self.H)) * np.min(aov_sensor) / np.min(self.args.rh.angle_of_view)
+        num_pixels = np.min((self.W, self.H)) * np.min(aov_sensor) / np.min(self.args.rgbd.angle_of_view)
         return np.round(num_pixels).astype(int)
+    
+
+class RGBDModel(SensorModel):
+    def __init__(self, args:Args, img_wh:tuple) -> None:
+        """
+        Sensor model for Time of Flight (ToF) sensor.
+        Args:
+            img_wh: image width and height, tuple of int
+        """
+        SensorModel.__init__(self, args, img_wh)     
+
+    def convertDepth(self, depths):
+        """
+        Convert depth img using ToF sensor model. Set all unknown depths to nan.
+        Args:
+            depths: depth img; array of shape (N, H*W)
+        Returns:
+            depths: depth img converted to ToF sensor array; array of shape (N, H*W)
+        """
+        return np.copy(depths)
 
 
 class ToFModel(SensorModel):
@@ -158,7 +178,7 @@ class USSModel(SensorModel):
             weights: weights for loss; tensor of shape (num_imgs,)
         """
         # mask data
-        uss_mask = ~torch.isnan(data['depth']) # (N,)
+        uss_mask = ~torch.isnan(data['depth']['USS']) # (N,)
         img_idxs = data['img_idxs'][uss_mask] # (n,)
         pix_idxs = data['pix_idxs'][uss_mask] # (n,)
         depths = results['depth'][uss_mask] # (n,)
@@ -195,10 +215,6 @@ class USSModel(SensorModel):
         self.imgs_min_depth = min_depth_temp     
 
         return self.imgs_min_depth.clone().detach(), weights
-    
-
-
-    
 
 
 

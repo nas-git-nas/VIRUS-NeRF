@@ -47,6 +47,7 @@ class HParamsTraining(HParams):
         self.distortion_loss_w = None
         self.batch_size = None
         self.sampling_strategy = None
+        self.sensors = None
         self.max_steps = None
         self.lr = None
         self.depth_loss_w = None
@@ -95,10 +96,16 @@ class HParamsRobotAtHome(HParams):
         self.room = None
         self.subsession = None
         self.home_session = None
-        self.sensor_model = None
-        self.angle_of_view = None
 
         HParams.__init__(self, name="robot_at_home")
+
+
+class HParamsRGBD(HParams):
+    def __init__(self):
+        # hyper parameters
+        self.angle_of_view = None
+
+        HParams.__init__(self, name="RGBD")
 
 
 class HParamsUSS(HParams):
