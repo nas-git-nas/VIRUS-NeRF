@@ -63,6 +63,7 @@ class MetricsRH(Metrics):
 
         data['depth'] = depth
         data['depth_gt'] = depth_gt
-        data['pos'] = pos
-        data['pos_gt'] = pos_gt
+        if 'nn' in eval_metrics:
+            data['pos'] = pos
+            data['pos_gt'] = pos_gt
         return data

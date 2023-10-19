@@ -1,9 +1,10 @@
 import numpy as np
 from alive_progress import alive_bar
+from contextlib import nullcontext
 
 
 
-def findNearestNeighbour(array1, array2, batch_size=None, progress_bar=False):
+def findNearestNeighbour(array1, array2, batch_size=None, progress_bar=False, ignore_nan=False):
     """
     Find the closest points in array2 for each point in array1
     and return the indices of array2 for each point in array1.
@@ -12,6 +13,7 @@ def findNearestNeighbour(array1, array2, batch_size=None, progress_bar=False):
         array2: array of float (M, 2/3)
         batch_size: batchify array1 to avoid memory error, if None, batch_size = N; int/None
         progress_bar: show progress bar; bool
+        ignore_nan: ignore nan values in array2; bool
     Returns:
         nn_idxs: indices of nearest neighbours from array2 with respect to array1; array of int (N,)
         nn_dists: distances of nearest neighbours from array2 with respect to array1; array of float (N,)
@@ -19,6 +21,10 @@ def findNearestNeighbour(array1, array2, batch_size=None, progress_bar=False):
     # downsample arrays
     array1 = np.copy(array1.astype(np.float32))
     array2 = np.copy(array2.astype(np.float32))
+
+    # remove nan values
+    if ignore_nan:
+        array2 = array2[~np.isnan(array2).any(axis=1)]
 
     # define batch size
     if batch_size is None:
@@ -29,7 +35,7 @@ def findNearestNeighbour(array1, array2, batch_size=None, progress_bar=False):
 
     # determine nearest neighbour indices
     nn_idxs = np.zeros(array1.shape[0], dtype=np.int32) # (N,)
-    with alive_bar(array1.shape[0]//batch_size, bar = 'bubbles', receipt=False) as bar:
+    with alive_bar(array1.shape[0]//batch_size, bar = 'bubbles', receipt=False) if progress_bar else nullcontext() as bar:
 
         # split calculation in batches to avoid memory error
         for i in range(0, array1.shape[0], batch_size):

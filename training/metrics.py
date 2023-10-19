@@ -220,7 +220,11 @@ class Metrics():
         """
         nn_dists = np.zeros((num_test_pts, pos.shape[1]))
         for i in range(num_test_pts):
-            _, dists = findNearestNeighbour(array1=pos_gt[i], array2=pos[i])
+            _, dists = findNearestNeighbour(
+                array1=pos_gt[i], 
+                array2=pos[i],
+                ignore_nan=True,
+            )
             nn_dists[i] = dists
 
         mnn = np.nanmean(nn_dists)
@@ -319,27 +323,34 @@ class Metrics():
             eval_metrics: list of metrics to evaluate; list of str
         """
         if 'nn' in eval_metrics:
-            if (not 'rays_o' in data) or (not 'scan_angles' in data):
-                print("WARNING: rays_o and scan_angles must be provided for metric 'nn'")
+            if (not 'rays_o' in data) or (not 'scan_angles' in data) or (not 'depth' in data) \
+                or (not 'depth_gt' in data) or (num_test_pts is None):
+                print("WARNING: rays_o, scan_angles, depth, depth_gt and num_test_pts must be provided for metric 'nn'")
                 eval_metrics.remove('nn')
-
-        if ('nn' in eval_metrics) or ('mse' in eval_metrics) or ('mae' in eval_metrics) or ('mare' in eval_metrics):
+        
+        if ('mse' in eval_metrics):
             if (not 'depth' in data) or (not 'depth_gt' in data):
-                print("WARNING: pos must be provided for metrics 'nn', 'mse', 'mae', 'mare'")
-                eval_metrics.remove('nn')
+                print("WARNING: depth and depth_gt must be provided for metric 'mse'")
                 eval_metrics.remove('mse')
+
+        if ('mae' in eval_metrics):
+            if (not 'depth' in data) or (not 'depth_gt' in data):
+                print("WARNING: depth and depth_gt must be provided for metric 'mae'")
                 eval_metrics.remove('mae')
+
+        if ('mare' in eval_metrics):
+            if (not 'depth' in data) or (not 'depth_gt' in data):
+                print("WARNING: depth and depth_gt must be provided for metrics 'mare'")
                 eval_metrics.remove('mare')
 
-        if 'nnn' in eval_metrics:
-            if num_test_pts is None:
-                print("WARNING: num_test_pts must be provided for metric 'nnn'")
-                eval_metrics.remove('nnn')
-
-        if ('psnr' in eval_metrics) or ('ssim' in eval_metrics):
+        if ('ssim' in eval_metrics):
             if (not 'rgb' in data) or (not 'rgb_gt' in data):
-                print("WARNING: rgb and rgb_gt must be provided for metrics 'psnr', 'ssim'")
-                eval_metrics.remove('psnr')
+                print("WARNING: rgb and rgb_gt must be provided for metric 'ssim'")
                 eval_metrics.remove('ssim')
+        
+        if ('psnr' in eval_metrics):
+            if (not 'rgb' in data) or (not 'rgb_gt' in data):
+                print("WARNING: rgb and rgb_gt must be provided for metric 'psnr'")
+                eval_metrics.remove('psnr')
 
     

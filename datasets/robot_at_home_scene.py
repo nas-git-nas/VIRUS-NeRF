@@ -93,7 +93,7 @@ class RobotAtHomeScene():
         height_mean = np.mean(rays_o[:,2])
         if np.any(np.abs(rays_o[:,2] - height_mean) > height_tolerance):
             print(f"ERROR: height values of rays_o are not inside tolerance of {height_tolerance}!" \
-                  + f"mean height: {height_mean}, min height: {np.min(rays_o[:,2])}, max height: {np.max(rays_o[:,2])}")
+                  + f" mean height: {height_mean}, min height: {np.min(rays_o[:,2])}, max height: {np.max(rays_o[:,2])}")
 
         # get slice map for mean height
         slice_map = self.getSliceMap(height_mean, res, height_tolerance=height_tolerance, height_in_world_coord=False) # (res, res)

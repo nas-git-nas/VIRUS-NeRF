@@ -145,7 +145,8 @@ class RobotAtHomeDataset(BaseDataset):
             depth_or = cv.imread(d_f, cv.IMREAD_UNCHANGED)
             if np.max(depth_or) > 115 or np.min(depth_or) < 0:
                 print(f"ERROR: robot_at_home.py: read_meta: depth image has invalid values")
-            depth = 4.7 * depth_or / 115.0 # convert to meters
+            # depth = 4.7 * depth_or / 115.0 # convert to meters
+            depth = 5.0 * depth_or / 128.0 # convert to meters
 
             if np.allclose(depth_or[:,:,0], depth_or[:,:,1]) and np.allclose(depth_or[:,:,0], depth_or[:,:,2]):
                 depth = depth[:,:,0]
