@@ -18,7 +18,8 @@
     {
         "distortion_loss_w": 0.0,
         "batch_size": 8192,
-        "sampling_strategy": {"imgs": "all", "rays": "closest"},
+        "sampling_strategy": {"imgs": "all", "rays": "random"},
+        "sensors": ["ToF", "USS"],
         "max_steps": 1500,
         "lr": 1e-2,
         "depth_loss_w": 100,
@@ -49,13 +50,15 @@
         "home": "anto",
         "room": "livingroom1",
         "subsession": "subsession_1",
-        "home_session": "s1",
-        "sensor_model": "USS",
+        "home_session": "s1"
+    },
+    "RGBD":
+    {
         "angle_of_view": [45, 58]
     },
     "USS":
     {
-        "angle_of_view": [20, 20]
+        "angle_of_view": [30, 30]
     },
     "ToF":
     {

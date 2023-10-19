@@ -29,12 +29,11 @@ class Args():
         if self.dataset.name == "robot_at_home":
             self.rh = HParamsRobotAtHome()
             self.rh.setHParams(hparams)
+            self.rgbd = HParamsRGBD()
+            self.rgbd.setHParams(hparams) 
 
             for sensor_name in self.training.sensors:
-                if sensor_name == "RGBD":
-                    self.rgbd = HParamsRGBD()
-                    self.rgbd.setHParams(hparams)                
-                elif sensor_name == "USS":
+                if sensor_name == "USS":
                     self.uss = HParamsUSS()
                     self.uss.setHParams(hparams)
                 elif sensor_name == "ToF":
