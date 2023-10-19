@@ -31,8 +31,9 @@ class BaseDataset(Dataset):
         self.poses = self.poses.to(device)
         self.K = self.K.to(device)
         self.directions = self.directions.to(device)
-        if hasattr(self, 'depths'):
-                self.depths = self.depths.to(device)
+        if hasattr(self, 'depths_dict'):
+            for key in self.depths_dict.keys():
+                self.depths_dict[key] = self.depths_dict[key].to(device)
         return self
 
     def __getitem__(self, idx):
@@ -72,7 +73,7 @@ class BaseDataset(Dataset):
             elif self.args.training.sampling_strategy["rays"] == "closest":
                 pix_idxs = torch.randint(0, self.img_wh[0]*self.img_wh[1], size=(self.args.training.batch_size,), device=self.rays.device)
                 num_min_idxs = int(0.005 * self.args.training.batch_size)
-                pix_min_idxs = self.sensor_model.imgs_min_idx
+                pix_min_idxs = self.sensors_dict["USS"].imgs_min_idx
                 pix_idxs[:num_min_idxs] = pix_min_idxs[img_idxs[:num_min_idxs]]
             else:
                 print(f"ERROR: base.py: __getitem__: pixel sampling strategy must be either 'random' or 'ordered' " \
@@ -96,15 +97,19 @@ class BaseDataset(Dataset):
                 'direction': self.directions[pix_idxs],
                 'rgb': rays[:, :3],
             }
-            if hasattr(self, 'depths'):
-                sample['depth'] = self.depths[img_idxs, pix_idxs]
+            if hasattr(self, 'depths_dict'):
+                sample['depth'] = {}
+                for sensor, sensor_depths in self.depths_dict.items():
+                    sample['depth'][sensor] = sensor_depths[img_idxs, pix_idxs]
         else:
             sample = {
                 'pose': self.poses[idx], 
                 'img_idxs': idx
             }
-            if hasattr(self, 'depths'):
-                sample['depth'] = self.depths[idx]
+            if hasattr(self, 'depths_dict'):
+                sample['depth'] = {}
+                for sensor, sensor_depths in self.depths_dict.items():
+                    sample['depth'][sensor] = sensor_depths[idx]
              # if ground truth available
             if len(self.rays) > 0: 
                 rays = self.rays[idx]

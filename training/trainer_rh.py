@@ -42,7 +42,7 @@ class TrainerRH(Trainer):
         self.loss = Loss(
             args=self.args,
             rh_scene=self.train_dataset.scene,
-            sensor_model=self.train_dataset.sensor_model,
+            sensors_dict=self.train_dataset.sensors_dict,
         )
 
         # metrics

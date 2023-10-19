@@ -3,21 +3,20 @@ import torch.nn.functional as F
 
 from args.args import Args
 from datasets.robot_at_home_scene import RobotAtHomeScene
-from datasets.sensor_model import SensorModel
 
 class Loss():
     def __init__(
             self,
             args:Args,
             rh_scene:RobotAtHomeScene=None,
-            sensor_model:SensorModel=None,
+            sensors_dict:dict=None,
     ) -> None:
         """
         Loss class
         Args:
             args: arguments from command line
             rh_scene: RobotAtHomeScene object
-            sensor_model: SensorModel object
+            sensors_dict: dict containint SensorModel objects, dict
         """
         self.args = args
 
@@ -26,11 +25,11 @@ class Loss():
         self.log_loss = False
         self.step = 0
 
-        if self.args.rh.sensor_model == 'USS':
+        if 'USS' in self.args.training.sensors:
             uss_depth_tol = rh_scene.w2cTransformation(pos=0.03, only_scale=True, copy=True)
             self.uss_depth_tol = torch.tensor(uss_depth_tol, device=self.args.device, dtype=torch.float32)
 
-            self.sensor_model = sensor_model
+            self.sensors_dict = sensors_dict
 
     def __call__(
             self,
@@ -55,7 +54,7 @@ class Loss():
                 'pose': poses; array of shape (N, 3, 4)
                 'direction': directions; array of shape (N, 3)
                 'rgb': pixel colours; array of shape (N, 3)
-                'depth': pixel depths; array of shape (N,)
+                'depth': dict containing pixel depths of different sensors; {str: tensor of shape (N,)}
             return_loss_dict: whether to return loss dictionary; bool
         Returns:
             total_loss: loss value; tensor of float (1,)
@@ -110,12 +109,16 @@ class Loss():
             depth_loss: depth loss value; tensor of float (1,)
         """
         depth_loss = torch.tensor(0.0, device=self.args.device, dtype=torch.float32)
-        if self.args.rh.sensor_model == 'RGBD':
-            depth_loss += self._depthLossRGBD(results=results, data=data)
-        if self.args.rh.sensor_model == 'ToF':
-            depth_loss += self._depthLossToF(results=results, data=data)
-        if self.args.rh.sensor_model == 'USS':
-            depth_loss += self._depthLossUSS(results=results, data=data)
+        for sensor_name in self.args.training.sensors:
+            if sensor_name == 'RGBD':
+                depth_loss += self._depthLossRGBD(results=results, data=data)
+            elif sensor_name == 'ToF':
+                depth_loss += self._depthLossToF(results=results, data=data)
+            elif sensor_name == 'USS':
+                depth_loss += self._depthLossUSS(results=results, data=data)
+            else:
+                print(f"ERROR: loss.py: _depthLoss: sensor name '{sensor_name}' is invalid")
+        depth_loss /= len(self.args.training.sensors)
         
         if self.log_loss:
             self.loss_dict['depth'] = depth_loss.item() * self.args.training.depth_loss_w
@@ -134,8 +137,8 @@ class Loss():
         Returns:
             depth_loss: depth loss value; tensor of float (1,)
         """
-        val_idxs = ~torch.isnan(data['depth'])
-        rgbd_loss = F.mse_loss(results['depth'][val_idxs], data['depth'][val_idxs])
+        val_idxs = ~torch.isnan(data['depth']['RGBD'])
+        rgbd_loss = F.mse_loss(results['depth'][val_idxs], data['depth']['RGBD'][val_idxs])
 
         if self.log_loss:
             self.loss_dict['rgbd'] = rgbd_loss.item() * self.args.training.depth_loss_w
@@ -154,8 +157,8 @@ class Loss():
         Returns:
             depth_loss: depth loss value; tensor of float (1,)
         """
-        val_idxs = ~torch.isnan(data['depth'])
-        tof_loss = F.mse_loss(results['depth'][val_idxs], data['depth'][val_idxs])
+        val_idxs = ~torch.isnan(data['depth']['ToF'])
+        tof_loss = F.mse_loss(results['depth'][val_idxs], data['depth']['ToF'][val_idxs])
 
         if self.log_loss:
             self.loss_dict['ToF'] = tof_loss.item() * self.args.training.depth_loss_w
@@ -175,7 +178,7 @@ class Loss():
             depth_loss: depth loss value; tensor of float (1,)
         """ 
         # get minimum depth per image for batch 
-        imgs_depth_min, weights = self.sensor_model.updateDepthMin(
+        imgs_depth_min, weights = self.sensors_dict['USS'].updateDepthMin(
             results=results,
             data=data,
         ) # (num_test_imgs,), (num_test_imgs,)
@@ -183,15 +186,15 @@ class Loss():
         weights = weights[data['img_idxs']] # (N,)
 
         # mask data
-        uss_mask = ~torch.isnan(data['depth'])
+        uss_mask = ~torch.isnan(data['depth']['USS'])
         depth_mask = results['depth'] < depths_min + self.uss_depth_tol  
-        close_mask = results['depth'] < data['depth'] - self.uss_depth_tol  
+        close_mask = results['depth'] < data['depth']['USS'] - self.uss_depth_tol  
 
         # calculate close loss: pixels that are closer than the USS measurement
         uss_loss_close = torch.tensor(0.0, device=self.args.device, dtype=torch.float32)
         if torch.any(uss_mask & close_mask):
             uss_loss_close = torch.mean(
-                (results['depth'][uss_mask & close_mask] - data['depth'][uss_mask & close_mask])**2
+                (results['depth'][uss_mask & close_mask] - data['depth']['USS'][uss_mask & close_mask])**2
             )
 
         # calculate min loss: error of minimal depth wrt. USS measurement
@@ -199,7 +202,7 @@ class Loss():
         if torch.any(uss_mask & depth_mask):
             uss_loss_min = torch.mean(
                 weights[uss_mask & depth_mask] 
-                * (results['depth'][uss_mask & depth_mask] - data['depth'][uss_mask & depth_mask])**2
+                * (results['depth'][uss_mask & depth_mask] - data['depth']['USS'][uss_mask & depth_mask])**2
             )  
 
         if self.step%25 == 0:
