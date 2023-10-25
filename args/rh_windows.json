@@ -5,8 +5,9 @@
         "name": "robot_at_home",
         "split_ratio": {"train": 0.8, "val": 0.1, "test": 0.1},
         "downsample": 1.0,
-        "keep_N_observations": 40,
-        "keep_sensor": "all"
+        "keep_N_observations": 10,
+        "keep_sensor": "all",
+        "keep_pixels_in_angle_range": [-10,10]
     },
     "model":
     {
@@ -18,8 +19,9 @@
     {
         "distortion_loss_w": 0.0,
         "batch_size": 8192,
-        "sampling_strategy": {"imgs": "all", "rays": "closest"},
-        "max_steps": 50,
+        "sampling_strategy": {"imgs": "all", "rays": "random"},
+        "sensors": ["RGBD"],
+        "max_steps": 10,
         "lr": 1e-2,
         "depth_loss_w": 10.0,
         "random_bg": false
@@ -31,9 +33,9 @@
         "res_angular": 256,
         "eval_every_n_steps": 2,
         "num_color_pts": 2,
-        "num_depth_pts": 6,
+        "num_depth_pts": 4,
         "num_plot_pts": 3,
-        "num_avg_heights": 10,
+        "num_avg_heights": 3,
         "height_tolerance": 0.005,
         "density_map_thr": 10
     },
@@ -49,8 +51,10 @@
         "home": "anto",
         "room": "livingroom1",
         "subsession": "subsession_1",
-        "home_session": "s1",
-        "sensor_model": "USS",
+        "home_session": "s1"
+    },
+    "RGBD":
+    {
         "angle_of_view": [45, 58]
     },
     "USS":

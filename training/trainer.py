@@ -92,20 +92,11 @@ class Trainer:
         self.grad_scaler = torch.cuda.amp.GradScaler(scaler)
 
         # optimizer
-        try:
-            import apex
-            self.optimizer = apex.optimizers.FusedAdam(
-                self.model.parameters(), 
-                lr=self.args.training.lr, 
-                eps=1e-15,
-            )
-        except ImportError:
-            print("Failed to import apex FusedAdam, use torch Adam instead.")
-            self.optimizer = torch.optim.Adam(
-                self.model.parameters(), 
-                self.args.training.lr, 
-                eps=1e-15,
-            )
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(), 
+            self.args.training.lr, 
+            eps=1e-15,
+        )
 
         # scheduler
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
@@ -137,6 +128,15 @@ class Trainer:
         )
         self.args.saveJson()
 
+        # remove empty logs
+        del_keys = []
+        for key in self.logs.keys():
+            if len(self.logs[key]) == 0:
+                del_keys.append(key)
+        for key in del_keys:
+            del self.logs[key]
+
+        # save logs
         logs_df = pd.DataFrame(self.logs)
         logs_df.to_csv(os.path.join(self.args.save_dir, 'logs.csv'), index=False)
 

@@ -59,28 +59,33 @@ class RobotAtHomeDataset(BaseDataset):
         # load scene
         self.scene = RobotAtHomeScene(rh=self.rh, args=self.args)
 
-        self.img_wh, self.K, self.directions = self.read_intrinsics()
-
-        # define sensor model
-        # if self.args.rh.sensor_model == "ToF":
-        #     self.sensor_model = ToFModel(args=args, img_wh=self.img_wh)
-        # elif self.args.rh.sensor_model == "USS":
-        #     self.sensor_model = USSModel(
-        #         args=args, 
-        #         img_wh=self.img_wh,
-        #         num_imgs=self.df.shape[0],
-        #     )
-        # else:
-        #     self.sensor_model = None
-
-        self.rays, depths, self.poses = self.read_meta(
-            split=split
+        img_wh, K, directions = self.read_intrinsics()
+        rays, depths, poses = self.read_meta(
+            split=split,
+            img_wh=img_wh,
         )
 
-        self.sensors_dict, self.depths_dict = self.createSensorModels(
-            depths=depths
+        if self.args.dataset.keep_pixels_in_angle_range != "all":
+            rays, directions, depths, img_wh = self.reduceImgHeight(
+                rays=rays,
+                directions=directions,
+                depths=depths,
+                img_wh=img_wh,
+                angle_min_max=self.args.dataset.keep_pixels_in_angle_range,
+            )
+
+        sensors_dict, depths_dict = self.createSensorModels(
+            depths=depths,
+            img_wh=img_wh,
         )
 
+        self.img_wh = img_wh
+        self.K = K
+        self.poses = poses
+        self.rays = rays
+        self.directions = directions
+        self.sensors_dict = sensors_dict
+        self.depths_dict = depths_dict
 
     def read_intrinsics(self):
         """
@@ -127,26 +132,32 @@ class RobotAtHomeDataset(BaseDataset):
 
         return (w, h), torch.FloatTensor(K), directions
 
-    def read_meta(self, split):
+    def read_meta(
+        self, 
+        split:str,
+        img_wh:tuple,
+    ):
         """
         Read meta data from the dataset.
         Args:
-            split: string indicating which split to read from
+            split: string indicating which split to read from; str
+            img_wh: image width and height; tuple of ints
         Returns:
             rays: tensor of shape (N_images, H*W, 3) containing RGB images
             depths: tensor of shape (N_images, H*W) containing depth images
             poses: tensor of shape (N_images, 3, 4) containing camera poses
         """
         df = self.df[self.df["split"] == split].copy(deep=True)
+        W, H = img_wh
 
         # get images
         rays = np.empty(())
         ids = df["id"].to_numpy()
-        rays = np.empty((ids.shape[0], self.img_wh[0]*self.img_wh[1], 3))
-        depths = np.empty((ids.shape[0], self.img_wh[0]*self.img_wh[1]))
+        rays = np.empty((ids.shape[0], W*H, 3))
+        depths = np.empty((ids.shape[0], W*H))
         for i, id in enumerate(ids):
             [rgb_f, d_f] = self.rh.get_RGBD_files(id)
-            rays[i,:,:] = mpimg.imread(rgb_f).reshape(self.img_wh[0]*self.img_wh[1], 3)
+            rays[i,:,:] = mpimg.imread(rgb_f).reshape(W*H, 3)
 
             # depth_or = mpimg.imread(d_f)
             depth_or = cv.imread(d_f, cv.IMREAD_UNCHANGED)
@@ -229,11 +240,13 @@ class RobotAtHomeDataset(BaseDataset):
     def createSensorModels(
             self, 
             depths:torch.tensor,
+            img_wh:tuple,
     ):
         """
         Create sensor models for each sensor and convert depths respectively.
         Args:
             depths: depths of all images; tensor of shape (N_images, H*W)
+            img_wh: image width and height; tuple of ints
         Returns:
             sensors_dict: dictionary containing sensor models
             depths_dict: dictionary containing converted depths
@@ -243,17 +256,17 @@ class RobotAtHomeDataset(BaseDataset):
             if sensor_name == "RGBD":
                 sensors_dict["RGBD"] = RGBDModel(
                     args=self.args, 
-                    img_wh=self.img_wh
+                    img_wh=img_wh
                 )
             elif sensor_name == "ToF":
                 sensors_dict["ToF"] = ToFModel(
                     args=self.args, 
-                    img_wh=self.img_wh
+                    img_wh=img_wh
                 )
             elif sensor_name == "USS":
                 sensors_dict["USS"] = USSModel(
                     args=self.args, 
-                    img_wh=self.img_wh,
+                    img_wh=img_wh,
                     num_imgs=self.df.shape[0],
                 )
             else:

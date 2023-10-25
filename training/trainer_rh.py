@@ -26,6 +26,7 @@ from modules.distortion import distortion_loss
 from modules.rendering import MAX_SAMPLES, render
 from modules.utils import depth2img, save_deployment_model
 from helpers.geometric_fcts import findNearestNeighbour
+from helpers.data_fcts import linInterpolateArray
 from training.metrics_rh import MetricsRH
 
 
@@ -35,7 +36,7 @@ from training.loss import Loss
 
 class TrainerRH(Trainer):
     def __init__(self, hparams_file) -> None:
-
+        print(f"\n----- START INITIALIZING -----")
         Trainer.__init__(self, hparams_file=hparams_file)
 
         # loss function
@@ -59,6 +60,11 @@ class TrainerRH(Trainer):
             'loss': [],
             'color_loss': [],
             'depth_loss': [],
+            'rgbd_loss': [],
+            'ToF_loss': [],
+            'USS_loss': [],
+            'USS_close_loss': [],
+            'USS_min_loss': [],
             'psnr': [],
             'mnn': [],
         }
@@ -67,8 +73,10 @@ class TrainerRH(Trainer):
         """
         Training loop.
         """
+        print(f"\n----- START TRAINING -----")
         tic = time.time()
-        for step in range(self.args.training.max_steps+1):
+        for step in range(self.args.training.max_steps):
+            print(f"step={step}")
             self.model.train()
 
             i = torch.randint(0, len(self.train_dataset), (1,)).item()
@@ -77,14 +85,18 @@ class TrainerRH(Trainer):
             direction = data['direction']
             pose = data['pose']
 
+            
             with torch.autocast(device_type='cuda', dtype=torch.float16):
                 if step % self.args.occ_grid.update_interval == 0:
+                    print("update occ grid")
                     self.model.update_density_grid(
                         0.01 * MAX_SAMPLES / 3**0.5,
                         warmup=step < self.args.occ_grid.warmup_steps,
                     )
                 # get rays and render image
+                print("get rays")
                 rays_o, rays_d = get_rays(direction, pose)
+                print("rendering")
                 results = render(
                     self.model, 
                     rays_o, 
@@ -92,6 +104,7 @@ class TrainerRH(Trainer):
                     exp_step_factor=self.args.exp_step_factor,
                 )
 
+                print("calculating loss")
                 # calculate loss
                 loss, loss_dict = self.loss(
                     results=results,
@@ -109,6 +122,7 @@ class TrainerRH(Trainer):
             self.grad_scaler.update()
             self.scheduler.step()
 
+            print("step evaluation")
             self._evaluateStep(
                 results=results, 
                 data=data, 
@@ -119,13 +133,17 @@ class TrainerRH(Trainer):
 
             # self._plotOccGrid()
 
+        print("saving model")
         self.saveModel()
 
     def evaluate(self):
         """
         Evaluate NeRF on test set.
         """
+        print(f"\n----- START EVALUATING -----")
         self.model.eval()
+
+        self._plotLosses()
 
         # get indices of all test points and of one particular sensor
         img_idxs = np.arange(len(self.test_dataset))
@@ -165,6 +183,7 @@ class TrainerRH(Trainer):
             data_w=data_w, 
             metrics_dict=metrics_dict
         )
+        
 
     @torch.no_grad()
     def evaluateColor(
@@ -636,17 +655,25 @@ class TrainerRH(Trainer):
         """
         # log parameters
         self.logs['time'].append(time.time()-tic)
-        self.logs['step'].append(step)
+        self.logs['step'].append(step+1)
         self.logs['loss'].append(loss_dict['total'])
         self.logs['color_loss'].append(loss_dict['color'])
         self.logs['depth_loss'].append(loss_dict['depth'])
+        if "rgbd" in loss_dict:
+            self.logs['rgbd_loss'].append(loss_dict['rgbd'])
+        if "ToF" in loss_dict:
+            self.logs['ToF_loss'].append(loss_dict['ToF'])
+        if "USS" in loss_dict:
+            self.logs['USS_loss'].append(loss_dict['USS'])
+            self.logs['USS_close_loss'].append(loss_dict['USS_close'])
+            self.logs['USS_min_loss'].append(loss_dict['USS_min'])
         self.logs['psnr'].append(np.nan)
         self.logs['mnn'].append(np.nan)
 
         # make intermediate evaluation
         if step % self.args.eval.eval_every_n_steps == 0:
             # evaluate color and depth of one random image
-            img_idxs = np.array([np.random.randint(0, len(self.test_dataset))])
+            img_idxs = np.array(np.random.randint(0, len(self.test_dataset), size=8))
             depth_metrics, data_w = self.evaluateDepth(img_idxs=img_idxs)
 
             # calculate peak-signal-to-noise ratio
@@ -690,6 +717,113 @@ class TrainerRH(Trainer):
         #     f"lr={(self.optimizer.param_groups[0]['lr']):.5f} | "
         #     f"depth_mae={error['depth_mae']:.3f} | "
         #     f"depth_mare={error['depth_mare']:.3f} | "
+        # )
+
+    def _plotLosses(
+        self,
+    ):
+        """
+        Plot losses, mean-nearest-neighbour distance and peak signal-to-noise-ratio.
+        """
+        fig, axes = plt.subplots(ncols=2, nrows=1, figsize=(12,8))
+
+        # plot losses
+        ax = axes[0]
+        ax.plot(self.logs['step'], self.logs['loss'], label='total')
+        ax.plot(self.logs['step'], self.logs['color_loss'], label='color')
+        ax.plot(self.logs['step'], self.logs['depth_loss'], label='depth')
+        if "rgbd" in self.logs:
+            ax.plot(self.logs['step'], self.logs['rgbd_loss'], label='rgbd')
+        if "ToF" in self.logs:
+            ax.plot(self.logs['step'], self.logs['ToF_loss'], label='ToF')
+        if "USS" in self.logs:
+            ax.plot(self.logs['step'], self.logs['USS_loss'], label='USS')
+            ax.plot(self.logs['step'], self.logs['USS_close_loss'], label='USS_close')
+            ax.plot(self.logs['step'], self.logs['USS_min_loss'], label='USS_min')
+        ax.set_ylabel('loss')
+
+        ax.set_xlabel('step')
+        secax = ax.secondary_xaxis(
+            location='top', 
+            functions=(self._step2time, self._time2step),
+        )
+        secax.set_xlabel('time [s]')
+        ax.legend()
+        ax.set_title('Losses')
+
+        # plot mnn and psnr 
+        if 'mnn' in self.logs and 'psnr' in self.logs:
+            ax = axes[1]
+            not_nan = ~np.isnan(self.logs['mnn'])
+            lns1 = ax.plot(np.array(self.logs['step'])[not_nan], np.array(self.logs['mnn'])[not_nan], label='mnn')
+            ax.set_ylabel('mnn')
+
+            ax2 = ax.twinx()
+            not_nan = ~np.isnan(self.logs['psnr'])
+            lns2 = ax2.plot(np.array(self.logs['step'])[not_nan], np.array(self.logs['psnr'])[not_nan], label='psnr', color='r')
+            ax2.set_ylabel('psnr')
+
+            ax.set_xlabel('step')
+            secax = ax.secondary_xaxis(
+                location='top', 
+                functions=(self._step2time, self._time2step),
+            )
+            secax.set_xlabel('time [s]')
+            lns = lns1+lns2
+            labs = [l.get_label() for l in lns]
+            ax.legend(lns, labs)
+            ax.set_title('Metrics')
+
+        plt.tight_layout()
+        plt.savefig(os.path.join(self.args.save_dir, "losses.pdf"))
+        plt.savefig(os.path.join(self.args.save_dir, "losses.png"))
+
+    def _step2time(
+        self,
+        steps:np.array,
+    ):
+        """
+        Convert steps to time by linear interpolating the logs.
+        Args:
+            steps: steps to convert; array of shape (N,)
+        Returns:
+            times: times of given steps; array of shape (N,)
+        """
+        if len(steps) == 0:
+            return np.array([])
+        
+        slope = self.logs['time'][-1] / self.logs['step'][-1]
+        return slope * steps
+        
+        # return linInterpolateArray(
+        #     x1=np.array(self.logs['step']),
+        #     y1=np.array(self.logs['time']),
+        #     x2=steps,
+        #     border_condition="nearest"
+        # )
+    
+    def _time2step(
+        self,
+        times:np.array,
+    ):
+        """
+        Convert time to steps by linear interpolating the logs.
+        Args:
+            times: times to convert; array of shape (N,)
+        Returns:
+            steps: steps of given times; array of shape (N,)
+        """
+        if len(times) == 0:
+            return np.array([])
+        
+        slope = self.logs['step'][-1] / self.logs['time'][-1]
+        return slope * times
+        
+        # return linInterpolateArray(
+        #     x1=np.array(self.logs['time']),
+        #     y1=np.array(self.logs['step']),
+        #     x2=times,
+        #     border_condition="nearest"
         # )
     
     def _batchifyRender(

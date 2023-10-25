@@ -117,6 +117,63 @@ class BaseDataset(Dataset):
 
         return sample
     
+    def reduceImgHeight(
+        self,
+        rays:torch.Tensor,
+        directions:torch.Tensor,
+        depths:np.array,
+        img_wh:tuple,
+        angle_min_max:tuple,
+    ):
+        """
+        Reduce the image height to the specified range.
+        Args:
+            rays: rays; tensor of shape (N, H*W, 3)
+            directions: ray directions; tensor of shape (H*W, 3)
+            depths: depths; numpy array of shape (N, H*W)
+            img_wh: image width and height; tuple of ints
+            angle_min_max: tuple containing the min and max angles of the image to keep
+        Returns:
+            rays: rays; tensor of shape (N, H*W, 3)
+            directions: ray directions; tensor of shape (H*W, 3)
+            depths: depths; tensor of shape (N, H*W)
+            img_wh: image width and height; tuple of ints
+        """
+        rays = rays.clone().detach()
+        directions = directions.clone().detach()
+        depths = np.copy(depths)
+        W, H = img_wh
+        N = rays.shape[0]
+
+        # verify dimensions and reshape tensors
+        if rays.shape[0] != depths.shape[0]:
+            print(f"ERROR: base.reduceImgHeight: rays and depths must have the same number of images")
+        if rays.shape[1] != W*H or directions.shape[0] != W*H or depths.shape[1] != W*H:
+            print(f"ERROR: base.reduceImgHeight: rays, directions and depths must have the same number of pixels = {W*H}")
+        rays = rays.reshape(N, H, W, 3)
+        directions = directions.reshape(H, W, 3)
+        depths = depths.reshape(N, H, W)
+
+        # convert angles to indices
+        idx_slope = H / self.args.rgbd.angle_of_view[1]
+        idx_min_max = (
+            max(np.floor(H/2 + idx_slope*angle_min_max[0]).astype(int), 0),
+            min(np.ceil(H/2 + idx_slope*angle_min_max[1]).astype(int), H),
+        )
+        print(f"idx_min_max: {idx_min_max}")
+
+        # reduce image height
+        img_wh = (W, idx_min_max[1]-idx_min_max[0])
+        rays = rays[:, idx_min_max[0]:idx_min_max[1], :, :]
+        directions = directions[idx_min_max[0]:idx_min_max[1], :, :]
+        depths = depths[:, idx_min_max[0]:idx_min_max[1], :]
+
+        # reshape tensors
+        rays = rays.reshape(N, img_wh[0]*img_wh[1], 3)
+        directions = directions.reshape(img_wh[0]*img_wh[1], 3)
+        depths = depths.reshape(N, img_wh[0]*img_wh[1])
+        return rays, directions, depths, img_wh
+    
     def splitDataset(self, df, split_ratio, split_description_path, split_description_name):
         """
         Split the dataset into train, val and test sets.
