@@ -7,7 +7,7 @@
         "downsample": 1.0,
         "keep_N_observations": 10,
         "keep_sensor": "all",
-        "keep_pixels_in_angle_range": [-10,10]
+        "keep_pixels_in_angle_range": "all"
     },
     "model":
     {

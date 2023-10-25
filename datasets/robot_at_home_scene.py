@@ -17,7 +17,7 @@ class RobotAtHomeScene():
         self.rh = rh
         self.args = args
 
-        self._point_cloud = self.__loadPointCloud()
+        self._point_cloud = self._loadPointCloud()
 
         # scene transformation variables: world (in meters) -> cube ([-0.5,0.5]**3) coordinate system
         self.w2c_params = {
@@ -87,7 +87,7 @@ class RobotAtHomeScene():
             rays_o = self.w2cTransformation(pos=rays_o, copy=True) # (N, 2)
 
         # calculate scan rays in cube coordinate system
-        scan_rays_c, scan_angles = self.__calcScanRays(res, rays_o=rays_o, rays_d=rays_d, angular_range=angular_range) # (N*M, 2)
+        scan_rays_c, scan_angles = self._calcScanRays(res, rays_o=rays_o, rays_d=rays_d, angular_range=angular_range) # (N*M, 2)
 
         # verify that all height values are inside tolerance
         height_mean = np.mean(rays_o[:,2])
@@ -183,7 +183,7 @@ class RobotAtHomeScene():
             pos = np.copy(pos)
         
         if not self.w2c_params["defined"]:
-            self.__w2cParams()
+            self._w2cParams()
 
         if not only_scale:
             pos -= self.w2c_params["shift"][:pos.shape[1]]
@@ -204,7 +204,7 @@ class RobotAtHomeScene():
             pos = np.copy(pos)
 
         if not self.w2c_params["defined"]:
-            self.__w2cParams()
+            self._w2cParams()
 
         pos *=  self.w2c_params["scale"]
         if not only_scale:
@@ -279,7 +279,7 @@ class RobotAtHomeScene():
         pos[val_idxs] += rays_o[val_idxs,:2] # (N, 2)
         return pos
   
-    def __loadPointCloud(self):
+    def _loadPointCloud(self):
         """
         Load scene from robot@home2 database.
         Returns:
@@ -295,7 +295,7 @@ class RobotAtHomeScene():
         scene_file = scene.scene_file.values[0]
         return np.loadtxt(scene_file, skiprows=6)
     
-    def __w2cParams(self):
+    def _w2cParams(self):
         """
         Calculate world (in meters) to cube ([cube_min,cube_max]**3) transformation parameters.
         Enlarge the cube with scale_margin s.t. all points are sure to be inside the cube.
@@ -305,6 +305,13 @@ class RobotAtHomeScene():
         # get scene shift and scale
         xyz_min = point_cloud.min(axis=0)
         xyz_max = point_cloud.max(axis=0)
+
+        # TODO: args
+        print(f"xyz_min: {xyz_min}, xyz_max: {xyz_max}")
+        xyz_min[2] = 0.9
+        xyz_max[2] = 1.1
+        print(f"xyz_min: {xyz_min}, xyz_max: {xyz_max}")
+
         shift = (xyz_max + xyz_min) / 2
         scale = (xyz_max - xyz_min).max() * self.w2c_params["scale_margin"] \
                 / (self.w2c_params["cube_max"]-self.w2c_params["cube_min"]) 
@@ -314,7 +321,7 @@ class RobotAtHomeScene():
         self.w2c_params["shift"] = shift
         self.w2c_params["scale"] = scale
 
-    def __calcScanRays(self, res, rays_o, rays_d=None, angular_range=[-np.pi,np.pi]):
+    def _calcScanRays(self, res, rays_o, rays_d=None, angular_range=[-np.pi,np.pi]):
         """
         Calculate scan rays in cube coordinate system. If rays_d is not given (None), the angles are linearly spaced 
         in the angular range.
