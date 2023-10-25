@@ -76,7 +76,6 @@ class TrainerRH(Trainer):
         print(f"\n----- START TRAINING -----")
         tic = time.time()
         for step in range(self.args.training.max_steps):
-            print(f"step={step}")
             self.model.train()
 
             i = torch.randint(0, len(self.train_dataset), (1,)).item()
@@ -88,15 +87,12 @@ class TrainerRH(Trainer):
             
             with torch.autocast(device_type='cuda', dtype=torch.float16):
                 if step % self.args.occ_grid.update_interval == 0:
-                    print("update occ grid")
                     self.model.update_density_grid(
                         0.01 * MAX_SAMPLES / 3**0.5,
                         warmup=step < self.args.occ_grid.warmup_steps,
                     )
                 # get rays and render image
-                print("get rays")
                 rays_o, rays_d = get_rays(direction, pose)
-                print("rendering")
                 results = render(
                     self.model, 
                     rays_o, 
@@ -104,7 +100,6 @@ class TrainerRH(Trainer):
                     exp_step_factor=self.args.exp_step_factor,
                 )
 
-                print("calculating loss")
                 # calculate loss
                 loss, loss_dict = self.loss(
                     results=results,
@@ -122,7 +117,6 @@ class TrainerRH(Trainer):
             self.grad_scaler.update()
             self.scheduler.step()
 
-            print("step evaluation")
             self._evaluateStep(
                 results=results, 
                 data=data, 
@@ -133,7 +127,6 @@ class TrainerRH(Trainer):
 
             # self._plotOccGrid()
 
-        print("saving model")
         self.saveModel()
 
     def evaluate(self):
