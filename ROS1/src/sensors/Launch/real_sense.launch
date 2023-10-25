@@ -1,0 +1,45 @@
+<launch>
+
+    <group ns="/camera1/rgb">
+        <param 
+            name="topic" 
+            type="str" 
+            value="/camera/color/image_raw" />
+        <param 
+            name="path" 
+            type="str" 
+            value="/home/spadmin/catkin_ws_ngp/data/camera1/rgb" />
+        <param 
+            name="print_elapse_time" 
+            type="bool" 
+            value="False" />
+
+        <node 
+            pkg="sensors" 
+            type="log_realsense.py" 
+            name="log_realsense" 
+            output="screen" />
+    </group>
+
+    <group ns="/camera1/depth">
+        <param 
+            name="topic" 
+            type="str" 
+            value="/camera/aligned_depth_to_color/image_raw" />
+        <param 
+            name="path" 
+            type="str" 
+            value="/home/spadmin/catkin_ws_ngp/data/camera1/depth" />
+        <param 
+            name="print_elapse_time" 
+            type="bool" 
+            value="False" />
+        
+        <node 
+            pkg="sensors" 
+            type="log_realsense.py" 
+            name="log_realsense" 
+            output="screen" />
+    </group>
+
+</launch>
