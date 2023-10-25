@@ -10,6 +10,7 @@ class Sampler():
             args:Args,
             dataset_len:int,
             img_wh:tuple,
+            seed:int,
             sensors_dict:dict=None,
     ) -> None:
         """
@@ -17,12 +18,21 @@ class Sampler():
             args: hyper parameters; instance of Args class
             dataset_len: number of images in dataset; int
             img_wh: image width and height; tuple of int (2,)
+            seed: random seed; int
             sensors_dict: dictionary of sensor models; dict
         """
         self.args = args
         self.dataset_len = dataset_len
         self.img_wh = img_wh
         self.sensors_dict = sensors_dict
+
+        self.rgn = np.random.default_rng(seed=seed)
+
+        pixels = np.arange(self.img_wh[1]) - self.img_wh[1] / 2
+        angles = pixels * self.args.rgbd.angle_of_view[1] / self.img_wh[1]
+        weights = np.exp(- np.abs(angles) / 10)
+        weights = np.repeat(weights.reshape(-1, 1), self.img_wh[0], axis=1)
+        self.weights = (weights / np.sum(weights)).flatten()
 
     def __call__(
             self,
@@ -87,5 +97,9 @@ class Sampler():
             pix_idxs[:num_min_idxs] = pix_min_idxs[img_idxs[:num_min_idxs]]
             return pix_idxs
         
-        print(f"ERROR: sampler._pixIdxs: pixel sampling strategy must be either 'random' or 'ordered'"
+        if self.args.training.sampling_strategy["rays"] == "weighted":
+            pix_idxs = self.rgn.choice(self.img_wh[0]*self.img_wh[1], size=(self.args.training.batch_size,), p=self.weights)
+            return torch.from_numpy(pix_idxs).to(torch.int64)
+        
+        print(f"ERROR: sampler._pixIdxs: pixel sampling strategy must be either 'random', 'ordered', 'closest' or weighted"
               + f" but is {self.args.training.sampling_strategy['rays']}")

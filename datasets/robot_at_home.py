@@ -21,6 +21,7 @@ from robotathome import time_win2unixepoch, time_unixepoch2win
 from datasets.sensor_model import RGBDModel, ToFModel, USSModel
 
 from args.args import Args
+from training.sampler import Sampler
 
 try:
     from .ray_utils import get_rays
@@ -57,6 +58,7 @@ class RobotAtHomeDataset(BaseDataset):
         self.df = self.__loadRHDataframe(split=split)
 
         # load scene
+        # TODO: create base class for this
         self.scene = RobotAtHomeScene(rh=self.rh, args=self.args)
 
         img_wh, K, directions = self.read_intrinsics()
@@ -86,6 +88,15 @@ class RobotAtHomeDataset(BaseDataset):
         self.directions = directions
         self.sensors_dict = sensors_dict
         self.depths_dict = depths_dict
+
+        # TODO: move to base class
+        self.sampler = Sampler(
+            args=args,
+            dataset_len=len(self),
+            img_wh=self.img_wh,
+            seed=args.seed,
+            sensors_dict=self.sensors_dict,
+        )
 
     def read_intrinsics(self):
         """

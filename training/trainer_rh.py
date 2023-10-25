@@ -136,8 +136,6 @@ class TrainerRH(Trainer):
         print(f"\n----- START EVALUATING -----")
         self.model.eval()
 
-        self._plotLosses()
-
         # get indices of all test points and of one particular sensor
         img_idxs = np.arange(len(self.test_dataset))
         img_idxs_sensor = self.test_dataset.getIdxFromSensorName(df=self.test_dataset.df, sensor_name="RGBD_1")
@@ -176,7 +174,7 @@ class TrainerRH(Trainer):
             data_w=data_w, 
             metrics_dict=metrics_dict
         )
-        
+        self._plotLosses()
 
     @torch.no_grad()
     def evaluateColor(
