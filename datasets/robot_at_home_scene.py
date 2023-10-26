@@ -306,12 +306,6 @@ class RobotAtHomeScene():
         xyz_min = point_cloud.min(axis=0)
         xyz_max = point_cloud.max(axis=0)
 
-        # TODO: args
-        print(f"xyz_min: {xyz_min}, xyz_max: {xyz_max}")
-        xyz_min[2] = 0.9
-        xyz_max[2] = 1.1
-        print(f"xyz_min: {xyz_min}, xyz_max: {xyz_max}")
-
         shift = (xyz_max + xyz_min) / 2
         scale = (xyz_max - xyz_min).max() * self.w2c_params["scale_margin"] \
                 / (self.w2c_params["cube_max"]-self.w2c_params["cube_min"]) 

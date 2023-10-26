@@ -6,7 +6,8 @@
         "split_ratio": {"train": 0.8, "val": 0.1, "test": 0.1},
         "downsample": 1.0,
         "keep_N_observations": "all",
-        "keep_sensor": "all"
+        "keep_sensor": "all",
+        "keep_pixels_in_angle_range": "all"
     },
     "model":
     {
@@ -18,8 +19,8 @@
     {
         "distortion_loss_w": 0.0,
         "batch_size": 8192,
-        "sampling_strategy": {"imgs": "all", "rays": "random"},
-        "sensors": ["ToF", "USS"],
+        "sampling_strategy": {"imgs": "all", "rays": "weighted"},
+        "sensors": ["RGBD"],
         "max_steps": 1500,
         "lr": 1e-2,
         "depth_loss_w": 100,
