@@ -125,7 +125,9 @@ class TrainerRH(Trainer):
                 tic=tic
             )
 
-            # self._plotOccGrid()
+            self._plotOccGrid(
+                step=step,
+            )
 
         self.saveModel()
 
@@ -889,41 +891,52 @@ class TrainerRH(Trainer):
                     bar()
                     yield sigmas
     
-    # def _plotOccGrid(
-    #         self,
-    # ):
-    #     height_c = 0.0
+    def _plotOccGrid(
+            self,
+            step,
+    ):
+        if step % 1 != 0:
+            return
 
-    #     grid_size = self.model.grid_size
-    #     occ_grid_3d = self.model.density_grid[0]
-    #     cells = self.model.get_all_cells()[0]
-    #     idxs = cells[0]
-    #     coords = cells[1]
+        height_w = 1.0
+        height_c = self.train_dataset.scene.w2cTransformation(pos=np.array([[0.0, 0.0, height_w]]), copy=False)[0,2]
 
-    #     # convert height from cube to occupancy grid coordinates
-    #     height_o = grid_size * (height_c+self.args.model.scale) / (2*self.args.model.scale) 
-    #     height_o = int(np.round(height_o))
+        grid_size = self.model.grid_size
+        occ_grid_3d = self.model.density_grid[0]
+        cells = self.model.get_all_cells()[0]
+        idxs = cells[0]
+        coords = cells[1]
 
-    #     # keep only indices of given height
-    #     idxs = idxs[coords[:,2] == height_o]
-    #     coords = coords[coords[:,2] == height_o]
+        # convert height from cube to occupancy grid coordinates
+        height_o = grid_size * (height_c+self.args.model.scale) / (2*self.args.model.scale) 
+        height_o = int(np.round(height_o))
 
-    #     occ_grid_2d = np.zeros((grid_size, grid_size))
-    #     occ_grid_2d[coords[:,0], coords[:,1]] = occ_grid_3d[idxs]
+        # keep only indices of given height
+        idxs = idxs[coords[:,2] == height_o]
+        coords = coords[coords[:,2] == height_o]
 
-    #     print(f"occ_grid.shape={occ_grid_3d.shape}")
-    #     print(f"indices shape={idxs.shape}, coords shape={coords.shape}")
+        occ_grid_2d = np.zeros((grid_size, grid_size))
+        occ_grid_2d[coords[:,0], coords[:,1]] = occ_grid_3d[idxs]
 
-    #     # plot occupancy grid
-    #     fig, axes = plt.subplots(ncols=1, nrows=1, figsize=(9,4))
-    #     ax = axes
-    #     ax.imshow(occ_grid_2d.T, origin='lower', cmap='viridis', vmin=0, vmax=1)
-    #     ax.set_xlabel(f'x [m]')
-    #     ax.set_ylabel(f'y [m]')
-    #     ax.set_title(f'Occupancy Grid at height={height_c}')
+        print(f"occ_grid.shape={occ_grid_3d.shape}")
+        print(f"indices shape={idxs.shape}, coords shape={coords.shape}")
+        print(f"occ_grid_2d max={np.max(occ_grid_2d)}, min={np.min(occ_grid_2d)}")
 
-    #     plt.tight_layout()
-    #     plt.show()
+        scale = self.args.model.scale
+        extent = self.test_dataset.scene.c2wTransformation(pos=np.array([[-scale,-scale],[scale,scale]]), copy=False)
+        extent = extent.T.flatten()
+
+        # plot occupancy grid
+        fig, axes = plt.subplots(ncols=1, nrows=1, figsize=(9,4))
+        ax = axes
+        im = ax.imshow(occ_grid_2d.T, origin='lower', cmap='viridis', extent=extent)
+        ax.set_xlabel(f'x [m]')
+        ax.set_ylabel(f'y [m]')
+        ax.set_title(f'Occupancy Grid at height={height_w:.2}m')
+        fig.colorbar(im, ax=ax)
+
+        plt.tight_layout()
+        plt.savefig(os.path.join(self.args.save_dir, "occ_grid"+str(step)+".png"))
 
 
 
