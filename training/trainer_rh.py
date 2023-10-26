@@ -903,9 +903,14 @@ class TrainerRH(Trainer):
 
         grid_size = self.model.grid_size
         occ_grid_3d = self.model.density_grid[0].detach().cpu().numpy()
+        bit_grid_3d = self.model.density_bitfield.detach().cpu().numpy().astype(np.uint8)
         cells = self.model.get_all_cells()[0]
         idxs = cells[0].detach().cpu().numpy()
         coords = cells[1].detach().cpu().numpy()
+
+        # convert bitfield to binary array
+        bit_grid_3d = np.unpackbits(bit_grid_3d.reshape(-1,1), axis=1)
+        bit_grid_3d = bit_grid_3d.flatten()
 
         # convert height from cube to occupancy grid coordinates
         height_o = grid_size * (height_c+self.args.model.scale) / (2*self.args.model.scale) 
@@ -917,6 +922,8 @@ class TrainerRH(Trainer):
 
         occ_grid_2d = np.zeros((grid_size, grid_size))
         occ_grid_2d[coords[:,0], coords[:,1]] = occ_grid_3d[idxs]
+        bit_grid_2d = np.zeros((grid_size, grid_size))
+        bit_grid_2d[coords[:,0], coords[:,1]] = bit_grid_3d[idxs]
 
         # print(f"occ_grid.shape={occ_grid_3d.shape}")
         # print(f"indices shape={idxs.shape}, coords shape={coords.shape}")
@@ -927,12 +934,20 @@ class TrainerRH(Trainer):
         extent = extent.T.flatten()
 
         # plot occupancy grid
-        fig, axes = plt.subplots(ncols=1, nrows=1, figsize=(9,4))
-        ax = axes
+        fig, axes = plt.subplots(ncols=2, nrows=1, figsize=(9,4))
+
+        ax = axes[0]
         im = ax.imshow(occ_grid_2d.T, origin='lower', cmap='viridis', extent=extent)
         ax.set_xlabel(f'x [m]')
         ax.set_ylabel(f'y [m]')
         ax.set_title(f'Occupancy Grid at height={height_w:.2}m')
+        fig.colorbar(im, ax=ax)
+
+        ax = axes[1]
+        im = ax.imshow(bit_grid_2d.T, origin='lower', cmap='viridis', extent=extent)
+        ax.set_xlabel(f'x [m]')
+        ax.set_ylabel(f'y [m]')
+        ax.set_title(f'Bit Grid at height={height_w:.2}m')
         fig.colorbar(im, ax=ax)
 
         plt.tight_layout()
