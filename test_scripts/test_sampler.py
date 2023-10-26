@@ -26,7 +26,7 @@ def main():
     )
 
     # get pixel weights
-    weights = sampler.weights.reshape(img_wh)
+    weights = sampler.weights.reshape(img_wh[1], img_wh[0])
     print(f"pixel weights shape: {weights.shape}")
 
     # plot weights
