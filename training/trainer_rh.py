@@ -895,17 +895,17 @@ class TrainerRH(Trainer):
             self,
             step,
     ):
-        if step % 1 != 0:
+        if step % self.args.occ_grid.update_interval != 0:
             return
 
         height_w = 1.0
         height_c = self.train_dataset.scene.w2cTransformation(pos=np.array([[0.0, 0.0, height_w]]), copy=False)[0,2]
 
         grid_size = self.model.grid_size
-        occ_grid_3d = self.model.density_grid[0]
+        occ_grid_3d = self.model.density_grid[0].detach().cpu().numpy()
         cells = self.model.get_all_cells()[0]
-        idxs = cells[0]
-        coords = cells[1]
+        idxs = cells[0].detach().cpu().numpy()
+        coords = cells[1].detach().cpu().numpy()
 
         # convert height from cube to occupancy grid coordinates
         height_o = grid_size * (height_c+self.args.model.scale) / (2*self.args.model.scale) 
@@ -918,9 +918,9 @@ class TrainerRH(Trainer):
         occ_grid_2d = np.zeros((grid_size, grid_size))
         occ_grid_2d[coords[:,0], coords[:,1]] = occ_grid_3d[idxs]
 
-        print(f"occ_grid.shape={occ_grid_3d.shape}")
-        print(f"indices shape={idxs.shape}, coords shape={coords.shape}")
-        print(f"occ_grid_2d max={np.max(occ_grid_2d)}, min={np.min(occ_grid_2d)}")
+        # print(f"occ_grid.shape={occ_grid_3d.shape}")
+        # print(f"indices shape={idxs.shape}, coords shape={coords.shape}")
+        # print(f"occ_grid_2d max={np.max(occ_grid_2d)}, min={np.min(occ_grid_2d)}")
 
         scale = self.args.model.scale
         extent = self.test_dataset.scene.c2wTransformation(pos=np.array([[-scale,-scale],[scale,scale]]), copy=False)

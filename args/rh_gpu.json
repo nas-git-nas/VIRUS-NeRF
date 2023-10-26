@@ -19,9 +19,9 @@
     {
         "distortion_loss_w": 0.0,
         "batch_size": 8192,
-        "sampling_strategy": {"imgs": "all", "rays": "weighted"},
+        "sampling_strategy": {"imgs": "all", "rays": "random"},
         "sensors": ["RGBD"],
-        "max_steps": 1500,
+        "max_steps": 500,
         "lr": 1e-2,
         "depth_loss_w": 100,
         "random_bg": false
