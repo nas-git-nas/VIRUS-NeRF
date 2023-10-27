@@ -61,7 +61,7 @@ class OccupancyGrid():
             probs_emp=probs_emp,
         )
 
-        return self.grid.flatten()
+        return self.grid
 
     @torch.no_grad()
     def _updateGrid(

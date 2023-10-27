@@ -142,6 +142,7 @@ class NGP(nn.Module):
 
         self.render_func = VolumeRenderer()
 
+        self.args = args
         self.occ_grid_class = OccupancyGrid(
             args=args,
             grid_size=self.grid_size,
@@ -285,8 +286,16 @@ class NGP(nn.Module):
             meas=depth_meas,
         )
 
+        cells = self.get_all_cells()
+        indices, coords = cells[0]
+
+        print(f"indicies: {indices.shape} \n{indices}")
+
+        density_grid = torch.zeros(self.grid_size**3, device=self.args.device, dtype=torch.float32)
+        density_grid[indices] = occ_grid[coords[:, 0], coords[:, 1], coords[:, 2]]
+
         packbits(
-            density_grid=occ_grid.reshape(-1).contiguous(),
+            density_grid=density_grid.reshape(-1).contiguous(),
             density_threshold=density_threshold,
             density_bitfield=self.density_bitfield,
         )
