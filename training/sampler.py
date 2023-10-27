@@ -12,6 +12,7 @@ class Sampler():
             img_wh:tuple,
             seed:int,
             sensors_dict:dict=None,
+            fct_getValidDepthMask:callable=None,
     ) -> None:
         """
         Args:
@@ -25,6 +26,7 @@ class Sampler():
         self.dataset_len = dataset_len
         self.img_wh = img_wh
         self.sensors_dict = sensors_dict
+        self.fct_getValidDepthMask = fct_getValidDepthMask
 
         self.rgn = np.random.default_rng(seed=seed)
 
@@ -35,16 +37,34 @@ class Sampler():
         self.weights = (weights / np.sum(weights)).flatten()
 
     def __call__(
-            self,
+        self,
+        batch_size:int,
+        sampling_strategy:dict,
     ):
         """
         Sample images and pixels/rays.
+        Args:
+            batch_size: number of samples; int
+            sampling_strategy: sampling strategy used; dict
+                'imgs': str
+                    'all': sample from all images
+                    'same': sample from the one image
+                'rays': str
+                    'random': sample random pixels
+                    'ordered': sample equally distributed pixels with random offsets
+                    'closest': sample random pixels but add some of the closest pixels
+                    'weighted': sample random pixels with weights (more pixels in mid-height)
+                    'valid_depth': sample random pixels with valid depth (not nan)
         Returns:
             img_idxs: indices of images to be used for training; tensor of int64 (batch_size,)
             pix_idxs: indices of pixels to be used for training; tensor of int64 (batch_size,)
         """
-        img_idxs = self._imgIdxs()
+        img_idxs = self._imgIdxs(
+            batch_size=batch_size,
+            img_strategy=sampling_strategy["imgs"],
+        )
         pix_idxs = self._pixIdxs(
+            ray_strategy=sampling_strategy["rays"],
             img_idxs=img_idxs
         )
 
@@ -52,37 +72,47 @@ class Sampler():
     
     def _imgIdxs(
             self,
+            batch_size:int,
+            img_strategy:str,
     ):
         """
         Sample image indices.
+        Args:
+            batch_size: number of samples; int
+            img_strategy: image sampling strategy; str
         Returns:
             img_idxs: indices of images to be used for training; tensor of int64 (batch_size,)
         """
-        if self.args.training.sampling_strategy["imgs"] == "all":
-            return torch.randint(0, self.dataset_len, size=(self.args.training.batch_size,), device=self.args.device)
+        if img_strategy == "all":
+            return torch.randint(0, self.dataset_len, size=(batch_size,), device=self.args.device)
         
-        if self.args.training.sampling_strategy["imgs"] == "same":
+        if img_strategy == "same":
             idx = torch.randint(0, self.dataset_len, size=(1,), device=self.args.device)
-            return idx * torch.ones(self.args.training.batch_size, dtype=torch.int64, device=self.args.device)               
+            return idx * torch.ones(batch_size, dtype=torch.int64, device=self.args.device)               
         
         print(f"ERROR: sampler._imgIdxs: image sampling strategy must be either 'all' or 'same'"
               + f" but is {self.args.training.sampling_strategy['imgs']}")
 
     def _pixIdxs(
             self,
+            ray_strategy:str,
             img_idxs:torch.Tensor=None,
     ):
         """
         Sample pixel/ray indices.
         Args:
+            ray_strategy: ray sampling strategy; str
             img_idxs: indices of images needed if ray sampling strategy is 'closest'; tensor of int64 (batch_size,)
         Returns:
             pix_idxs: indices of pixels to be used for training; tensor of int64 (batch_size,)
         """
-        if self.args.training.sampling_strategy["rays"] == "random":
+        B = img_idxs.shape[0]
+        WH = self.img_wh[0]*self.img_wh[1]
+
+        if ray_strategy == "random":
             return torch.randint(0, self.img_wh[0]*self.img_wh[1], size=(self.args.training.batch_size,), device=self.args.device)
         
-        if self.args.training.sampling_strategy["rays"] == "ordered":
+        if ray_strategy == "ordered":
             step = self.img_wh[0]*self.img_wh[1] / self.args.training.batch_size
             pix_idxs = torch.linspace(0, self.img_wh[0]*self.img_wh[1]-1-step, self.args.training.batch_size, device=self.args.device)
             rand_offset = step * torch.rand(size=(self.args.training.batch_size,), device=self.args.device)
@@ -90,16 +120,35 @@ class Sampler():
             pix_idxs = torch.clamp(pix_idxs, min=0, max=self.img_wh[0]*self.img_wh[1]-1)
             return pix_idxs
         
-        if self.args.training.sampling_strategy["rays"] == "closest":
+        if ray_strategy == "closest":
             pix_idxs = torch.randint(0, self.img_wh[0]*self.img_wh[1], size=(self.args.training.batch_size,), device=self.args.device)
             num_min_idxs = int(0.005 * self.args.training.batch_size)
             pix_min_idxs = self.sensors_dict["USS"].imgs_min_idx
             pix_idxs[:num_min_idxs] = pix_min_idxs[img_idxs[:num_min_idxs]]
             return pix_idxs
         
-        if self.args.training.sampling_strategy["rays"] == "weighted":
+        if ray_strategy == "weighted":
             pix_idxs = self.rgn.choice(self.img_wh[0]*self.img_wh[1], size=(self.args.training.batch_size,), p=self.weights)
             return torch.from_numpy(pix_idxs).to(torch.int64)
+        
+        if ray_strategy == "valid_depth":
+            val_idxs_dict = self.fct_getValidDepthMask(img_idxs) # dict of sensor: valid depth; bool tensor (B, H*W)
+
+            # random ints used to create B random permutation of H*W intergers
+            rand_ints = torch.randint(0, WH, (B, WH), device=self.args.device) # (B, H*W)
+
+            # replace random ints with -n where depth is invalid in order to not sample them
+            # n is the number of sensor for which the depth is invalid
+            for val_idxs in val_idxs_dict.values():
+                rand_ints = torch.where(
+                    condition=val_idxs, 
+                    input=rand_ints, 
+                    other=torch.minimum(rand_ints-1, -torch.ones_like(rand_ints, device=self.args.device))
+                ) # (B, H*W)
+
+            # create random permutation for every row where invalid pixels are at the beginning   
+            perm_idxs = torch.argsort(rand_ints, dim=1) # (B, H*W)
+            return perm_idxs[:,-1] # (B), random pixel indices with valid depth (except entire row is invalid)
         
         print(f"ERROR: sampler._pixIdxs: pixel sampling strategy must be either 'random', 'ordered', 'closest' or weighted"
               + f" but is {self.args.training.sampling_strategy['rays']}")

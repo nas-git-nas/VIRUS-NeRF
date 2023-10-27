@@ -82,6 +82,8 @@ class HParamsEvaluation(HParams):
 class HParamsOccGrid(HParams):
     def __init__(self) -> None:
         # hyper parameters
+        self.batch_size = None
+        self.sampling_strategy = None
         self.warmup_steps = None
         self.update_interval = None
         self.max_res = None

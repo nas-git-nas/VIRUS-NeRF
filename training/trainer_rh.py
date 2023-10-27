@@ -84,8 +84,10 @@ class TrainerRH(Trainer):
         for step in range(self.args.training.max_steps):
             self.model.train()
 
-            i = torch.randint(0, len(self.train_dataset), (1,)).item()
-            data = self.train_dataset[i]
+            data = self.train_dataset(
+                batch_size=self.args.training.batch_size,
+                sampling_strategy=self.args.training.sampling_strategy,
+            )
 
             direction = data['direction']
             pose = data['pose']

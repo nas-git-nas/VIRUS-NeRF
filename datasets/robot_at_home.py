@@ -96,6 +96,7 @@ class RobotAtHomeDataset(BaseDataset):
             img_wh=self.img_wh,
             seed=args.seed,
             sensors_dict=self.sensors_dict,
+            fct_getValidDepthMask=self.getValidDepthMask,
         )
 
     def read_intrinsics(self):

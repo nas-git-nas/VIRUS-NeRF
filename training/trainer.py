@@ -71,6 +71,7 @@ class Trainer:
             'half_opt': False, # TODO: args
             'rh_scene': self.train_dataset.scene,
             'args': self.args,
+            'dataset': self.train_dataset,
         }
         self.model = NGP(**model_config).to(self.args.device)
 

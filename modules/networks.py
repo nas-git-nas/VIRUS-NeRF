@@ -20,6 +20,7 @@ from .spherical_harmonics import DirEncoder
 
 from modules.occupancy_grid import OccupancyGrid
 from datasets.robot_at_home_scene import RobotAtHomeScene
+from datasets.robot_at_home import RobotAtHomeDataset
 from args.args import Args
 
 class TruncExp(torch.autograd.Function):
@@ -57,6 +58,7 @@ class NGP(nn.Module):
             rgb_net_depth: int=2,
             rgb_net_width: int=64,
             rh_scene:RobotAtHomeScene=None,
+            dataset:RobotAtHomeDataset=None,
             args:Args=None,
         ):
         super().__init__()
@@ -147,6 +149,7 @@ class NGP(nn.Module):
             args=args,
             grid_size=self.grid_size,
             rh_scene=rh_scene,
+            dataset=dataset,
         )
 
     def density(self, x, return_feat=False):
@@ -280,11 +283,13 @@ class NGP(nn.Module):
         erode=False       
     ):
         
-        occ_grid = self.occ_grid_class.rayUpdate(
-            rays_o=rays_o,
-            rays_d=rays_d,
-            meas=depth_meas,
-        )
+        # occ_grid = self.occ_grid_class.rayUpdate(
+        #     rays_o=rays_o,
+        #     rays_d=rays_d,
+        #     meas=depth_meas,
+        # )
+
+        occ_grid = self.occ_grid_class.update()
 
         cells = self.get_all_cells()
         indices, coords = cells[0]

@@ -36,89 +36,55 @@ class BaseDataset(Dataset):
             for key in self.depths_dict.keys():
                 self.depths_dict[key] = self.depths_dict[key].to(device)
         return self
+    
+    def getValidDepthMask(
+        self,
+        img_idxs:torch.Tensor,
+    ):
+        """
+        Get valid depth masks for each sensor.
+        Args:
+            img_idxs: indices of images; tensor of int64 (batch_size,)
+        Returns:
+            val_depth_masks: valid depth masks for each sensor; dict of tensors of bool (batch_size, H*W)
+        """
+        val_depth_masks = {}
+        for sensor, sensor_depths in self.depths_dict.items():
+            val_depth_masks[sensor] = ~torch.isnan(sensor_depths[img_idxs])
+        return val_depth_masks
 
-    def __getitem__(self, idx):
-        if self.split.startswith('train'):
-            # # training pose is retrieved in train.py
-            # if self.args.training.sampling_strategy["imgs"] == "all":
-            #     img_idxs = torch.randint(0, len(self.poses), size=(self.args.training.batch_size,), device=self.rays.device)
-            # elif self.args.training.sampling_strategy["imgs"] == "same":
-            #     img_idxs = idx * torch.ones(self.args.training.batch_size, dtype=torch.int64, device=self.rays.device)               
-            # else:
-            #     print(f"ERROR: base.py: __getitem__: image sampling strategy must be either 'all' or 'same' " \
-            #           f"but is {self.args.training.sampling_strategy['imgs']}")
+    def __call__(
+        self, 
+        batch_size:int,
+        sampling_strategy:dict,
+    ):
+        """
+        Get some data from the dataset.
+        Args:
+            batch_size: number of samples; int
+            sampling_strategy: dictionary containing the sampling strategy for images and pixels; dict
+        """
+        # sample image and pixel indices
+        img_idxs, pix_idxs = self.sampler(
+            batch_size=batch_size,
+            sampling_strategy=sampling_strategy,
+        )
 
-            # # if self.ray_sampling_strategy == 'all_images':  # randomly select images
-            # #     # img_idxs = np.random.choice(len(self.poses), self.batch_size)
-            # #     img_idxs = torch.randint(
-            # #         0,
-            # #         len(self.poses),
-            # #         size=(self.batch_size,),
-            # #         device=self.rays.device,
-            # #     )
-            # # elif self.ray_sampling_strategy == 'same_image':  # randomly select ONE image
-            # #     # img_idxs = np.random.choice(len(self.poses), 1)[0]
-            # #     img_idxs = [idx]
-            # # # randomly select pixels
-            # # # pix_idxs = np.random.choice(self.img_wh[0] * self.img_wh[1],
-            # # #                             self.batch_size)
+        # sample data
+        rays = self.rays[img_idxs, pix_idxs]
+        samples = {
+            'img_idxs': img_idxs,
+            'pix_idxs': pix_idxs,
+            'pose': self.poses[img_idxs],
+            'direction': self.directions[pix_idxs],
+            'rgb': rays[:, :3],
+        }
+        if hasattr(self, 'depths_dict'):
+            samples['depth'] = {}
+            for sensor, sensor_depths in self.depths_dict.items():
+                samples['depth'][sensor] = sensor_depths[img_idxs, pix_idxs]
 
-            # if self.args.training.sampling_strategy["rays"] == "random":
-            #     pix_idxs = torch.randint(0, self.img_wh[0]*self.img_wh[1], size=(self.args.training.batch_size,), device=self.rays.device)
-            # elif self.args.training.sampling_strategy["rays"] == "ordered":
-            #     step = self.img_wh[0]*self.img_wh[1] / self.args.training.batch_size
-            #     pix_idxs = torch.linspace(0, self.img_wh[0]*self.img_wh[1]-1-step, self.args.training.batch_size, device=self.rays.device)
-            #     rand_offset = step * torch.rand(size=(self.args.training.batch_size,), device=self.rays.device)
-            #     pix_idxs = torch.round(pix_idxs + rand_offset).to(torch.int64)
-            #     pix_idxs = torch.clamp(pix_idxs, min=0, max=self.img_wh[0]*self.img_wh[1]-1)
-            # elif self.args.training.sampling_strategy["rays"] == "closest":
-            #     pix_idxs = torch.randint(0, self.img_wh[0]*self.img_wh[1], size=(self.args.training.batch_size,), device=self.rays.device)
-            #     num_min_idxs = int(0.005 * self.args.training.batch_size)
-            #     pix_min_idxs = self.sensors_dict["USS"].imgs_min_idx
-            #     pix_idxs[:num_min_idxs] = pix_min_idxs[img_idxs[:num_min_idxs]]
-            # else:
-            #     print(f"ERROR: base.py: __getitem__: pixel sampling strategy must be either 'random' or 'ordered' " \
-            #           f"but is {self.args.training.sampling_strategy['pixels']}")
-            
-            # # if hasattr(self, 'pixel_sampling_strategy') and self.pixel_sampling_strategy=='entire_image':
-            # #     pix_idxs = torch.arange(
-            # #         0, self.img_wh[0]*self.img_wh[1], device=self.rays.device
-            # #     )
-            # # else:
-            # #     pix_idxs = torch.randint(
-            # #         0, self.img_wh[0]*self.img_wh[1], size=(self.batch_size,), device=self.rays.device
-            # #     )
-
-            img_idxs, pix_idxs = self.sampler()
-
-
-            rays = self.rays[img_idxs, pix_idxs]
-            sample = {
-                'img_idxs': img_idxs,
-                'pix_idxs': pix_idxs,
-                'pose': self.poses[img_idxs],
-                'direction': self.directions[pix_idxs],
-                'rgb': rays[:, :3],
-            }
-            if hasattr(self, 'depths_dict'):
-                sample['depth'] = {}
-                for sensor, sensor_depths in self.depths_dict.items():
-                    sample['depth'][sensor] = sensor_depths[img_idxs, pix_idxs]
-        else:
-            sample = {
-                'pose': self.poses[idx], 
-                'img_idxs': idx
-            }
-            if hasattr(self, 'depths_dict'):
-                sample['depth'] = {}
-                for sensor, sensor_depths in self.depths_dict.items():
-                    sample['depth'][sensor] = sensor_depths[idx]
-             # if ground truth available
-            if len(self.rays) > 0: 
-                rays = self.rays[idx]
-                sample['rgb'] = rays[:, :3]
-
-        return sample
+        return samples
     
     def reduceImgHeight(
         self,
@@ -245,3 +211,74 @@ class BaseDataset(Dataset):
         df_description.to_csv(os.path.join(split_description_path, 'split_description.csv'), index=True)
 
         return df
+
+
+
+
+
+
+            # # training pose is retrieved in train.py
+            # if self.args.training.sampling_strategy["imgs"] == "all":
+            #     img_idxs = torch.randint(0, len(self.poses), size=(self.args.training.batch_size,), device=self.rays.device)
+            # elif self.args.training.sampling_strategy["imgs"] == "same":
+            #     img_idxs = idx * torch.ones(self.args.training.batch_size, dtype=torch.int64, device=self.rays.device)               
+            # else:
+            #     print(f"ERROR: base.py: __getitem__: image sampling strategy must be either 'all' or 'same' " \
+            #           f"but is {self.args.training.sampling_strategy['imgs']}")
+
+            # # if self.ray_sampling_strategy == 'all_images':  # randomly select images
+            # #     # img_idxs = np.random.choice(len(self.poses), self.batch_size)
+            # #     img_idxs = torch.randint(
+            # #         0,
+            # #         len(self.poses),
+            # #         size=(self.batch_size,),
+            # #         device=self.rays.device,
+            # #     )
+            # # elif self.ray_sampling_strategy == 'same_image':  # randomly select ONE image
+            # #     # img_idxs = np.random.choice(len(self.poses), 1)[0]
+            # #     img_idxs = [idx]
+            # # # randomly select pixels
+            # # # pix_idxs = np.random.choice(self.img_wh[0] * self.img_wh[1],
+            # # #                             self.batch_size)
+
+            # if self.args.training.sampling_strategy["rays"] == "random":
+            #     pix_idxs = torch.randint(0, self.img_wh[0]*self.img_wh[1], size=(self.args.training.batch_size,), device=self.rays.device)
+            # elif self.args.training.sampling_strategy["rays"] == "ordered":
+            #     step = self.img_wh[0]*self.img_wh[1] / self.args.training.batch_size
+            #     pix_idxs = torch.linspace(0, self.img_wh[0]*self.img_wh[1]-1-step, self.args.training.batch_size, device=self.rays.device)
+            #     rand_offset = step * torch.rand(size=(self.args.training.batch_size,), device=self.rays.device)
+            #     pix_idxs = torch.round(pix_idxs + rand_offset).to(torch.int64)
+            #     pix_idxs = torch.clamp(pix_idxs, min=0, max=self.img_wh[0]*self.img_wh[1]-1)
+            # elif self.args.training.sampling_strategy["rays"] == "closest":
+            #     pix_idxs = torch.randint(0, self.img_wh[0]*self.img_wh[1], size=(self.args.training.batch_size,), device=self.rays.device)
+            #     num_min_idxs = int(0.005 * self.args.training.batch_size)
+            #     pix_min_idxs = self.sensors_dict["USS"].imgs_min_idx
+            #     pix_idxs[:num_min_idxs] = pix_min_idxs[img_idxs[:num_min_idxs]]
+            # else:
+            #     print(f"ERROR: base.py: __getitem__: pixel sampling strategy must be either 'random' or 'ordered' " \
+            #           f"but is {self.args.training.sampling_strategy['pixels']}")
+            
+            # # if hasattr(self, 'pixel_sampling_strategy') and self.pixel_sampling_strategy=='entire_image':
+            # #     pix_idxs = torch.arange(
+            # #         0, self.img_wh[0]*self.img_wh[1], device=self.rays.device
+            # #     )
+            # # else:
+            # #     pix_idxs = torch.randint(
+            # #         0, self.img_wh[0]*self.img_wh[1], size=(self.batch_size,), device=self.rays.device
+            # #     )
+
+
+
+            #         else:
+            # sample = {
+            #     'pose': self.poses[idx], 
+            #     'img_idxs': idx
+            # }
+            # if hasattr(self, 'depths_dict'):
+            #     sample['depth'] = {}
+            #     for sensor, sensor_depths in self.depths_dict.items():
+            #         sample['depth'][sensor] = sensor_depths[idx]
+            #  # if ground truth available
+            # if len(self.rays) > 0: 
+            #     rays = self.rays[idx]
+            #     sample['rgb'] = rays[:, :3]

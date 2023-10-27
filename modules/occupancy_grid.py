@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 
 from args.args import Args
 from datasets.robot_at_home_scene import RobotAtHomeScene
+from datasets.robot_at_home import RobotAtHome
+from datasets.ray_utils import get_rays
 
 class OccupancyGrid():
     def __init__(
@@ -11,9 +13,11 @@ class OccupancyGrid():
         args:Args,
         grid_size:int,
         rh_scene:RobotAtHomeScene=None,
+        dataset:RobotAtHome=None,
     ) -> None:
         self.args = args
         self.grid_size = grid_size
+        self.dataset = dataset
 
         self.grid = 0.5 * torch.ones(grid_size, grid_size, grid_size, device=args.device, dtype=torch.float32)
 
@@ -32,6 +36,38 @@ class OccupancyGrid():
             self.std_min = rh_scene.w2cTransformation(pos=self.std_min, only_scale=True, copy=False)
             self.std_every_m = self.std_every_m / rh_scene.w2cTransformation(pos=1, only_scale=True, copy=False)
             self.attenuation_every_m = self.attenuation_every_m / rh_scene.w2cTransformation(pos=1, only_scale=True, copy=False)
+
+    @torch.no_grad()
+    def update(
+        self,
+    ):
+        """
+        Update grid with image.
+        Returns:
+            grid: occupancy grid; tensor (grid_size, grid_size, grid_size)
+        """
+        # get data and calculate rays
+        data = self.dataset(
+            batch_size=self.args.occ_grid.batch_size,
+            sampling_strategy=self.args.occ_grid.sampling_strategy,
+        )
+        rays_o, rays_d = get_rays(
+            directions=data['direction'], 
+            c2w=data['pose']
+        )
+
+        # TODO: change
+        for key in data['depth']:
+            depth_meas = data['depth'][key]
+            break
+
+        self.rayUpdate(
+            rays_o=rays_o,
+            rays_d=rays_d,
+            meas=depth_meas,
+        )
+
+        return self.grid # (grid_size, grid_size, grid_size)
 
     @torch.no_grad()
     def rayUpdate(
