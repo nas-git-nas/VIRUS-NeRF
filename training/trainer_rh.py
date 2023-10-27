@@ -29,7 +29,7 @@ from helpers.geometric_fcts import findNearestNeighbour
 from helpers.data_fcts import linInterpolateArray
 from training.metrics_rh import MetricsRH
 
-
+from modules.occupancy_grid import OccupancyGrid
 
 from training.trainer import Trainer
 from training.loss import Loss
@@ -69,6 +69,12 @@ class TrainerRH(Trainer):
             'mnn': [],
         }
 
+        self.occ_grid_class = OccupancyGrid(
+            args=self.args,
+            grid_size=self.model.grid_size,
+            rh_scene=self.train_dataset.scene,
+        )
+
     def train(self):
         """
         Training loop.
@@ -86,13 +92,23 @@ class TrainerRH(Trainer):
 
             
             with torch.autocast(device_type='cuda', dtype=torch.float16):
+                # get rays
+                rays_o, rays_d = get_rays(direction, pose)
+
                 if step % self.args.occ_grid.update_interval == 0:
                     self.model.update_density_grid(
                         0.01 * MAX_SAMPLES / 3**0.5,
                         warmup=step < self.args.occ_grid.warmup_steps,
                     )
-                # get rays and render image
-                rays_o, rays_d = get_rays(direction, pose)
+
+                    self.occ_grid_class.rayUpdate(
+                        rays_o=rays_o.detach().clone(),
+                        rays_d=rays_d.detach().clone(),
+                        meas=data['depth']['RGBD'].detach().clone(),
+                    )
+
+
+                # render image
                 results = render(
                     self.model, 
                     rays_o, 
@@ -925,6 +941,12 @@ class TrainerRH(Trainer):
         bit_grid_2d = np.zeros((grid_size, grid_size))
         bit_grid_2d[coords[:,0], coords[:,1]] = bit_grid_3d[idxs]
 
+        occ_grid2_3d = self.occ_grid_class.grid.detach().cpu().numpy()
+        occ_grid2_2d = occ_grid2_3d[height_o]
+        bit_grid2_2d = np.copy(occ_grid2_2d)
+        bit_grid2_2d[bit_grid2_2d >= 0.5] = 1.0
+        bit_grid2_2d[bit_grid2_2d < 0.5] = 0.0
+
         # print(f"occ_grid.shape={occ_grid_3d.shape}")
         # print(f"indices shape={idxs.shape}, coords shape={coords.shape}")
         # print(f"occ_grid_2d max={np.max(occ_grid_2d)}, min={np.min(occ_grid_2d)}")
@@ -934,21 +956,34 @@ class TrainerRH(Trainer):
         extent = extent.T.flatten()
 
         # plot occupancy grid
-        fig, axes = plt.subplots(ncols=2, nrows=1, figsize=(9,4))
+        fig, axes = plt.subplots(ncols=2, nrows=2, figsize=(9,6))
 
-        ax = axes[0]
+        ax = axes[0,0]
         im = ax.imshow(occ_grid_2d.T, origin='lower', cmap='viridis', extent=extent)
         ax.set_xlabel(f'x [m]')
         ax.set_ylabel(f'y [m]')
         ax.set_title(f'Occupancy Grid at height={height_w:.2}m')
         fig.colorbar(im, ax=ax)
 
-        ax = axes[1]
+        ax = axes[0,1]
         im = ax.imshow(bit_grid_2d.T, origin='lower', cmap='viridis', extent=extent)
         ax.set_xlabel(f'x [m]')
         ax.set_ylabel(f'y [m]')
         ax.set_title(f'Bit Grid at height={height_w:.2}m')
         fig.colorbar(im, ax=ax)
+
+        ax = axes[1,0]
+        im = ax.imshow(occ_grid2_2d.T, origin='lower', cmap='viridis', extent=extent)
+        ax.set_xlabel(f'x [m]')
+        ax.set_ylabel(f'y [m]')
+        ax.set_title(f'Occupancy Grid 2 at height={height_w:.2}m')
+        fig.colorbar(im, ax=ax)
+
+        ax = axes[1,1]
+        im = ax.imshow(bit_grid2_2d.T, origin='lower', cmap='viridis', extent=extent)
+        ax.set_xlabel(f'x [m]')
+        ax.set_ylabel(f'y [m]')
+        ax.set_title(f'Bit Grid 2 at height={height_w:.2}m')
 
         plt.tight_layout()
         plt.savefig(os.path.join(self.args.save_dir, "occ_grid"+str(step)+".png"))

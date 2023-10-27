@@ -79,7 +79,7 @@ def main():
     # load hparams
     hparams_file = "rh_windows.json"
     args = Args(file_name=hparams_file)
-    args.model.scale = 4.0
+    args.model.scale = 3.0
 
     # create occupancy grid
     occ_grid = OccupancyGrid(

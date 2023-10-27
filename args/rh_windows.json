@@ -42,7 +42,7 @@
     "occ_grid":
     {
         "warmup_steps": 256,
-        "update_interval": 16,
+        "update_interval": 2,
         "max_res": 1024
     },
     "robot_at_home":
