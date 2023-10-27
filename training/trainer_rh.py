@@ -100,7 +100,7 @@ class TrainerRH(Trainer):
                         rays_o=rays_o.detach().clone(),
                         rays_d=rays_d.detach().clone(),
                         depth_meas=data['depth']['RGBD'].detach().clone(),
-                        density_threshold= 0.5 * ((step+1) / self.args.training.max_steps),
+                        density_threshold= 0.4 + 0.1 * np.minimum(1, ((step+1) / (self.args.training.max_steps/2))),
                     )
                     # self.model.update_density_grid(
                     #     rays_o=rays_o.detach().clone(),
@@ -926,23 +926,23 @@ class TrainerRH(Trainer):
 
         
         # occ_grid_3d = self.model.density_grid[0].detach().cpu().numpy()
-        # bit_grid_3d = self.model.density_bitfield.detach().cpu().numpy().astype(np.uint8)
-        # cells = self.model.get_all_cells()[0]
-        # idxs = cells[0].detach().cpu().numpy()
-        # coords = cells[1].detach().cpu().numpy()
+        bit_grid_3d = self.model.density_bitfield.detach().cpu().numpy().astype(np.uint8)
+        cells = self.model.get_all_cells()[0]
+        idxs = cells[0].detach().cpu().numpy()
+        coords = cells[1].detach().cpu().numpy()
 
-        # # convert bitfield to binary array
-        # bit_grid_3d = np.unpackbits(bit_grid_3d.reshape(-1,1), axis=1)
-        # bit_grid_3d = bit_grid_3d.flatten()
+        # convert bitfield to binary array
+        bit_grid_3d = np.unpackbits(bit_grid_3d.reshape(-1,1), axis=1)
+        bit_grid_3d = bit_grid_3d.flatten()
 
-        # # keep only indices of given height
-        # idxs = idxs[coords[:,2] == height_o]
-        # coords = coords[coords[:,2] == height_o]
+        # keep only indices of given height
+        idxs = idxs[coords[:,2] == height_o]
+        coords = coords[coords[:,2] == height_o]
 
         # occ_grid_2d = np.zeros((grid_size, grid_size))
         # occ_grid_2d[coords[:,0], coords[:,1]] = occ_grid_3d[idxs]
-        # bit_grid_2d = np.zeros((grid_size, grid_size))
-        # bit_grid_2d[coords[:,0], coords[:,1]] = bit_grid_3d[idxs]
+        bit_grid_2d = np.zeros((grid_size, grid_size))
+        bit_grid_2d[coords[:,0], coords[:,1]] = bit_grid_3d[idxs]
 
         occ_grid2_3d = self.model.occ_grid_class.grid.detach().cpu().numpy()
         occ_grid2_2d = occ_grid2_3d[:,:,height_o]
@@ -968,12 +968,12 @@ class TrainerRH(Trainer):
         # ax.set_title(f'Occupancy Grid at height={height_w:.2}m')
         # fig.colorbar(im, ax=ax)
 
-        # ax = axes[0,1]
-        # im = ax.imshow(bit_grid_2d.T, origin='lower', cmap='viridis', extent=extent)
-        # ax.set_xlabel(f'x [m]')
-        # ax.set_ylabel(f'y [m]')
-        # ax.set_title(f'Bit Grid at height={height_w:.2}m')
-        # fig.colorbar(im, ax=ax)
+        ax = axes[0,1]
+        im = ax.imshow(bit_grid_2d.T, origin='lower', cmap='viridis', extent=extent)
+        ax.set_xlabel(f'x [m]')
+        ax.set_ylabel(f'y [m]')
+        ax.set_title(f'Bit Grid at height={height_w:.2}m')
+        fig.colorbar(im, ax=ax)
 
         ax = axes[1,0]
         im = ax.imshow(occ_grid2_2d.T, origin='lower', cmap='viridis', extent=extent)
