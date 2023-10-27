@@ -22,9 +22,9 @@ class OccupancyGrid():
         self.I = 32 # number of samples for integral
         self.M = 32 # number of samples for ray measurement
 
-        max_sensor_range = 25.0 # in meters
-        self.std_min = 0.2 # minimum standard deviation of sensor model
-        self.std_every_m = 1.0 # standard deviation added every m
+        max_sensor_range = 5.0 # in meters
+        self.std_min = 0.1 # minimum standard deviation of sensor model
+        self.std_every_m = 0.5 # standard deviation added every m
         self.attenuation_min = 1.0 # minimum attenuation of sensor model
         self.attenuation_every_m = 1 / max_sensor_range # attenuation added every m
 

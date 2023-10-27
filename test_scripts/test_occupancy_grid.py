@@ -34,42 +34,66 @@ def plot_model_probs(
     probs_notless_occ,
     probs_notless_emp,
 ):
+    x_min = dists.min()
+    x_max = dists.max()
+    y_min = np.min((probs_occ.min(), probs_emp.min(), 
+                       probs_equal_occ.min(), probs_equal_emp.min(), 
+                       probs_notless_occ.min(), probs_notless_emp.min()))
+    y_max = np.max((probs_occ.max(), probs_emp.max(),
+                          probs_equal_occ.max(), probs_equal_emp.max(),
+                          probs_notless_occ.max(), probs_notless_emp.max()))
+
     fig, axes = plt.subplots(ncols=3, nrows=2, figsize=(12,8))
 
     ax = axes[0,0]
     ax.plot(dists[0], probs_occ[0], label="occ")
     ax.plot(dists[0], probs_equal_occ[0], label="probs_equal_occ")
     ax.plot(dists[0], probs_notless_occ[0], label="probs_notless_occ")
+    ax.set_xlim([x_min, x_max])
+    ax.set_ylim([y_min, y_max])
     ax.legend()
 
     ax = axes[1,0]
     ax.plot(dists[1], probs_occ[1], "--", label="occ")
     ax.plot(dists[1], probs_equal_occ[1], "--", label="probs_equal_occ")
     ax.plot(dists[1], probs_notless_occ[1], "--", label="probs_notless_occ")
+    ax.set_xlim([x_min, x_max])
+    ax.set_ylim([y_min, y_max])
     ax.legend()
 
     ax = axes[0,1]
     ax.plot(dists[0], probs_emp[0], label="emp")
     ax.plot(dists[0], probs_equal_emp[0], label="probs_equal_emp")
     ax.plot(dists[0], probs_notless_emp[0], label="probs_notless_emp")
+    ax.set_xlim([x_min, x_max])
+    ax.set_ylim([y_min, y_max])
     ax.legend()
 
     ax = axes[1,1]
     ax.plot(dists[1], probs_emp[1], "--", label="emp")
     ax.plot(dists[1], probs_equal_emp[1], "--", label="probs_equal_emp")
     ax.plot(dists[1], probs_notless_emp[1], "--", label="probs_notless_emp")
+    ax.set_xlim([x_min, x_max])
+    ax.set_ylim([y_min, y_max])
     ax.legend()
+
+    y_min = -3
+    y_max = 3
 
     ax = axes[0,2]
     ax.plot(dists[0], np.log(probs_occ[0] / probs_emp[0]), label="log lik")
     ax.plot(dists[0], np.log(probs_equal_occ[0] / probs_equal_emp[0]), label="log lik equal")
     ax.plot(dists[0], np.log(probs_notless_occ[0] / probs_notless_emp[0]), label="log lik. notless")
+    ax.set_xlim([x_min, x_max])
+    ax.set_ylim([y_min, y_max])
     ax.legend()
 
     ax = axes[1,2]
     ax.plot(dists[1], np.log(probs_occ[1] / probs_emp[1]), "--", label="log lik.")
     ax.plot(dists[1], np.log(probs_equal_occ[1] / probs_equal_emp[1]), "--", label="log lik. equal")
     ax.plot(dists[1], np.log(probs_notless_occ[1] / probs_notless_emp[1]), "--", label="log lik. notless")
+    ax.set_xlim([x_min, x_max])
+    ax.set_ylim([y_min, y_max])
     ax.legend()
 
     plt.show()
