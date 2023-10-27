@@ -69,6 +69,8 @@ class Trainer:
             'pos_encoder_type': self.args.model.encoder_type,
             'max_res': self.args.occ_grid.max_res, 
             'half_opt': False, # TODO: args
+            'rh_scene': self.train_dataset.scene,
+            'args': self.args,
         }
         self.model = NGP(**model_config).to(self.args.device)
 

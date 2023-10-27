@@ -18,6 +18,10 @@ from .triplane import TriPlaneEncoder
 from .volume_train import VolumeRenderer
 from .spherical_harmonics import DirEncoder
 
+from modules.occupancy_grid import OccupancyGrid
+from datasets.robot_at_home_scene import RobotAtHomeScene
+from args.args import Args
+
 class TruncExp(torch.autograd.Function):
 
     @staticmethod
@@ -52,6 +56,8 @@ class NGP(nn.Module):
             xyz_net_out_dim: int=16,
             rgb_net_depth: int=2,
             rgb_net_width: int=64,
+            rh_scene:RobotAtHomeScene=None,
+            args:Args=None,
         ):
         super().__init__()
 
@@ -135,6 +141,12 @@ class NGP(nn.Module):
         )
 
         self.render_func = VolumeRenderer()
+
+        self.occ_grid_class = OccupancyGrid(
+            args=args,
+            grid_size=self.grid_size,
+            rh_scene=rh_scene,
+        )
 
     def density(self, x, return_feat=False):
         """
@@ -256,41 +268,60 @@ class NGP(nn.Module):
                     torch.where(valid_mask, 0., -1.)
 
     @torch.no_grad()
-    def update_density_grid(self,
-                            density_threshold,
-                            warmup=False,
-                            decay=0.95,
-                            erode=False):
-        density_grid_tmp = torch.zeros_like(self.density_grid)
-        if warmup:  # during the first steps
-            cells = self.get_all_cells()
-        else:
-            cells = self.sample_uniform_and_occupied_cells(
-                self.grid_size**3 // 4, density_threshold)
-        # infer sigmas
-        for c in range(self.cascades):
-            indices, coords = cells[c]
-            s = min(2**(c - 1), self.scale)
-            half_grid_size = s / self.grid_size
-            xyzs_w = (coords /
-                      (self.grid_size - 1) * 2 - 1) * (s - half_grid_size)
-            # pick random position in the cell by adding noise in [-hgs, hgs]
-            xyzs_w += (torch.rand_like(xyzs_w) * 2 - 1) * half_grid_size
-            density_grid_tmp[c, indices] = self.density(xyzs_w)
-
-        if erode:
-            # My own logic. decay more the cells that are visible to few cameras
-            decay = torch.clamp(decay**(1 / self.count_grid), 0.1, 0.95)
-        self.density_grid = \
-            torch.where(self.density_grid<0,
-                        self.density_grid,
-                        torch.maximum(self.density_grid*decay, density_grid_tmp))
-
-        mean_density = self.density_grid[self.density_grid > 0].mean().item()
+    def update_density_grid(
+        self,
+        rays_o:torch.Tensor,
+        rays_d:torch.Tensor,
+        depth_meas:torch.Tensor,
+        density_threshold,
+        warmup=False,
+        decay=0.95,
+        erode=False       
+    ):
+        
+        occ_grid = self.occ_grid_class.rayUpdate(
+            rays_o=rays_o,
+            rays_d=rays_d,
+            meas=depth_meas,
+        )
 
         packbits(
-            self.density_grid.reshape(-1).contiguous(),
-            min(mean_density, density_threshold), self.density_bitfield)
+            density_grid=occ_grid.reshape(-1).contiguous(),
+            density_threshold=0.5,
+            density_bitfield=self.density_bitfield,
+        )
+
+
+        # density_grid_tmp = torch.zeros_like(self.density_grid)
+        # if warmup:  # during the first steps
+        #     cells = self.get_all_cells()
+        # else:
+        #     cells = self.sample_uniform_and_occupied_cells(
+        #         self.grid_size**3 // 4, density_threshold)
+        # # infer sigmas
+        # for c in range(self.cascades):
+        #     indices, coords = cells[c]
+        #     s = min(2**(c - 1), self.scale)
+        #     half_grid_size = s / self.grid_size
+        #     xyzs_w = (coords /
+        #               (self.grid_size - 1) * 2 - 1) * (s - half_grid_size)
+        #     # pick random position in the cell by adding noise in [-hgs, hgs]
+        #     xyzs_w += (torch.rand_like(xyzs_w) * 2 - 1) * half_grid_size
+        #     density_grid_tmp[c, indices] = self.density(xyzs_w)
+
+        # if erode:
+        #     # My own logic. decay more the cells that are visible to few cameras
+        #     decay = torch.clamp(decay**(1 / self.count_grid), 0.1, 0.95)
+        # self.density_grid = \
+        #     torch.where(self.density_grid<0,
+        #                 self.density_grid,
+        #                 torch.maximum(self.density_grid*decay, density_grid_tmp))
+
+        # mean_density = self.density_grid[self.density_grid > 0].mean().item()
+
+        # packbits(
+        #     self.density_grid.reshape(-1).contiguous(),
+        #     min(mean_density, density_threshold), self.density_bitfield)
 
 
 class MLP(nn.Module):

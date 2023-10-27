@@ -16,7 +16,6 @@ class OccupancyGrid():
         self.grid_size = grid_size
 
         self.grid = 0.5 * torch.ones(grid_size, grid_size, grid_size, device=args.device, dtype=torch.float32)
-        self.grid_ver = 0.5 * torch.ones(grid_size, grid_size, grid_size, device=args.device, dtype=torch.float32)
 
         self.cell_size = 2*self.args.model.scale / grid_size
 
@@ -61,6 +60,8 @@ class OccupancyGrid():
             probs_occ=probs_occ,
             probs_emp=probs_emp,
         )
+
+        return self.grid.flatten()
 
     @torch.no_grad()
     def _updateGrid(
@@ -120,12 +121,6 @@ class OccupancyGrid():
         cell_idxs = self._c2idx(
             pos=cell_pos.reshape(-1, 3),
         ) # (N*M, 3)
-
-        ver_pos = rays_o + rays_d * meas[:, None]  # (N, 3)
-        ver_idxs = self._c2idx(
-            pos=ver_pos,
-        ) # (N*M, 3)
-        self.grid_ver[ver_idxs[:, 0], ver_idxs[:, 1], ver_idxs[:, 2]] = 1.0
 
         return cell_idxs, probs_occ, probs_emp
 
