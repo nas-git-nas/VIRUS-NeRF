@@ -947,6 +947,9 @@ class TrainerRH(Trainer):
         bit_grid2_2d[bit_grid2_2d >= 0.5] = 1.0
         bit_grid2_2d[bit_grid2_2d < 0.5] = 0.0
 
+        ver_grid_3d = self.occ_grid_class.grid_ver.detach().cpu().numpy()
+        ver_grid_2d = ver_grid_3d[height_o]
+
         # print(f"occ_grid.shape={occ_grid_3d.shape}")
         # print(f"indices shape={idxs.shape}, coords shape={coords.shape}")
         # print(f"occ_grid_2d max={np.max(occ_grid_2d)}, min={np.min(occ_grid_2d)}")
@@ -956,7 +959,7 @@ class TrainerRH(Trainer):
         extent = extent.T.flatten()
 
         # plot occupancy grid
-        fig, axes = plt.subplots(ncols=2, nrows=2, figsize=(9,6))
+        fig, axes = plt.subplots(ncols=3, nrows=2, figsize=(9,6))
 
         ax = axes[0,0]
         im = ax.imshow(occ_grid_2d.T, origin='lower', cmap='viridis', extent=extent)
@@ -984,6 +987,12 @@ class TrainerRH(Trainer):
         ax.set_xlabel(f'x [m]')
         ax.set_ylabel(f'y [m]')
         ax.set_title(f'Bit Grid 2 at height={height_w:.2}m')
+
+        ax = axes[1,2]
+        im = ax.imshow(ver_grid_2d.T, origin='lower', cmap='viridis', extent=extent)
+        ax.set_xlabel(f'x [m]')
+        ax.set_ylabel(f'y [m]')
+        ax.set_title(f'Vertical Grid at height={height_w:.2}m')
 
         plt.tight_layout()
         plt.savefig(os.path.join(self.args.save_dir, "occ_grid"+str(step)+".png"))
