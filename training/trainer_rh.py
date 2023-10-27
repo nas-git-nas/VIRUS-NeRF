@@ -913,31 +913,32 @@ class TrainerRH(Trainer):
         height_w = 1.0
         height_c = self.train_dataset.scene.w2cTransformation(pos=np.array([[0.0, 0.0, height_w]]), copy=False)[0,2]
 
-        grid_size = self.model.grid_size
-        occ_grid_3d = self.model.density_grid[0].detach().cpu().numpy()
-        bit_grid_3d = self.model.density_bitfield.detach().cpu().numpy().astype(np.uint8)
-        cells = self.model.get_all_cells()[0]
-        idxs = cells[0].detach().cpu().numpy()
-        coords = cells[1].detach().cpu().numpy()
-
-        # convert bitfield to binary array
-        bit_grid_3d = np.unpackbits(bit_grid_3d.reshape(-1,1), axis=1)
-        bit_grid_3d = bit_grid_3d.flatten()
-
         # convert height from cube to occupancy grid coordinates
+        grid_size = self.model.grid_size
         height_o = grid_size * (height_c+self.args.model.scale) / (2*self.args.model.scale) 
         height_o = int(np.round(height_o))
 
-        # keep only indices of given height
-        idxs = idxs[coords[:,2] == height_o]
-        coords = coords[coords[:,2] == height_o]
+        
+        # occ_grid_3d = self.model.density_grid[0].detach().cpu().numpy()
+        # bit_grid_3d = self.model.density_bitfield.detach().cpu().numpy().astype(np.uint8)
+        # cells = self.model.get_all_cells()[0]
+        # idxs = cells[0].detach().cpu().numpy()
+        # coords = cells[1].detach().cpu().numpy()
 
-        occ_grid_2d = np.zeros((grid_size, grid_size))
-        occ_grid_2d[coords[:,0], coords[:,1]] = occ_grid_3d[idxs]
-        bit_grid_2d = np.zeros((grid_size, grid_size))
-        bit_grid_2d[coords[:,0], coords[:,1]] = bit_grid_3d[idxs]
+        # # convert bitfield to binary array
+        # bit_grid_3d = np.unpackbits(bit_grid_3d.reshape(-1,1), axis=1)
+        # bit_grid_3d = bit_grid_3d.flatten()
 
-        occ_grid2_3d = self.occ_grid_class.grid.detach().cpu().numpy()
+        # # keep only indices of given height
+        # idxs = idxs[coords[:,2] == height_o]
+        # coords = coords[coords[:,2] == height_o]
+
+        # occ_grid_2d = np.zeros((grid_size, grid_size))
+        # occ_grid_2d[coords[:,0], coords[:,1]] = occ_grid_3d[idxs]
+        # bit_grid_2d = np.zeros((grid_size, grid_size))
+        # bit_grid_2d[coords[:,0], coords[:,1]] = bit_grid_3d[idxs]
+
+        occ_grid2_3d = self.model.occ_grid_class.grid.detach().cpu().numpy()
         occ_grid2_2d = occ_grid2_3d[:,:,height_o]
         bit_grid2_2d = np.copy(occ_grid2_2d)
         bit_grid2_2d[bit_grid2_2d >= 0.5] = 1.0
@@ -954,19 +955,19 @@ class TrainerRH(Trainer):
         # plot occupancy grid
         fig, axes = plt.subplots(ncols=2, nrows=2, figsize=(9,6))
 
-        ax = axes[0,0]
-        im = ax.imshow(occ_grid_2d.T, origin='lower', cmap='viridis', extent=extent)
-        ax.set_xlabel(f'x [m]')
-        ax.set_ylabel(f'y [m]')
-        ax.set_title(f'Occupancy Grid at height={height_w:.2}m')
-        fig.colorbar(im, ax=ax)
+        # ax = axes[0,0]
+        # im = ax.imshow(occ_grid_2d.T, origin='lower', cmap='viridis', extent=extent)
+        # ax.set_xlabel(f'x [m]')
+        # ax.set_ylabel(f'y [m]')
+        # ax.set_title(f'Occupancy Grid at height={height_w:.2}m')
+        # fig.colorbar(im, ax=ax)
 
-        ax = axes[0,1]
-        im = ax.imshow(bit_grid_2d.T, origin='lower', cmap='viridis', extent=extent)
-        ax.set_xlabel(f'x [m]')
-        ax.set_ylabel(f'y [m]')
-        ax.set_title(f'Bit Grid at height={height_w:.2}m')
-        fig.colorbar(im, ax=ax)
+        # ax = axes[0,1]
+        # im = ax.imshow(bit_grid_2d.T, origin='lower', cmap='viridis', extent=extent)
+        # ax.set_xlabel(f'x [m]')
+        # ax.set_ylabel(f'y [m]')
+        # ax.set_title(f'Bit Grid at height={height_w:.2}m')
+        # fig.colorbar(im, ax=ax)
 
         ax = axes[1,0]
         im = ax.imshow(occ_grid2_2d.T, origin='lower', cmap='viridis', extent=extent)

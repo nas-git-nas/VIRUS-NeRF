@@ -78,11 +78,12 @@ class Trainer:
         if self.args.model.ckpt_path:
             self.loadCheckpoint(ckpt_path=self.hpaargs.modelrams.ckpt_path)
 
-        self.model.mark_invisible_cells(
-            self.train_dataset.K,
-            self.train_dataset.poses, 
-            self.train_dataset.img_wh,
-        )
+        # # TODO: remove this
+        # self.model.mark_invisible_cells(
+        #     self.train_dataset.K,
+        #     self.train_dataset.poses, 
+        #     self.train_dataset.img_wh,
+        # )
 
         # # use large scaler, the default scaler is 2**16 
         # # TODO: investigate why the gradient is small
