@@ -23,7 +23,7 @@ class OccupancyGrid():
         self.M = 32 # number of samples for ray measurement
 
         max_sensor_range = 25.0 # in meters
-        self.std_min = 0.2 # minimum standard deviation of sensor model
+        self.std_min = 0.1 # minimum standard deviation of sensor model
         self.std_every_m = 1.0 # standard deviation added every m
         self.attenuation_min = 1.0 # minimum attenuation of sensor model
         self.attenuation_every_m = 1 / max_sensor_range # attenuation added every m
@@ -46,6 +46,8 @@ class OccupancyGrid():
             rays_o: rays origins; tensor (N, 3)
             rays_d: rays directions; tensor (N, 3)
             meas: measured distance in cube coordinates; tensor (N, 1)
+        Returns:
+            grid: occupancy grid; tensor (grid_size, grid_size, grid_size)
         """
         # calculate probabilities for each cell
         cell_idxs, probs_occ, probs_emp = self._rayProb(
@@ -61,7 +63,7 @@ class OccupancyGrid():
             probs_emp=probs_emp,
         )
 
-        return self.grid
+        return self.grid # (grid_size, grid_size, grid_size)
 
     @torch.no_grad()
     def _updateGrid(

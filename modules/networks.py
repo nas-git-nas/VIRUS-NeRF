@@ -289,8 +289,6 @@ class NGP(nn.Module):
         cells = self.get_all_cells()
         indices, coords = cells[0]
 
-        print(f"indicies: {indices.shape} \n{indices}")
-
         density_grid = torch.zeros(self.grid_size**3, device=self.args.device, dtype=torch.float32)
         density_grid[indices] = occ_grid[coords[:, 0], coords[:, 1], coords[:, 2]]
 
