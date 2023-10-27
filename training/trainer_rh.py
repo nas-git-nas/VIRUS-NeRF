@@ -96,11 +96,16 @@ class TrainerRH(Trainer):
                 rays_o, rays_d = get_rays(direction, pose)
 
                 if step % self.args.occ_grid.update_interval == 0:
+
+                    for key in data['depth']:
+                        depth_meas = data['depth'][key]
+                        break
+
                     self.model.update_density_grid(
                         rays_o=rays_o.detach().clone(),
                         rays_d=rays_d.detach().clone(),
-                        depth_meas=data['depth']['RGBD'].detach().clone(),
-                        density_threshold= 0.499,
+                        depth_meas=depth_meas.detach().clone(),
+                        density_threshold= 0.5,
                     )
                     # self.model.update_density_grid(
                     #     rays_o=rays_o.detach().clone(),
@@ -701,7 +706,7 @@ class TrainerRH(Trainer):
                 f"color_loss={loss_dict['color']:.4f} | "
                 f"depth_loss={loss_dict['depth']:.4f} | "
                 f"psnr={psnr:.2f} | "
-                f"depth_mnn={(depth_metrics['mnn']):.2f} | "
+                f"depth_mnn={(depth_metrics['mnn']):.3f} | "
             )
 
         # # calculate peak-signal-to-noise ratio
@@ -947,8 +952,8 @@ class TrainerRH(Trainer):
         occ_grid2_3d = self.model.occ_grid_class.grid.detach().cpu().numpy()
         occ_grid2_2d = occ_grid2_3d[:,:,height_o]
         bit_grid2_2d = np.copy(occ_grid2_2d)
-        bit_grid2_2d[bit_grid2_2d > 0.499] = 1.0
-        bit_grid2_2d[bit_grid2_2d <= 0.499] = 0.0
+        bit_grid2_2d[bit_grid2_2d > 0.5] = 1.0
+        bit_grid2_2d[bit_grid2_2d <= 0.5] = 0.0
 
         # print(f"occ_grid.shape={occ_grid_3d.shape}")
         # print(f"indices shape={idxs.shape}, coords shape={coords.shape}")
