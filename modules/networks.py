@@ -287,7 +287,7 @@ class NGP(nn.Module):
 
         packbits(
             density_grid=occ_grid.reshape(-1).contiguous(),
-            density_threshold=0.5,
+            density_threshold=density_threshold,
             density_bitfield=self.density_bitfield,
         )
 

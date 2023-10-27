@@ -100,9 +100,15 @@ class TrainerRH(Trainer):
                         rays_o=rays_o.detach().clone(),
                         rays_d=rays_d.detach().clone(),
                         depth_meas=data['depth']['RGBD'].detach().clone(),
-                        density_threshold=0.01 * MAX_SAMPLES / 3**0.5,
-                        warmup=step < self.args.occ_grid.warmup_steps,
+                        density_threshold= 0.5 * ((step+1) / self.args.training.max_steps),
                     )
+                    # self.model.update_density_grid(
+                    #     rays_o=rays_o.detach().clone(),
+                    #     rays_d=rays_d.detach().clone(),
+                    #     depth_meas=data['depth']['RGBD'].detach().clone(),
+                    #     density_threshold=0.01 * MAX_SAMPLES / 3**0.5,
+                    #     warmup=step < self.args.occ_grid.warmup_steps,
+                    # )
 
                 # render image
                 results = render(
