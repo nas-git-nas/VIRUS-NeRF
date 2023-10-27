@@ -942,13 +942,13 @@ class TrainerRH(Trainer):
         bit_grid_2d[coords[:,0], coords[:,1]] = bit_grid_3d[idxs]
 
         occ_grid2_3d = self.occ_grid_class.grid.detach().cpu().numpy()
-        occ_grid2_2d = occ_grid2_3d[height_o]
+        occ_grid2_2d = occ_grid2_3d[:,:,height_o]
         bit_grid2_2d = np.copy(occ_grid2_2d)
         bit_grid2_2d[bit_grid2_2d >= 0.5] = 1.0
         bit_grid2_2d[bit_grid2_2d < 0.5] = 0.0
 
         ver_grid_3d = self.occ_grid_class.grid_ver.detach().cpu().numpy()
-        ver_grid_2d = ver_grid_3d[height_o]
+        ver_grid_2d = ver_grid_3d[:,:,height_o]
 
         # print(f"occ_grid.shape={occ_grid_3d.shape}")
         # print(f"indices shape={idxs.shape}, coords shape={coords.shape}")
