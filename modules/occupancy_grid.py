@@ -29,14 +29,18 @@ class OccupancyGrid():
         self.dataset = dataset
         self.cascades = max(1 + int(np.ceil(np.log2(2 * self.args.model.scale))), 1)
 
-        self.grid = 0.5 * torch.ones(grid_size, grid_size, grid_size, device=args.device, dtype=torch.float32)
+        grid = torch.rand(size=(self.grid_size**3,), device=self.args.device, dtype=torch.float32)
+        grid = 0.49 + 0.02 * grid
+        self.grid = grid.reshape(self.grid_size, self.grid_size, self.grid_size)
+
+        # self.grid = 0.5 * torch.ones(grid_size, grid_size, grid_size, device=args.device, dtype=torch.float32)
 
         self.cell_size = 2*self.args.model.scale / grid_size
 
         self.I = 32 # number of samples for integral
         self.M = 32 # number of samples for ray measurement
 
-        self.false_detection_prob_every_m = 0.2 # probability of false detection every meter
+        self.false_detection_prob_every_m = 0.3 # probability of false detection every meter
         max_sensor_range = 25.0 # in meters
         self.std_min = 0.1 # minimum standard deviation of sensor model
         self.std_every_m = 1.0 # standard deviation added every m

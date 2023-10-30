@@ -966,14 +966,14 @@ class TrainerRH(Trainer):
 
         if self.args.occ_grid.grid_type == "nerf":
             ax = axes[0,0]
-            im = ax.imshow(occ_grid_2d.T, origin='lower', cmap='viridis', extent=extent)
+            im = ax.imshow(occ_grid_2d.T, origin='lower', cmap='viridis', extent=extent, vmin=0, vmax=1)
             ax.set_xlabel(f'x [m]')
             ax.set_ylabel(f'y [m]')
             ax.set_title(f'Occupancy Grid at height={height_w:.2}m')
             fig.colorbar(im, ax=ax)
 
         ax = axes[0,1]
-        im = ax.imshow(bit_grid_2d.T, origin='lower', cmap='viridis', extent=extent)
+        im = ax.imshow(bit_grid_2d.T, origin='lower', cmap='viridis', extent=extent, vmin=0, vmax=1)
         ax.set_xlabel(f'x [m]')
         ax.set_ylabel(f'y [m]')
         ax.set_title(f'Bit Grid at height={height_w:.2}m')
@@ -981,17 +981,18 @@ class TrainerRH(Trainer):
 
         if self.args.occ_grid.grid_type == "occ":
             ax = axes[1,0]
-            im = ax.imshow(occ_grid2_2d.T, origin='lower', cmap='viridis', extent=extent)
+            im = ax.imshow(occ_grid2_2d.T, origin='lower', cmap='viridis', extent=extent, vmin=0, vmax=1)
             ax.set_xlabel(f'x [m]')
             ax.set_ylabel(f'y [m]')
             ax.set_title(f'Occupancy Grid 2 at height={height_w:.2}m')
             fig.colorbar(im, ax=ax)
 
             ax = axes[1,1]
-            im = ax.imshow(bit_grid2_2d.T, origin='lower', cmap='viridis', extent=extent)
+            im = ax.imshow(bit_grid2_2d.T, origin='lower', cmap='viridis', extent=extent, vmin=0, vmax=1)
             ax.set_xlabel(f'x [m]')
             ax.set_ylabel(f'y [m]')
             ax.set_title(f'Bit Grid 2 at height={height_w:.2}m')
+            fig.colorbar(im, ax=ax)
 
         plt.tight_layout()
         plt.savefig(os.path.join(self.args.save_dir, "occ_grid"+str(step)+".png"))
