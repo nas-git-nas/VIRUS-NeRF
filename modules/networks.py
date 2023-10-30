@@ -19,6 +19,7 @@ from .volume_train import VolumeRenderer
 from .spherical_harmonics import DirEncoder
 
 from modules.occupancy_grid import OccupancyGrid
+from modules.nerf_grid import NeRFGrid
 from datasets.robot_at_home_scene import RobotAtHomeScene
 from datasets.robot_at_home import RobotAtHomeDataset
 from args.args import Args
@@ -145,12 +146,23 @@ class NGP(nn.Module):
         self.render_func = VolumeRenderer()
 
         self.args = args
-        self.occ_grid_class = OccupancyGrid(
-            args=args,
-            grid_size=self.grid_size,
-            rh_scene=rh_scene,
-            dataset=dataset,
-        )
+        if self.args.occ_grid.grid_type == 'nerf':
+            self.occ_grid_class = NeRFGrid(
+                args=args,
+                grid_size=self.grid_size,
+                fct_density=self.density,
+            )
+        elif self.args.occ_grid.grid_type == 'occ':
+            self.occ_grid_class = OccupancyGrid(
+                args=args,
+                grid_size=self.grid_size,
+                rh_scene=rh_scene,
+                dataset=dataset,
+            )
+        else:
+            print(f"ERROR: NGP:__init__: grid_type {self.args.occ_grid.grid_type} not implemented")
+
+        
 
     def density(self, x, return_feat=False):
         """
@@ -184,18 +196,18 @@ class NGP(nn.Module):
 
         return sigmas, rgbs
 
-    @torch.no_grad()
-    def get_all_cells(self):
-        """
-        Get all cells from the density grid.
-        Outputs:
-            cells: list (of length self.cascades) of indices and coords
-                   selected at each cascade
-        """
-        indices = morton3D(self.grid_coords).long()
-        cells = [(indices, self.grid_coords)] * self.cascades
+    # @torch.no_grad()
+    # def get_all_cells(self):
+    #     """
+    #     Get all cells from the density grid.
+    #     Outputs:
+    #         cells: list (of length self.cascades) of indices and coords
+    #                selected at each cascade
+    #     """
+    #     indices = morton3D(self.grid_coords).long()
+    #     cells = [(indices, self.grid_coords)] * self.cascades
 
-        return cells
+    #     return cells
 
     # @torch.no_grad()
     # def sample_uniform_and_occupied_cells(self, M, density_threshold):
@@ -272,26 +284,37 @@ class NGP(nn.Module):
     #                 torch.where(valid_mask, 0., -1.)
 
     @torch.no_grad()
-    def update_density_grid(
+    def updateNeRFGrid(
         self,
-        rays_o:torch.Tensor,
-        rays_d:torch.Tensor,
-        depth_meas:torch.Tensor,
         density_threshold,
         warmup=False,
         decay=0.95,
         erode=False       
     ):
-        
-        # occ_grid = self.occ_grid_class.rayUpdate(
-        #     rays_o=rays_o,
-        #     rays_d=rays_d,
-        #     meas=depth_meas,
-        # )
+
+        density_grid = self.occ_grid_class.update_density_grid(
+            density_threshold=density_threshold,
+            warmup=warmup,
+            decay=decay,
+            erode=erode,       
+        )
+        mean_density = density_grid[density_grid > 0].mean().item()
+
+        packbits(
+            density_grid=density_grid.reshape(-1).contiguous(),
+            density_threshold=min(mean_density, density_threshold), 
+            density_bitfield=self.density_bitfield,
+        )
+
+    @torch.no_grad()
+    def updateOccGrid(
+        self,
+        density_threshold,    
+    ):
 
         occ_grid = self.occ_grid_class.update()
 
-        cells = self.get_all_cells()
+        cells = self.occ_grid_class.get_all_cells()
         indices, coords = cells[0]
 
         density_grid = torch.zeros(self.grid_size**3, device=self.args.device, dtype=torch.float32)

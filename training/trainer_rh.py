@@ -94,30 +94,24 @@ class TrainerRH(Trainer):
 
             
             with torch.autocast(device_type='cuda', dtype=torch.float16):
-                # get rays
-                rays_o, rays_d = get_rays(direction, pose)
-
+                
                 if step % self.args.occ_grid.update_interval == 0:
 
-                    for key in data['depth']:
-                        depth_meas = data['depth'][key]
-                        break
+                    if self.args.occ_grid.grid_type == 'nerf':
+                        self.model.updateNeRFGrid(
+                            density_threshold=0.01 * MAX_SAMPLES / 3**0.5,
+                            warmup=step < self.args.occ_grid.warmup_steps,
+                        )
+                    elif self.args.occ_grid.grid_type == 'occ':
+                        self.model.updateOccGrid(
+                            density_threshold= 0.5,
+                        )
+                    else:
+                        print(f"ERROR: NGP:__init__: grid_type {self.args.occ_grid.grid_type} not implemented")
+                    
 
-                    self.model.update_density_grid(
-                        rays_o=rays_o.detach().clone(),
-                        rays_d=rays_d.detach().clone(),
-                        depth_meas=depth_meas.detach().clone(),
-                        density_threshold= 0.5,
-                    )
-                    # self.model.update_density_grid(
-                    #     rays_o=rays_o.detach().clone(),
-                    #     rays_d=rays_d.detach().clone(),
-                    #     depth_meas=data['depth']['RGBD'].detach().clone(),
-                    #     density_threshold=0.01 * MAX_SAMPLES / 3**0.5,
-                    #     warmup=step < self.args.occ_grid.warmup_steps,
-                    # )
-
-                # render image
+                # get rays and render image
+                rays_o, rays_d = get_rays(direction, pose)
                 results = render(
                     self.model, 
                     rays_o, 
@@ -930,11 +924,9 @@ class TrainerRH(Trainer):
         grid_size = self.model.grid_size
         height_o = grid_size * (height_c+self.args.model.scale) / (2*self.args.model.scale) 
         height_o = int(np.round(height_o))
-
         
-        # occ_grid_3d = self.model.density_grid[0].detach().cpu().numpy()
         bit_grid_3d = self.model.density_bitfield.detach().cpu().numpy().astype(np.uint8)
-        cells = self.model.get_all_cells()[0]
+        cells = self.model.occ_grid_class.get_all_cells()[0]
         idxs = cells[0].detach().cpu().numpy()
         coords = cells[1].detach().cpu().numpy()
 
@@ -946,16 +938,20 @@ class TrainerRH(Trainer):
         idxs = idxs[coords[:,2] == height_o]
         coords = coords[coords[:,2] == height_o]
 
-        # occ_grid_2d = np.zeros((grid_size, grid_size))
-        # occ_grid_2d[coords[:,0], coords[:,1]] = occ_grid_3d[idxs]
+        
         bit_grid_2d = np.zeros((grid_size, grid_size))
         bit_grid_2d[coords[:,0], coords[:,1]] = bit_grid_3d[idxs]
 
-        occ_grid2_3d = self.model.occ_grid_class.grid.detach().cpu().numpy()
-        occ_grid2_2d = occ_grid2_3d[:,:,height_o]
-        bit_grid2_2d = np.copy(occ_grid2_2d)
-        bit_grid2_2d[bit_grid2_2d > 0.5] = 1.0
-        bit_grid2_2d[bit_grid2_2d <= 0.5] = 0.0
+        if self.args.occ_grid.grid_type == "nerf":
+            occ_grid_3d = self.model.occ_grid_class.grid[0].detach().cpu().numpy()
+            occ_grid_2d = np.zeros((grid_size, grid_size))
+            occ_grid_2d[coords[:,0], coords[:,1]] = occ_grid_3d[idxs]
+        elif self.args.occ_grid.grid_type == "occ":
+            occ_grid2_3d = self.model.occ_grid_class.grid.detach().cpu().numpy()
+            occ_grid2_2d = occ_grid2_3d[:,:,height_o]
+            bit_grid2_2d = np.copy(occ_grid2_2d)
+            bit_grid2_2d[bit_grid2_2d > 0.5] = 1.0
+            bit_grid2_2d[bit_grid2_2d <= 0.5] = 0.0
 
         # print(f"occ_grid.shape={occ_grid_3d.shape}")
         # print(f"indices shape={idxs.shape}, coords shape={coords.shape}")
@@ -968,12 +964,13 @@ class TrainerRH(Trainer):
         # plot occupancy grid
         fig, axes = plt.subplots(ncols=2, nrows=2, figsize=(9,6))
 
-        # ax = axes[0,0]
-        # im = ax.imshow(occ_grid_2d.T, origin='lower', cmap='viridis', extent=extent)
-        # ax.set_xlabel(f'x [m]')
-        # ax.set_ylabel(f'y [m]')
-        # ax.set_title(f'Occupancy Grid at height={height_w:.2}m')
-        # fig.colorbar(im, ax=ax)
+        if self.args.occ_grid.grid_type == "nerf":
+            ax = axes[0,0]
+            im = ax.imshow(occ_grid_2d.T, origin='lower', cmap='viridis', extent=extent)
+            ax.set_xlabel(f'x [m]')
+            ax.set_ylabel(f'y [m]')
+            ax.set_title(f'Occupancy Grid at height={height_w:.2}m')
+            fig.colorbar(im, ax=ax)
 
         ax = axes[0,1]
         im = ax.imshow(bit_grid_2d.T, origin='lower', cmap='viridis', extent=extent)
@@ -982,18 +979,19 @@ class TrainerRH(Trainer):
         ax.set_title(f'Bit Grid at height={height_w:.2}m')
         fig.colorbar(im, ax=ax)
 
-        ax = axes[1,0]
-        im = ax.imshow(occ_grid2_2d.T, origin='lower', cmap='viridis', extent=extent)
-        ax.set_xlabel(f'x [m]')
-        ax.set_ylabel(f'y [m]')
-        ax.set_title(f'Occupancy Grid 2 at height={height_w:.2}m')
-        fig.colorbar(im, ax=ax)
+        if self.args.occ_grid.grid_type == "occ":
+            ax = axes[1,0]
+            im = ax.imshow(occ_grid2_2d.T, origin='lower', cmap='viridis', extent=extent)
+            ax.set_xlabel(f'x [m]')
+            ax.set_ylabel(f'y [m]')
+            ax.set_title(f'Occupancy Grid 2 at height={height_w:.2}m')
+            fig.colorbar(im, ax=ax)
 
-        ax = axes[1,1]
-        im = ax.imshow(bit_grid2_2d.T, origin='lower', cmap='viridis', extent=extent)
-        ax.set_xlabel(f'x [m]')
-        ax.set_ylabel(f'y [m]')
-        ax.set_title(f'Bit Grid 2 at height={height_w:.2}m')
+            ax = axes[1,1]
+            im = ax.imshow(bit_grid2_2d.T, origin='lower', cmap='viridis', extent=extent)
+            ax.set_xlabel(f'x [m]')
+            ax.set_ylabel(f'y [m]')
+            ax.set_title(f'Bit Grid 2 at height={height_w:.2}m')
 
         plt.tight_layout()
         plt.savefig(os.path.join(self.args.save_dir, "occ_grid"+str(step)+".png"))

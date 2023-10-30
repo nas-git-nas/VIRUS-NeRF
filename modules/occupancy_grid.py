@@ -7,6 +7,15 @@ from datasets.robot_at_home_scene import RobotAtHomeScene
 from datasets.robot_at_home import RobotAtHome
 from datasets.ray_utils import get_rays
 
+from kornia.utils.grid import create_meshgrid3d
+from modules.rendering import NEAR_DISTANCE
+from modules.utils import (
+    morton3D, 
+    morton3D_invert, 
+    packbits, 
+)
+
+
 class OccupancyGrid():
     def __init__(
         self,
@@ -18,6 +27,7 @@ class OccupancyGrid():
         self.args = args
         self.grid_size = grid_size
         self.dataset = dataset
+        self.cascades = max(1 + int(np.ceil(np.log2(2 * self.args.model.scale))), 1)
 
         self.grid = 0.5 * torch.ones(grid_size, grid_size, grid_size, device=args.device, dtype=torch.float32)
 
@@ -40,6 +50,27 @@ class OccupancyGrid():
             self.std_min = rh_scene.w2cTransformation(pos=self.std_min, only_scale=True, copy=False)
             self.std_every_m = self.std_every_m / rh_scene.w2cTransformation(pos=1, only_scale=True, copy=False)
             self.attenuation_every_m = self.attenuation_every_m / rh_scene.w2cTransformation(pos=1, only_scale=True, copy=False)
+
+        self.grid_coords = create_meshgrid3d(
+            self.grid_size, 
+            self.grid_size, 
+            self.grid_size, 
+            False, 
+            dtype=torch.int32
+        ).reshape(-1, 3).to(device=self.args.device)
+
+    @torch.no_grad()
+    def get_all_cells(self):
+        """
+        Get all cells from the density grid.
+        Outputs:
+            cells: list (of length self.cascades) of indices and coords
+                   selected at each cascade
+        """
+        indices = morton3D(self.grid_coords).long()
+        cells = [(indices, self.grid_coords)] * self.cascades
+
+        return cells
 
     @torch.no_grad()
     def update(
