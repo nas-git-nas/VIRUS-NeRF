@@ -179,7 +179,7 @@ class TrainerRH(Trainer):
         # print and save metrics
         print(
             f"evaluation: " \
-            + f"psnr_avg={metrics_dict['psnr']:.2} | " \
+            + f"psnr_avg={np.round(metrics_dict['psnr'],2)} | " \
             + f"ssim_avg={metrics_dict['ssim']:.3} | " \
             + f"depth_mae={metrics_dict['mae']:.3} | " \
             + f"depth_mare={metrics_dict['mare']:.4} | " \
