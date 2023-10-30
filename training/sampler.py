@@ -110,25 +110,25 @@ class Sampler():
         WH = self.img_wh[0]*self.img_wh[1]
 
         if ray_strategy == "random":
-            return torch.randint(0, self.img_wh[0]*self.img_wh[1], size=(self.args.training.batch_size,), device=self.args.device)
+            return torch.randint(0, WH, size=(B,), device=self.args.device)
         
         if ray_strategy == "ordered":
-            step = self.img_wh[0]*self.img_wh[1] / self.args.training.batch_size
-            pix_idxs = torch.linspace(0, self.img_wh[0]*self.img_wh[1]-1-step, self.args.training.batch_size, device=self.args.device)
-            rand_offset = step * torch.rand(size=(self.args.training.batch_size,), device=self.args.device)
+            step = WH / B
+            pix_idxs = torch.linspace(0, WH-1-step, B, device=self.args.device)
+            rand_offset = step * torch.rand(size=(B,), device=self.args.device)
             pix_idxs = torch.round(pix_idxs + rand_offset).to(torch.int64)
-            pix_idxs = torch.clamp(pix_idxs, min=0, max=self.img_wh[0]*self.img_wh[1]-1)
+            pix_idxs = torch.clamp(pix_idxs, min=0, max=WH-1)
             return pix_idxs
         
         if ray_strategy == "closest":
-            pix_idxs = torch.randint(0, self.img_wh[0]*self.img_wh[1], size=(self.args.training.batch_size,), device=self.args.device)
-            num_min_idxs = int(0.005 * self.args.training.batch_size)
+            pix_idxs = torch.randint(0, WH, size=(B,), device=self.args.device)
+            num_min_idxs = int(0.005 * B)
             pix_min_idxs = self.sensors_dict["USS"].imgs_min_idx
             pix_idxs[:num_min_idxs] = pix_min_idxs[img_idxs[:num_min_idxs]]
             return pix_idxs
         
         if ray_strategy == "weighted":
-            pix_idxs = self.rgn.choice(self.img_wh[0]*self.img_wh[1], size=(self.args.training.batch_size,), p=self.weights)
+            pix_idxs = self.rgn.choice(WH, size=(B,), p=self.weights)
             return torch.from_numpy(pix_idxs).to(torch.int64)
         
         if ray_strategy == "valid_depth":
