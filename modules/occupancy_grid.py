@@ -26,13 +26,17 @@ class OccupancyGrid():
         self.I = 32 # number of samples for integral
         self.M = 32 # number of samples for ray measurement
 
+        self.false_detection_prob_every_m = 0.2 # probability of false detection every meter
         max_sensor_range = 25.0 # in meters
         self.std_min = 0.1 # minimum standard deviation of sensor model
         self.std_every_m = 1.0 # standard deviation added every m
         self.attenuation_min = 1.0 # minimum attenuation of sensor model
+
+        self.prob_min = 0.03 # minimum probability of false detection
         self.attenuation_every_m = 1 / max_sensor_range # attenuation added every m
 
         if rh_scene is not None:
+            self.false_detection_prob_every_m = self.false_detection_prob_every_m / rh_scene.w2cTransformation(pos=1, only_scale=True, copy=False)
             self.std_min = rh_scene.w2cTransformation(pos=self.std_min, only_scale=True, copy=False)
             self.std_every_m = self.std_every_m / rh_scene.w2cTransformation(pos=1, only_scale=True, copy=False)
             self.attenuation_every_m = self.attenuation_every_m / rh_scene.w2cTransformation(pos=1, only_scale=True, copy=False)
@@ -142,7 +146,7 @@ class OccupancyGrid():
             dists=meas,
         ) # (N,)
         steps = torch.linspace(0, 1, self.M, device=self.args.device, dtype=torch.float32) # (M,)
-        cell_dists = steps[None,:] * (meas + 3*stds)[:,None] # (N, M)
+        cell_dists = steps[None,:] * (meas + 5*stds)[:,None] # (N, M)
         
 
         # calculate cell probabilities
@@ -194,8 +198,11 @@ class OccupancyGrid():
             dists=dists,
         ) # (N, M)
 
-        # calculating P[meas not< dist | cell=emp] and P[meas not< dist | cell=occ]
+        # calculating P[meas not< dist | cell=emp]
         probs_notless_emp = 1 - probs_equal_emp * dists # (N, M)
+        probs_notless_emp[probs_notless_emp < self.prob_min] = self.prob_min
+
+        # calculating P[meas not< dist | cell=occ]
         y = torch.linspace(0, 1, self.I, device=self.args.device, dtype=torch.float32)[None, :] * meas[:, None] # (N, I)
         integral = self._sensorOccupiedPDF(
             meas=y[:, None, :],
@@ -203,6 +210,7 @@ class OccupancyGrid():
         )
         integral = torch.sum(integral, dim=2) * (meas/self.I)[:, None] # (N, M)
         probs_notless_occ = probs_notless_emp - integral # (N, M)
+        probs_notless_occ[probs_notless_occ < self.prob_min] = self.prob_min
 
         # calculating P[meas@dist | cell=emp] and P[meas@dist | cell=occ]
         probs_emp = probs_equal_emp * probs_notless_emp
@@ -226,7 +234,7 @@ class OccupancyGrid():
         Returns:
             probs: probabilities of measurements given cell is empty; tensor (shape)
         """
-        return 0.2 * torch.ones(shape, device=self.args.device, dtype=torch.float32)
+        return self.false_detection_prob_every_m * torch.ones(shape, device=self.args.device, dtype=torch.float32)
     
     @torch.no_grad()
     def _sensorOccupiedPDF(

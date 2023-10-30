@@ -43,36 +43,52 @@ def plot_model_probs(
                           probs_equal_occ.max(), probs_equal_emp.max(),
                           probs_notless_occ.max(), probs_notless_emp.max()))
 
-    fig, axes = plt.subplots(ncols=3, nrows=2, figsize=(12,8))
+    fig, axes = plt.subplots(ncols=3, nrows=3, figsize=(12,8))
 
     ax = axes[0,0]
     ax.plot(dists[0], probs_occ[0], label="occ")
-    ax.plot(dists[0], probs_equal_occ[0], label="probs_equal_occ")
-    ax.plot(dists[0], probs_notless_occ[0], label="probs_notless_occ")
+    ax.plot(dists[0], probs_equal_occ[0], "--", label="probs_equal_occ")
+    ax.plot(dists[0], probs_notless_occ[0], "--", label="probs_notless_occ")
     ax.set_xlim([x_min, x_max])
     ax.set_ylim([y_min, y_max])
     ax.legend()
 
     ax = axes[1,0]
-    ax.plot(dists[1], probs_occ[1], "--", label="occ")
+    ax.plot(dists[1], probs_occ[1], label="occ")
     ax.plot(dists[1], probs_equal_occ[1], "--", label="probs_equal_occ")
     ax.plot(dists[1], probs_notless_occ[1], "--", label="probs_notless_occ")
     ax.set_xlim([x_min, x_max])
     ax.set_ylim([y_min, y_max])
     ax.legend()
 
+    ax = axes[2,0]
+    ax.plot(dists[2], probs_occ[2], label="occ")
+    ax.plot(dists[2], probs_equal_occ[2], "--", label="probs_equal_occ")
+    ax.plot(dists[2], probs_notless_occ[2], "--", label="probs_notless_occ")
+    ax.set_xlim([x_min, x_max])
+    ax.set_ylim([y_min, y_max])
+    ax.legend()
+
     ax = axes[0,1]
     ax.plot(dists[0], probs_emp[0], label="emp")
-    ax.plot(dists[0], probs_equal_emp[0], label="probs_equal_emp")
-    ax.plot(dists[0], probs_notless_emp[0], label="probs_notless_emp")
+    ax.plot(dists[0], probs_equal_emp[0], "--", label="probs_equal_emp")
+    ax.plot(dists[0], probs_notless_emp[0], "--", label="probs_notless_emp")
     ax.set_xlim([x_min, x_max])
     ax.set_ylim([y_min, y_max])
     ax.legend()
 
     ax = axes[1,1]
-    ax.plot(dists[1], probs_emp[1], "--", label="emp")
+    ax.plot(dists[1], probs_emp[1], label="emp")
     ax.plot(dists[1], probs_equal_emp[1], "--", label="probs_equal_emp")
     ax.plot(dists[1], probs_notless_emp[1], "--", label="probs_notless_emp")
+    ax.set_xlim([x_min, x_max])
+    ax.set_ylim([y_min, y_max])
+    ax.legend()
+
+    ax = axes[2,1]
+    ax.plot(dists[2], probs_emp[2], label="emp")
+    ax.plot(dists[2], probs_equal_emp[2], "--", label="probs_equal_emp")
+    ax.plot(dists[2], probs_notless_emp[2], "--", label="probs_notless_emp")
     ax.set_xlim([x_min, x_max])
     ax.set_ylim([y_min, y_max])
     ax.legend()
@@ -82,16 +98,24 @@ def plot_model_probs(
 
     ax = axes[0,2]
     ax.plot(dists[0], np.log(probs_occ[0] / probs_emp[0]), label="log lik")
-    ax.plot(dists[0], np.log(probs_equal_occ[0] / probs_equal_emp[0]), label="log lik equal")
-    ax.plot(dists[0], np.log(probs_notless_occ[0] / probs_notless_emp[0]), label="log lik. notless")
+    ax.plot(dists[0], np.log(probs_equal_occ[0] / probs_equal_emp[0]), "--", label="log lik equal")
+    ax.plot(dists[0], np.log(probs_notless_occ[0] / probs_notless_emp[0]), "--", label="log lik. notless")
     ax.set_xlim([x_min, x_max])
     ax.set_ylim([y_min, y_max])
     ax.legend()
 
     ax = axes[1,2]
-    ax.plot(dists[1], np.log(probs_occ[1] / probs_emp[1]), "--", label="log lik.")
+    ax.plot(dists[1], np.log(probs_occ[1] / probs_emp[1]), label="log lik.")
     ax.plot(dists[1], np.log(probs_equal_occ[1] / probs_equal_emp[1]), "--", label="log lik. equal")
     ax.plot(dists[1], np.log(probs_notless_occ[1] / probs_notless_emp[1]), "--", label="log lik. notless")
+    ax.set_xlim([x_min, x_max])
+    ax.set_ylim([y_min, y_max])
+    ax.legend()
+
+    ax = axes[2,2]
+    ax.plot(dists[2], np.log(probs_occ[2] / probs_emp[2]), label="log lik.")
+    ax.plot(dists[2], np.log(probs_equal_occ[2] / probs_equal_emp[2]), "--", label="log lik. equal")
+    ax.plot(dists[2], np.log(probs_notless_occ[2] / probs_notless_emp[2]), "--", label="log lik. notless")
     ax.set_xlim([x_min, x_max])
     ax.set_ylim([y_min, y_max])
     ax.legend()
@@ -103,7 +127,7 @@ def main():
     # load hparams
     hparams_file = "rh_windows.json"
     args = Args(file_name=hparams_file)
-    args.model.scale = 3.0
+    args.model.scale = 6.0
 
     # create occupancy grid
     occ_grid = OccupancyGrid(
@@ -113,10 +137,12 @@ def main():
 
     # update grid
     rays_o = torch.tensor([[0,0,0],
-                           [0,1,0]], dtype=torch.float32)
+                           [0,1,0],
+                           [0,2,0]], dtype=torch.float32)
     rays_d = torch.tensor([[1,0,0],
+                           [1,0,0],
                            [1,0,0]], dtype=torch.float32)
-    meas = torch.tensor([1, 2], dtype=torch.float32)
+    meas = torch.tensor([1, 2, 5], dtype=torch.float32)
     occ_grid.rayUpdate(
         rays_o=rays_o,
         rays_d=rays_d,

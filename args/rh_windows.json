@@ -41,7 +41,7 @@
     },
     "occ_grid":
     {
-        "batch_size": 64,
+        "batch_size": 8192,
         "sampling_strategy": {"imgs": "all", "rays": "valid_depth"},
         "warmup_steps": 256,
         "update_interval": 2,
