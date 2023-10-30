@@ -169,7 +169,7 @@ class OccupancyGrid():
 
 
         self.update_step += 1
-        if self.update_step > self.decay_warmup:
+        if self.update_step < self.decay_warmup:
             self.grid *= self.grid_decay
 
     @torch.no_grad()
