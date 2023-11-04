@@ -28,13 +28,14 @@ class OccupancyGrid():
         self.grid_size = grid_size
         self.dataset = dataset
 
-        
+        self.threshold = 0.5
+        self.max_init_val = 0.51
         
 
         self.cascades = max(1 + int(np.ceil(np.log2(2 * self.args.model.scale))), 1)
 
         grid = torch.rand(size=(self.grid_size**3,), device=self.args.device, dtype=torch.float32)
-        grid = 0.5 + 0.01 * grid
+        grid = self.threshold + (self.max_init_val-self.threshold) * grid
         self.grid = grid.reshape(self.grid_size, self.grid_size, self.grid_size)
 
         # self.grid = 0.505 * torch.ones(grid_size, grid_size, grid_size, device=args.device, dtype=torch.float32)
@@ -44,8 +45,8 @@ class OccupancyGrid():
         self.I = 32 # number of samples for integral
         self.M = 32 # number of samples for ray measurement
 
-        self.grid_decay = 0.997 # decay of grid probabilities
-        self.decay_warmup = 7
+        
+        self.decay_warmup = 3
         self.false_detection_prob_every_m = 0.3 # probability of false detection every meter
         max_sensor_range = 25.0 # in meters
         self.std_min = 0.1 # minimum standard deviation of sensor model
@@ -55,6 +56,8 @@ class OccupancyGrid():
         
         self.prob_min = 0.03 # minimum probability of false detection
         self.attenuation_every_m = 1 / max_sensor_range # attenuation added every m
+        self.grid_decay = (0.5/0.51)**(1/self.decay_warmup) # decay of grid probabilities
+        self.grid_decay = ((self.grid_decay*1000) // 1) / 1000 # floor to 3 decimals
 
         if rh_scene is not None:
             self.false_detection_prob_every_m = self.false_detection_prob_every_m / rh_scene.w2cTransformation(pos=1, only_scale=True, copy=False)
