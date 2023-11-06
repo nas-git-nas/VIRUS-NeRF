@@ -943,9 +943,15 @@ class TrainerRH(Trainer):
         if not torch.allclose(bin_3d_grid, bin_3d_recovery):
             print(f"ERROR: NGP:updateOccGrid: bin_3d_grid and bin_3d_recovery are not the same")
 
+        # convert from 3D to 2D
         occ_2d_grid = occ_3d_grid[:,:,height_o]
         bin_2d_grid = bin_3d_grid[:,:,height_o]
         bin_2d_recovery = bin_3d_recovery[:,:,height_o]
+
+        # convert from tensor to array
+        occ_2d_grid = occ_2d_grid.detach().clone().cpu().numpy()
+        bin_2d_grid = bin_2d_grid.detach().clone().cpu().numpy()
+        bin_2d_recovery = bin_2d_recovery.detach().clone().cpu().numpy()
         
         # bit_grid_3d = self.model.occupancy_grid.getBitfield().detach().cpu().numpy().astype(np.uint8)
         # cells = self.model.occ_grid_class.get_all_cells()[0]
