@@ -90,8 +90,9 @@ class OccupancyGrid(Grid):
             grid: occupancy grid; tensor (grid_size, grid_size, grid_size)
         """
         # get data and calculate rays
+        B = self.args.occ_grid.batch_size
         data = self.dataset(
-            batch_size=self.args.occ_grid.batch_size,
+            batch_size=B,
             sampling_strategy=self.args.occ_grid.sampling_strategy,
         )
         rays_o, rays_d = get_rays(
@@ -99,16 +100,20 @@ class OccupancyGrid(Grid):
             c2w=data['pose']
         )
 
+        #
         self.height_c = torch.mean(rays_o[:, 2])
 
         if "RGBD" in data['depth']:
             depth_meas = data['depth']["RGBD"]
         elif "USS" in data['depth'] and "ToF" in data['depth']:
-            depth_meas = data['depth']["USS"]
-            depth_tof_val = ~torch.isnan(data['depth']["ToF"])
-            depth_meas[depth_tof_val] = data['depth']["ToF"][depth_tof_val]
+            # depth_meas = data['depth']["USS"]
+            # depth_tof_val = ~torch.isnan(data['depth']["ToF"])
+            # depth_meas[depth_tof_val] = data['depth']["ToF"][depth_tof_val]
 
-            print(f"depth_meas: {depth_meas.shape}, not nan: {torch.sum(~torch.isnan(depth_meas))}, depth_tof_val: {torch.sum(depth_tof_val)}")
+            depth_meas = torch.cat((data['depth']["USS"][:int(B/2)], data['depth']["ToF"][int(B/2):]), dim=0)
+
+
+            print(f"depth_meas: {depth_meas.shape}, not nan: {torch.sum(~torch.isnan(depth_meas))}")
 
         elif "USS" in data['depth']:
             depth_meas = data['depth']["USS"]
@@ -116,6 +121,13 @@ class OccupancyGrid(Grid):
             depth_meas = data['depth']["ToF"]
         else:
             print("ERROR: OccupancyGrid.update: no depth sensor found")
+
+
+        # remove nan values
+        depth_meas_val = ~torch.isnan(depth_meas)
+        rays_o = rays_o[depth_meas_val]
+        rays_d = rays_d[depth_meas_val]
+        depth_meas = depth_meas[depth_meas_val]
 
         self.rayUpdate(
             rays_o=rays_o,

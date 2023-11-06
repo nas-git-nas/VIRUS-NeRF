@@ -967,7 +967,7 @@ class TrainerRH(Trainer):
             height_w=height_w,
             num_avg_heights=1,
             tolerance_w=0.0,
-            threshold=self.args.eval.density_map_thr,
+            threshold=0.01 * MAX_SAMPLES / 3**0.5,
         ) # (L, L)
 
         # plot occupancy grid

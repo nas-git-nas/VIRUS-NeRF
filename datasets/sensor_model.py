@@ -90,13 +90,18 @@ class ToFModel(SensorModel):
         idxs_w = idxs_w + (self.W - width)/2
         idxs_h = idxs_h + (self.H - width)/2
 
-        # convert indices to int
-        idxs_h, idxs_w = self.pos2idx(idxs_h, idxs_w)
+        # convert indices to ints
+        idxs_h, idxs_w = self.pos2idx(idxs_h, idxs_w) # (H,), (W,)     
 
         # create meshgrid of indices
         idxs_h, idxs_w = np.meshgrid(idxs_h, idxs_w, indexing='ij') # (H, W)
         self.idxs_h = idxs_h.flatten() # (H*W,)
         self.idxs_w = idxs_w.flatten() # (H*W,)
+
+        # create mask
+        mask = np.zeros((self.H, self.W), dtype=bool) # (H, W)
+        mask[idxs_h, idxs_w] = True
+        self.mask = mask.flatten() # (H*W,)
  
 
     def convertDepth(self, depths):
@@ -107,12 +112,10 @@ class ToFModel(SensorModel):
         Returns:
             depths: depth img converted to ToF sensor array; array of shape (N, H*W)
         """
-        depths = np.copy(depths)
-        depths = depths.reshape(depths.shape[0], self.H, self.W) # (N, H, W)
+        depths = np.copy(depths) # (N, H*W)
 
-        depths_out = np.full_like(depths, np.nan) # (N, H, W)
-        depths_out[:, self.idxs_h, self.idxs_w] = depths[:, self.idxs_h, self.idxs_w]
-        depths_out = depths_out.reshape(depths.shape[0], -1) # (N, H*W)
+        depths_out = np.full_like(depths, np.nan) # (N, H*W)
+        depths_out[:, self.mask] = depths[:,self.mask]  
 
         return depths_out
 

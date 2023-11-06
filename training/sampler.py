@@ -120,6 +120,9 @@ class Sampler():
             pix_idxs = torch.clamp(pix_idxs, min=0, max=WH-1)
             return pix_idxs
         
+        if ray_strategy == "entire_img":
+            return torch.arange(0, WH, device=self.args.device, dtype=torch.int32)
+        
         if ray_strategy == "closest":
             pix_idxs = torch.randint(0, WH, size=(B,), device=self.args.device, dtype=torch.int32)
             num_min_idxs = int(0.005 * B)
@@ -149,6 +152,19 @@ class Sampler():
             # create random permutation for every row where invalid pixels are at the beginning   
             perm_idxs = torch.argsort(rand_ints, dim=1) # (B, H*W)
             return perm_idxs[:,-1] # (B), random pixel indices with valid depth (except entire row is invalid)
+        
+        if ray_strategy == "uss_tof_split":
+            uss_maks = torch.tensor(self.sensors_dict["USS"].mask, device=self.args.device, dtype=torch.bool)
+            uss_mask_idxs = torch.where(uss_maks)[0]
+            uss_rand_ints = torch.randint(0, uss_mask_idxs.shape[0], (int(B/2),), device=self.args.device, dtype=torch.int32)
+            uss_img_idxs = uss_mask_idxs[uss_rand_ints]
+
+            tof_mask = torch.tensor(self.sensors_dict["ToF"].mask, device=self.args.device, dtype=torch.bool)
+            tof_mask_idxs = torch.where(tof_mask)[0]
+            tof_rand_ints = torch.randint(0, tof_mask_idxs.shape[0], (B-int(B/2),), device=self.args.device, dtype=torch.int32)
+            tof_img_idxs = tof_mask_idxs[tof_rand_ints]
+
+            return torch.cat((uss_img_idxs, tof_img_idxs), dim=0)
         
         print(f"ERROR: sampler._pixIdxs: pixel sampling strategy must be either 'random', 'ordered', 'closest' or weighted"
               + f" but is {self.args.training.sampling_strategy['rays']}")
