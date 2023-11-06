@@ -919,6 +919,10 @@ class TrainerRH(Trainer):
 
         height_w = 1.0
         height_c = self.train_dataset.scene.w2cTransformation(pos=np.array([[0.0, 0.0, height_w]]), copy=False)[0,2]
+        if self.args.occ_grid.grid_type == "occ":
+            height_c = self.model.occ_grid_class.height_c.detach().cpu().numpy()
+            height_w = self.train_dataset.scene.c2wTransformation(pos=np.array([[0.0, 0.0, height_c]]), copy=False)[0,2]
+            print(f"height_w={height_w}")
 
         # convert height from cube to occupancy grid coordinates
         grid_size = self.model.grid_size
