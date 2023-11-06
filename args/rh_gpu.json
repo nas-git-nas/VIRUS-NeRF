@@ -19,11 +19,11 @@
     {
         "distortion_loss_w": 0.0,
         "batch_size": 8192,
-        "sampling_strategy": {"imgs": "all", "rays": "random"},
-        "sensors": ["RGBD"],
+        "sampling_strategy": {"imgs": "all", "rays": "closest"},
+        "sensors": ["USS", "ToF"],
         "max_steps": 500,
         "lr": 1e-2,
-        "depth_loss_w": 100,
+        "depth_loss_w": 100.0,
         "random_bg": false
     },
     "evaluation":
@@ -42,10 +42,10 @@
     "occ_grid":
     {
         "grid_type": "occ",
-        "batch_size": 2048,
-        "sampling_strategy": {"imgs": "all", "rays": "random"},
+        "batch_size": 1024,
+        "sampling_strategy": {"imgs": "all", "rays": "valid_depth"},
         "warmup_steps": 256,
-        "update_interval": 16,
+        "update_interval": 8,
         "max_res": 1024
     },
     "robot_at_home":

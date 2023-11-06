@@ -205,9 +205,9 @@ class Loss():
                 * (results['depth'][uss_mask & depth_mask] - data['depth']['USS'][uss_mask & depth_mask])**2
             )  
 
-        if self.step%25 == 0:
-            print(f"depth mask sum: {torch.sum(uss_mask & depth_mask)}, close mask sum: {torch.sum(uss_mask & close_mask)}, weights mean: {torch.mean(weights):.3f}")
-            print(f"min_loss: {uss_loss_min:.5f} | close_loss: {uss_loss_close:.5f}")
+        # if self.step%25 == 0:
+        #     print(f"depth mask sum: {torch.sum(uss_mask & depth_mask)}, close mask sum: {torch.sum(uss_mask & close_mask)}, weights mean: {torch.mean(weights):.3f}")
+        #     print(f"min_loss: {uss_loss_min:.5f} | close_loss: {uss_loss_close:.5f}")
 
         uss_loss = uss_loss_close + uss_loss_min
         if self.log_loss:
