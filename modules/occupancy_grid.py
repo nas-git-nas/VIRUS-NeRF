@@ -9,6 +9,7 @@ from datasets.ray_utils import get_rays
 from modules.grid import Grid
 
 from kornia.utils.grid import create_meshgrid3d
+
 from modules.rendering import NEAR_DISTANCE
 from modules.utils import (
     morton3D, 
@@ -53,7 +54,7 @@ class OccupancyGrid(Grid):
         self.M = 32 # number of samples for ray measurement
 
         
-        self.decay_warmup = 10
+        self.decay_warmup = 20
         self.false_detection_prob_every_m = 0.3 # probability of false detection every meter
         max_sensor_range = 25.0 # in meters
         self.std_min = 0.1 # minimum standard deviation of sensor model

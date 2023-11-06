@@ -392,12 +392,12 @@ class TrainerRH(Trainer):
             height_tolerance=self.args.eval.height_tolerance, 
             height_in_world_coord=True
         ) # (L, L)
-        density_map = self.interfereDensityMap(
+        _, density_map = self.interfereDensityMap(
             res_map=self.args.eval.res_map,
             height_w=np.mean(rays_o_w[:,2]),
             num_avg_heights=self.args.eval.num_avg_heights,
             tolerance_w=self.args.eval.height_tolerance,
-            density_map_thr=self.args.eval.density_map_thr,
+            threshold=self.args.eval.density_map_thr,
         ) # (L, L)
 
         # create combined maps
@@ -484,7 +484,7 @@ class TrainerRH(Trainer):
             height_w:float, 
             num_avg_heights:int,
             tolerance_w:float,
-            density_map_thr:float,
+            threshold:float,
     ):
         """
         Evaluate slice density.
@@ -493,7 +493,7 @@ class TrainerRH(Trainer):
             height_w: height of slice in world coordinates (meters); float
             num_avg_heights: number of heights to average over (A); int
             tolerance_w: tolerance in world coordinates (meters); float
-            density_map_thr: threshold for density map; float
+            threshold: threshold for density map; float
         Returns:
             density_map: density map of slice; array of shape (L, L)
         """
@@ -519,10 +519,11 @@ class TrainerRH(Trainer):
         density_map = density_map.reshape(res_map, res_map) # (L, L)
 
         # threshold density map
-        density_map[density_map < density_map_thr] = 0.0
-        density_map[density_map >= density_map_thr] = 1.0
+        density_map_thr = np.zeros_like(density_map)
+        density_map_thr[density_map < threshold] = 0.0
+        density_map_thr[density_map >= threshold] = 1.0
 
-        return density_map # (L, L)
+        return density_map, density_map_thr # (L, L)
     
     def createMapPos(
             self,
@@ -552,7 +553,7 @@ class TrainerRH(Trainer):
 
         # create map positions for different heights
         pos_avg = torch.zeros(res_map*res_map, num_avg_heights, 3).to(self.args.device) # (L*L, A, 3)
-        for i, h in enumerate(np.linspace(height_c-tolerance_c, height_c+tolerance_c, self.args.eval.num_avg_heights)):
+        for i, h in enumerate(np.linspace(height_c-tolerance_c, height_c+tolerance_c, num_avg_heights)):
             pos_avg[:,i,:2] = pos
             pos_avg[:,i,2] = h
 
@@ -940,6 +941,7 @@ class TrainerRH(Trainer):
             grid_morton=bin_morton_grid,
         )
 
+        # TODO: optimize remove
         if not torch.allclose(bin_3d_grid, bin_3d_recovery):
             print(f"ERROR: NGP:updateOccGrid: bin_3d_grid and bin_3d_recovery are not the same")
 
@@ -952,74 +954,59 @@ class TrainerRH(Trainer):
         occ_2d_grid = occ_2d_grid.detach().clone().cpu().numpy()
         bin_2d_grid = bin_2d_grid.detach().clone().cpu().numpy()
         bin_2d_recovery = bin_2d_recovery.detach().clone().cpu().numpy()
-        
-        # bit_grid_3d = self.model.occupancy_grid.getBitfield().detach().cpu().numpy().astype(np.uint8)
-        # cells = self.model.occ_grid_class.get_all_cells()[0]
-        # idxs = cells[0].detach().cpu().numpy()
-        # coords = cells[1].detach().cpu().numpy()
 
-        # # convert bitfield to binary array
-        # bit_grid_3d = np.unpackbits(bit_grid_3d.reshape(-1,1), axis=1)
-        # bit_grid_3d = bit_grid_3d.flatten()
+        # create density maps
+        density_map_gt = self.test_dataset.scene.getSliceMap(
+            height=height_w, 
+            res=occ_2d_grid.shape[0], 
+            height_tolerance=self.args.eval.height_tolerance, 
+            height_in_world_coord=True
+        ) # (L, L)
+        density_map, density_map_thr = self.interfereDensityMap(
+            res_map=occ_2d_grid.shape[0],
+            height_w=height_w,
+            num_avg_heights=1,
+            tolerance_w=0.0,
+            threshold=self.args.eval.density_map_thr,
+        ) # (L, L)
 
-        # # keep only indices of given height
-        # idxs = idxs[coords[:,2] == height_o]
-        # coords = coords[coords[:,2] == height_o]
-        
-        # bit_grid_2d = np.zeros((grid_size, grid_size))
-        # bit_grid_2d[coords[:,0], coords[:,1]] = bit_grid_3d[idxs]
-
-        # if self.args.occ_grid.grid_type == "nerf":
-        #     occ_grid_3d = self.model.occ_grid_class.grid[0].detach().cpu().numpy()
-        #     occ_grid_2d = np.zeros((grid_size, grid_size))
-        #     occ_grid_2d[coords[:,0], coords[:,1]] = occ_grid_3d[idxs]
-        # elif self.args.occ_grid.grid_type == "occ":
-        #     occ_grid2_3d = self.model.occ_grid_class.grid.detach().cpu().numpy()
-        #     occ_grid2_2d = occ_grid2_3d[:,:,height_o]
-        #     bit_grid2_2d = np.copy(occ_grid2_2d)
-        #     bit_grid2_2d[bit_grid2_2d > 0.5] = 1.0
-        #     bit_grid2_2d[bit_grid2_2d <= 0.5] = 0.0
-
-        # print(f"occ_grid.shape={occ_grid_3d.shape}")
-        # print(f"indices shape={idxs.shape}, coords shape={coords.shape}")
-        # print(f"occ_grid_2d max={np.max(occ_grid_2d)}, min={np.min(occ_grid_2d)}")
-
+        # plot occupancy grid
+        fig, axes = plt.subplots(ncols=3, nrows=2, figsize=(9,6))
         scale = self.args.model.scale
         extent = self.test_dataset.scene.c2wTransformation(pos=np.array([[-scale,-scale],[scale,scale]]), copy=False)
         extent = extent.T.flatten()
 
-        # plot occupancy grid
-        fig, axes = plt.subplots(ncols=2, nrows=2, figsize=(9,6))
-
-        if self.args.occ_grid.grid_type == "nerf":
-            ax = axes[0,0]
-            im = ax.imshow(occ_2d_grid.T, origin='lower', cmap='viridis', extent=extent, vmin=0, vmax=1)
-            ax.set_xlabel(f'x [m]')
-            ax.set_ylabel(f'y [m]')
-            ax.set_title(f'Occupancy Grid at height={height_w:.2}m')
-            fig.colorbar(im, ax=ax)
-
-        ax = axes[0,1]
-        im = ax.imshow(bin_2d_recovery.T, origin='lower', cmap='viridis', extent=extent, vmin=0, vmax=1)
-        ax.set_xlabel(f'x [m]')
+        ax = axes[0,0]
+        im = ax.imshow(density_map_gt.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=1)
         ax.set_ylabel(f'y [m]')
-        ax.set_title(f'Bit Grid at height={height_w:.2}m')
+        ax.set_title(f'Ground Truth (at h={height_w:.2}m)')
         fig.colorbar(im, ax=ax)
 
-        if self.args.occ_grid.grid_type == "occ":
-            ax = axes[1,0]
-            im = ax.imshow(occ_2d_grid.T, origin='lower', cmap='viridis', extent=extent, vmin=0, vmax=1)
-            ax.set_xlabel(f'x [m]')
-            ax.set_ylabel(f'y [m]')
-            ax.set_title(f'Occupancy Grid 2 at height={height_w:.2}m')
-            fig.colorbar(im, ax=ax)
+        ax = axes[0,1]
+        im = ax.imshow(density_map.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(density_map))
+        ax.set_ylabel(f'y [m]')
+        ax.set_title(f'NeRF density (at h={height_w:.2}m)')
+        fig.colorbar(im, ax=ax)
 
-            ax = axes[1,1]
-            im = ax.imshow(bin_2d_grid.T, origin='lower', cmap='viridis', extent=extent, vmin=0, vmax=1)
-            ax.set_xlabel(f'x [m]')
-            ax.set_ylabel(f'y [m]')
-            ax.set_title(f'Bit Grid 2 at height={height_w:.2}m')
-            fig.colorbar(im, ax=ax)
+        ax = axes[0,2]
+        im = ax.imshow(density_map_thr.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=1)
+        ax.set_title(f'NeRF binary (at h={height_w:.2}m)')
+        fig.colorbar(im, ax=ax)
+
+        fig.delaxes(axes[1,0])
+
+        ax = axes[1,1]
+        im = ax.imshow(occ_2d_grid.T, origin='lower', cmap='viridis', extent=extent, vmin=0, vmax=1)
+        ax.set_xlabel(f'x [m]')
+        ax.set_ylabel(f'y [m]')
+        ax.set_title(f'OccGrid density (at h={height_w:.2}m)')
+        fig.colorbar(im, ax=ax)
+
+        ax = axes[1,2]
+        im = ax.imshow(bin_2d_grid.T, origin='lower', cmap='viridis', extent=extent, vmin=0, vmax=1)
+        ax.set_ylabel(f'y [m]')
+        ax.set_title(f'OccGrid binary (h={height_w:.2}m)')
+        fig.colorbar(im, ax=ax)
 
         plt.tight_layout()
         plt.savefig(os.path.join(self.args.save_dir, "occ_grid"+str(step)+".png"))
