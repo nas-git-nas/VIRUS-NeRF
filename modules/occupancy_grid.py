@@ -117,7 +117,7 @@ class OccupancyGrid():
             depth_meas = data['depth']["RGBD"]
         elif "USS" in data['depth'] and "TOF" in data['depth']:
             depth_meas = data['depth']["USS"]
-            depth_tof_val = ~torch.isnan(data['depth']["USS"])
+            depth_tof_val = ~torch.isnan(data['depth']["TOF"])
             depth_meas[depth_tof_val] = data['depth']["TOF"][depth_tof_val]
         elif "USS" in data['depth']:
             depth_meas = data['depth']["USS"]
@@ -126,7 +126,7 @@ class OccupancyGrid():
         else:
             print("ERROR: OccupancyGrid.update: no depth sensor found")
 
-        
+        print(f"depth_meas: {depth_meas.shape}, not nan: {torch.sum(~torch.isnan(depth_meas))}")
 
         self.rayUpdate(
             rays_o=rays_o,
