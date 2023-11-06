@@ -74,28 +74,28 @@ class NGP(nn.Module):
         # each density grid covers [-2^(k-1), 2^(k-1)]^3 for k in [0, C-1]
         self.cascades = max(1 + int(np.ceil(np.log2(2 * scale))), 1)
         self.grid_size = 128
-        self.register_buffer(
-            'density_bitfield',
-            torch.zeros(
-                self.cascades * self.grid_size**3 // 8,
-                dtype=torch.uint8
-            )
-        )
+        # self.register_buffer(
+        #     'density_bitfield',
+        #     torch.zeros(
+        #         self.cascades * self.grid_size**3 // 8,
+        #         dtype=torch.uint8
+        #     )
+        # )
 
         # self.register_buffer(
         #     'density_grid',
         #     torch.zeros(self.cascades, self.grid_size**3),
         # )
-        self.register_buffer(
-            'grid_coords',
-            create_meshgrid3d(
-                self.grid_size, 
-                self.grid_size, 
-                self.grid_size, 
-                False,
-                dtype=torch.int32
-            ).reshape(-1, 3)
-        )
+        # self.register_buffer(
+        #     'grid_coords',
+        #     create_meshgrid3d(
+        #         self.grid_size, 
+        #         self.grid_size, 
+        #         self.grid_size, 
+        #         False,
+        #         dtype=torch.int32
+        #     ).reshape(-1, 3)
+        # )
 
         if pos_encoder_type == 'hash':
             if half_opt:
@@ -147,13 +147,13 @@ class NGP(nn.Module):
 
         self.args = args
         if self.args.occ_grid.grid_type == 'nerf':
-            self.occ_grid_class = NeRFGrid(
+            self.occupancy_grid = NeRFGrid(
                 args=args,
                 grid_size=self.grid_size,
                 fct_density=self.density,
             )
         elif self.args.occ_grid.grid_type == 'occ':
-            self.occ_grid_class = OccupancyGrid(
+            self.occupancy_grid = OccupancyGrid(
                 args=args,
                 grid_size=self.grid_size,
                 rh_scene=rh_scene,
@@ -292,7 +292,7 @@ class NGP(nn.Module):
         erode=False       
     ):
 
-        density_grid = self.occ_grid_class.update_density_grid(
+        density_grid = self.occupancy_grid.update(
             density_threshold=density_threshold,
             warmup=warmup,
             decay=decay,
@@ -312,18 +312,8 @@ class NGP(nn.Module):
         density_threshold,    
     ):
 
-        occ_grid = self.occ_grid_class.update()
-
-        cells = self.occ_grid_class.get_all_cells()
-        indices, coords = cells[0]
-
-        density_grid = torch.zeros(self.grid_size**3, device=self.args.device, dtype=torch.float32)
-        density_grid[indices] = occ_grid[coords[:, 0], coords[:, 1], coords[:, 2]]
-
-        packbits(
-            density_grid=density_grid.reshape(-1).contiguous(),
-            density_threshold=density_threshold,
-            density_bitfield=self.density_bitfield,
+        self.occupancy_grid.update(
+            threshold=density_threshold,
         )
 
 

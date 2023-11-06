@@ -233,7 +233,7 @@ def save_deployment_model(model, dataset, save_dir):
     rgb_out = torch.cat([rgb_out, padding], dim=0)
     new_dict = {
         'poses': dataset.poses.cpu().numpy(),
-        'model.density_bitfield': model.density_bitfield.cpu().numpy(),
+        'model.density_bitfield': model.occupancy_grid.getBitfield().cpu().numpy(),
         'model.hash_encoder.params': model.pos_encoder.hash_table.detach().cpu().numpy(),
         'model.per_level_scale': model.pos_encoder.log_b,
         'model.xyz_encoder.params': 

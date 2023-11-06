@@ -141,7 +141,7 @@ class NeRFGrid(torch.nn.Module):
                     torch.where(valid_mask, 0., -1.)
                 
     @torch.no_grad()
-    def update_density_grid(
+    def update(
         self,
         density_threshold,
         warmup=False,

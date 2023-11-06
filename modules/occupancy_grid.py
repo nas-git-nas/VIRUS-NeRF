@@ -6,6 +6,7 @@ from args.args import Args
 from datasets.robot_at_home_scene import RobotAtHomeScene
 from datasets.robot_at_home import RobotAtHome
 from datasets.ray_utils import get_rays
+from modules.grid import Grid
 
 from kornia.utils.grid import create_meshgrid3d
 from modules.rendering import NEAR_DISTANCE
@@ -16,7 +17,7 @@ from modules.utils import (
 )
 
 
-class OccupancyGrid():
+class OccupancyGrid(Grid):
     def __init__(
         self,
         args:Args,
@@ -24,21 +25,27 @@ class OccupancyGrid():
         rh_scene:RobotAtHomeScene=None,
         dataset:RobotAtHome=None,
     ) -> None:
+        
         self.args = args
         self.grid_size = grid_size
         self.dataset = dataset
+        self.cascades = max(1 + int(np.ceil(np.log2(2 * self.args.model.scale))), 1)
+
+        super().__init__(
+            args=args,
+            grid_size=grid_size,
+            cascades=self.cascades,
+        )
+
 
         self.threshold = 0.5
-        self.max_init_val = 0.51
-        
-
-        self.cascades = max(1 + int(np.ceil(np.log2(2 * self.args.model.scale))), 1)
+        self.max_init_val = 0.51     
 
         grid = torch.rand(size=(self.grid_size**3,), device=self.args.device, dtype=torch.float32)
         grid = self.threshold + (self.max_init_val-self.threshold) * grid
-        self.grid = grid.reshape(self.grid_size, self.grid_size, self.grid_size)
+        self.occ_3d_grid = grid.reshape(self.grid_size, self.grid_size, self.grid_size)
 
-        # self.grid = 0.505 * torch.ones(grid_size, grid_size, grid_size, device=args.device, dtype=torch.float32)
+        # self.occ_3d_grid = 0.505 * torch.ones(grid_size, grid_size, grid_size, device=args.device, dtype=torch.float32)
 
         self.cell_size = 2*self.args.model.scale / grid_size
 
@@ -65,36 +72,19 @@ class OccupancyGrid():
             self.std_every_m = self.std_every_m / rh_scene.w2cTransformation(pos=1, only_scale=True, copy=False)
             self.attenuation_every_m = self.attenuation_every_m / rh_scene.w2cTransformation(pos=1, only_scale=True, copy=False)
 
-        self.grid_coords = create_meshgrid3d(
-            self.grid_size, 
-            self.grid_size, 
-            self.grid_size, 
-            False, 
-            dtype=torch.int32
-        ).reshape(-1, 3).to(device=self.args.device)
-
         self.update_step = 0
-        
 
-    @torch.no_grad()
-    def get_all_cells(self):
-        """
-        Get all cells from the density grid.
-        Outputs:
-            cells: list (of length self.cascades) of indices and coords
-                   selected at each cascade
-        """
-        indices = morton3D(self.grid_coords).long()
-        cells = [(indices, self.grid_coords)] * self.cascades
 
-        return cells
 
     @torch.no_grad()
     def update(
         self,
+        threshold:float,
     ):
         """
         Update grid with image.
+        Args:
+            threshold: threshold for occupancy grid; float
         Returns:
             grid: occupancy grid; tensor (grid_size, grid_size, grid_size)
         """
@@ -126,15 +116,16 @@ class OccupancyGrid():
         else:
             print("ERROR: OccupancyGrid.update: no depth sensor found")
 
-        
-
         self.rayUpdate(
             rays_o=rays_o,
             rays_d=rays_d,
             meas=depth_meas,
         )
 
-        return self.grid # (grid_size, grid_size, grid_size)
+        self.updateBitfield(
+            occ_3d=self.occ_3d_grid,
+            threshold=threshold,
+        )
 
     @torch.no_grad()
     def rayUpdate(
@@ -166,8 +157,6 @@ class OccupancyGrid():
             probs_emp=probs_emp,
         )
 
-        return self.grid # (grid_size, grid_size, grid_size)
-
     @torch.no_grad()
     def _updateGrid(
         self,
@@ -182,14 +171,14 @@ class OccupancyGrid():
             probs_occ: probabilities of measurements given cell is occupied; tensor (N*M,)
             probs_emp: probabilities of measurements given cell is empty; tensor (N*M,)
         """
-        probs = self.grid[cell_idxs[:, 0], cell_idxs[:, 1], cell_idxs[:, 2]] # (N*M,)
+        probs = self.occ_3d_grid[cell_idxs[:, 0], cell_idxs[:, 1], cell_idxs[:, 2]] # (N*M,)
         probs = (probs * probs_occ) / (probs * probs_occ + (1 - probs) * probs_emp) # (N*M,)
-        self.grid[cell_idxs[:, 0], cell_idxs[:, 1], cell_idxs[:, 2]] = probs
+        self.occ_3d_grid[cell_idxs[:, 0], cell_idxs[:, 1], cell_idxs[:, 2]] = probs
 
 
         self.update_step += 1
         if self.update_step <= self.decay_warmup:
-            self.grid *= self.grid_decay
+            self.occ_3d_grid *= self.grid_decay
 
     @torch.no_grad()
     def _rayProb(

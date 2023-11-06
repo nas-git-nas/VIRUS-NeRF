@@ -919,43 +919,60 @@ class TrainerRH(Trainer):
 
         height_w = 1.0
         height_c = self.train_dataset.scene.w2cTransformation(pos=np.array([[0.0, 0.0, height_w]]), copy=False)[0,2]
-        if self.args.occ_grid.grid_type == "occ":
-            height_c = self.model.occ_grid_class.height_c.detach().cpu().numpy()
+        if self.args.occ_grid.grid_type == "occ": # TODO: remove after debugging
+            height_c = self.model.occupancy_grid.height_c.detach().cpu().numpy()
             height_w = self.train_dataset.scene.c2wTransformation(pos=np.array([[0.0, 0.0, height_c]]), copy=False)[0,2]
-            print(f"height_w={height_w}")
 
         # convert height from cube to occupancy grid coordinates
-        grid_size = self.model.grid_size
-        height_o = grid_size * (height_c+self.args.model.scale) / (2*self.args.model.scale) 
-        height_o = int(np.round(height_o))
+        height_o = self.model.occupancy_grid.c2oCoordinates(
+            pos_c=height_c,
+        )
+
+        occ_3d_grid = self.model.occupancy_grid.getOccupancyCartesianGrid()
+        bin_3d_grid = self.model.occupancy_grid.getBinaryCartesianGrid(
+            threshold=0.5,
+        )
+        bitfield = self.model.occupancy_grid.getBitfield()
+        bin_morton_grid = self.model.occupancy_grid.bitfield2morton(
+            bin_bitfield=bitfield,
+        )
+        bin_3d_recovery = self.model.occupancy_grid.morton2cartesian(
+            grid_morton=bin_morton_grid,
+        )
+
+        if not torch.allclose(bin_3d_grid, bin_3d_recovery):
+            print(f"ERROR: NGP:updateOccGrid: bin_3d_grid and bin_3d_recovery are not the same")
+
+        occ_2d_grid = occ_3d_grid[:,:,height_o]
+        bin_2d_grid = bin_3d_grid[:,:,height_o]
+        bin_2d_recovery = bin_3d_recovery[:,:,height_o]
         
-        bit_grid_3d = self.model.density_bitfield.detach().cpu().numpy().astype(np.uint8)
-        cells = self.model.occ_grid_class.get_all_cells()[0]
-        idxs = cells[0].detach().cpu().numpy()
-        coords = cells[1].detach().cpu().numpy()
+        # bit_grid_3d = self.model.occupancy_grid.getBitfield().detach().cpu().numpy().astype(np.uint8)
+        # cells = self.model.occ_grid_class.get_all_cells()[0]
+        # idxs = cells[0].detach().cpu().numpy()
+        # coords = cells[1].detach().cpu().numpy()
 
-        # convert bitfield to binary array
-        bit_grid_3d = np.unpackbits(bit_grid_3d.reshape(-1,1), axis=1)
-        bit_grid_3d = bit_grid_3d.flatten()
+        # # convert bitfield to binary array
+        # bit_grid_3d = np.unpackbits(bit_grid_3d.reshape(-1,1), axis=1)
+        # bit_grid_3d = bit_grid_3d.flatten()
 
-        # keep only indices of given height
-        idxs = idxs[coords[:,2] == height_o]
-        coords = coords[coords[:,2] == height_o]
-
+        # # keep only indices of given height
+        # idxs = idxs[coords[:,2] == height_o]
+        # coords = coords[coords[:,2] == height_o]
         
-        bit_grid_2d = np.zeros((grid_size, grid_size))
-        bit_grid_2d[coords[:,0], coords[:,1]] = bit_grid_3d[idxs]
+        # bit_grid_2d = np.zeros((grid_size, grid_size))
+        # bit_grid_2d[coords[:,0], coords[:,1]] = bit_grid_3d[idxs]
 
-        if self.args.occ_grid.grid_type == "nerf":
-            occ_grid_3d = self.model.occ_grid_class.grid[0].detach().cpu().numpy()
-            occ_grid_2d = np.zeros((grid_size, grid_size))
-            occ_grid_2d[coords[:,0], coords[:,1]] = occ_grid_3d[idxs]
-        elif self.args.occ_grid.grid_type == "occ":
-            occ_grid2_3d = self.model.occ_grid_class.grid.detach().cpu().numpy()
-            occ_grid2_2d = occ_grid2_3d[:,:,height_o]
-            bit_grid2_2d = np.copy(occ_grid2_2d)
-            bit_grid2_2d[bit_grid2_2d > 0.5] = 1.0
-            bit_grid2_2d[bit_grid2_2d <= 0.5] = 0.0
+        # if self.args.occ_grid.grid_type == "nerf":
+        #     occ_grid_3d = self.model.occ_grid_class.grid[0].detach().cpu().numpy()
+        #     occ_grid_2d = np.zeros((grid_size, grid_size))
+        #     occ_grid_2d[coords[:,0], coords[:,1]] = occ_grid_3d[idxs]
+        # elif self.args.occ_grid.grid_type == "occ":
+        #     occ_grid2_3d = self.model.occ_grid_class.grid.detach().cpu().numpy()
+        #     occ_grid2_2d = occ_grid2_3d[:,:,height_o]
+        #     bit_grid2_2d = np.copy(occ_grid2_2d)
+        #     bit_grid2_2d[bit_grid2_2d > 0.5] = 1.0
+        #     bit_grid2_2d[bit_grid2_2d <= 0.5] = 0.0
 
         # print(f"occ_grid.shape={occ_grid_3d.shape}")
         # print(f"indices shape={idxs.shape}, coords shape={coords.shape}")
@@ -970,14 +987,14 @@ class TrainerRH(Trainer):
 
         if self.args.occ_grid.grid_type == "nerf":
             ax = axes[0,0]
-            im = ax.imshow(occ_grid_2d.T, origin='lower', cmap='viridis', extent=extent, vmin=0, vmax=1)
+            im = ax.imshow(occ_2d_grid.T, origin='lower', cmap='viridis', extent=extent, vmin=0, vmax=1)
             ax.set_xlabel(f'x [m]')
             ax.set_ylabel(f'y [m]')
             ax.set_title(f'Occupancy Grid at height={height_w:.2}m')
             fig.colorbar(im, ax=ax)
 
         ax = axes[0,1]
-        im = ax.imshow(bit_grid_2d.T, origin='lower', cmap='viridis', extent=extent, vmin=0, vmax=1)
+        im = ax.imshow(bin_2d_recovery.T, origin='lower', cmap='viridis', extent=extent, vmin=0, vmax=1)
         ax.set_xlabel(f'x [m]')
         ax.set_ylabel(f'y [m]')
         ax.set_title(f'Bit Grid at height={height_w:.2}m')
@@ -985,14 +1002,14 @@ class TrainerRH(Trainer):
 
         if self.args.occ_grid.grid_type == "occ":
             ax = axes[1,0]
-            im = ax.imshow(occ_grid2_2d.T, origin='lower', cmap='viridis', extent=extent, vmin=0, vmax=1)
+            im = ax.imshow(occ_2d_grid.T, origin='lower', cmap='viridis', extent=extent, vmin=0, vmax=1)
             ax.set_xlabel(f'x [m]')
             ax.set_ylabel(f'y [m]')
             ax.set_title(f'Occupancy Grid 2 at height={height_w:.2}m')
             fig.colorbar(im, ax=ax)
 
             ax = axes[1,1]
-            im = ax.imshow(bit_grid2_2d.T, origin='lower', cmap='viridis', extent=extent, vmin=0, vmax=1)
+            im = ax.imshow(bin_2d_grid.T, origin='lower', cmap='viridis', extent=extent, vmin=0, vmax=1)
             ax.set_xlabel(f'x [m]')
             ax.set_ylabel(f'y [m]')
             ax.set_title(f'Bit Grid 2 at height={height_w:.2}m')
