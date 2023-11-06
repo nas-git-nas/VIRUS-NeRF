@@ -46,7 +46,7 @@ class OccupancyGrid():
         self.M = 32 # number of samples for ray measurement
 
         
-        self.decay_warmup = 7
+        self.decay_warmup = 10
         self.false_detection_prob_every_m = 0.3 # probability of false detection every meter
         max_sensor_range = 25.0 # in meters
         self.std_min = 0.1 # minimum standard deviation of sensor model
