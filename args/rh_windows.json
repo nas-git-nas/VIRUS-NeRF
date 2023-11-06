@@ -43,7 +43,7 @@
     {
         "grid_type": "occ",
         "batch_size": 64,
-        "sampling_strategy": {"imgs": "all", "rays": "valid_depth"},
+        "sampling_strategy": {"imgs": "all", "rays": "uss_tof_split"},
         "warmup_steps": 256,
         "update_interval": 2,
         "max_res": 1024

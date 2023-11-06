@@ -158,6 +158,7 @@ class NGP(nn.Module):
                 grid_size=self.grid_size,
                 rh_scene=rh_scene,
                 dataset=dataset,
+                fct_density=self.density,
             )
         else:
             print(f"ERROR: NGP:__init__: grid_type {self.args.occ_grid.grid_type} not implemented")

@@ -7,6 +7,7 @@ from datasets.robot_at_home_scene import RobotAtHomeScene
 from datasets.robot_at_home import RobotAtHome
 from datasets.ray_utils import get_rays
 from modules.grid import Grid
+from modules.rendering import MAX_SAMPLES, render
 
 from kornia.utils.grid import create_meshgrid3d
 
@@ -25,11 +26,13 @@ class OccupancyGrid(Grid):
         grid_size:int,
         rh_scene:RobotAtHomeScene=None,
         dataset:RobotAtHome=None,
+        fct_density:callable=None,
     ) -> None:
         
         self.args = args
         self.grid_size = grid_size
         self.dataset = dataset
+        self.fct_density = fct_density
         self.cascades = max(1 + int(np.ceil(np.log2(2 * self.args.model.scale))), 1)
 
         super().__init__(
@@ -100,7 +103,7 @@ class OccupancyGrid(Grid):
             c2w=data['pose']
         )
 
-        #
+        # TODO: remove
         self.height_c = torch.mean(rays_o[:, 2])
 
         if "RGBD" in data['depth']:
@@ -135,9 +138,62 @@ class OccupancyGrid(Grid):
             meas=depth_meas,
         )
 
+        self.nerfUpdate(
+            rays_o=rays_o,
+            rays_d=rays_d,
+            meas=depth_meas,
+            threshold_occ=threshold,
+        )
+
         self.updateBitfield(
             occ_3d=self.occ_3d_grid,
             threshold=threshold,
+        )
+
+    @torch.no_grad()
+    def nerfUpdate(
+        self,
+        rays_o:torch.Tensor,
+        rays_d:torch.Tensor,
+        meas:torch.Tensor,
+        threshold_occ:float,
+    ):
+        """
+        Update grid with ray measurement.
+        Args:
+            rays_o: rays origins; tensor (N, 3)
+            rays_d: rays directions; tensor (N, 3)
+            meas: measured distance in cube coordinates; tensor (N, 1)
+            threshold_occ: threshold for occupancy grid; float
+        """
+        # calculate cell distances
+        stds = self._calcStd(
+            dists=meas,
+        ) # (N,)
+        steps = torch.linspace(0, 1, self.M, device=self.args.device, dtype=torch.float32) # (M,)
+        cell_dists = steps[None,:] * (meas + 5*stds)[:,None] # (N, M)
+
+        # calculate cell indices
+        rays_d = rays_d / torch.norm(rays_d, dim=1, keepdim=True) # normalize rays
+        cell_pos = rays_o[:, None, :] + rays_d[:, None, :] * cell_dists[:, :, None]  # (N, M, 3)
+        cell_pos = cell_pos.reshape(-1, 3) # (N*M, 3)
+        cell_idxs = self._c2idx(
+            pos=cell_pos,
+        ) # (N*M, 3)
+
+        cell_density = self.fct_density(
+            x=cell_pos,
+        ) # (N*M,)
+        alpha = - np.log(threshold_occ)
+        thrshold_nerf = 0.01 * MAX_SAMPLES / 3**0.5
+        probs_emp = torch.exp(- alpha * cell_density / thrshold_nerf) # (N*M,)
+        probs_occ = 1 - probs_emp # (N*M,)
+
+        # update grid
+        self._updateGrid(
+            cell_idxs=cell_idxs,
+            probs_occ=probs_occ,
+            probs_emp=probs_emp,
         )
 
     @torch.no_grad()
@@ -153,8 +209,6 @@ class OccupancyGrid(Grid):
             rays_o: rays origins; tensor (N, 3)
             rays_d: rays directions; tensor (N, 3)
             meas: measured distance in cube coordinates; tensor (N, 1)
-        Returns:
-            grid: occupancy grid; tensor (grid_size, grid_size, grid_size)
         """
         # calculate probabilities for each cell
         cell_idxs, probs_occ, probs_emp = self._rayProb(
