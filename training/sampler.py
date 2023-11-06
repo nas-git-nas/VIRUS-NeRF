@@ -84,11 +84,11 @@ class Sampler():
             img_idxs: indices of images to be used for training; tensor of int64 (batch_size,)
         """
         if img_strategy == "all":
-            return torch.randint(0, self.dataset_len, size=(batch_size,), device=self.args.device)
+            return torch.randint(0, self.dataset_len, size=(batch_size,), device=self.args.device, dtype=torch.int32)
         
         if img_strategy == "same":
-            idx = torch.randint(0, self.dataset_len, size=(1,), device=self.args.device)
-            return idx * torch.ones(batch_size, dtype=torch.int64, device=self.args.device)               
+            idx = torch.randint(0, self.dataset_len, size=(1,), device=self.args.device, dtype=torch.int32)
+            return idx * torch.ones(batch_size, device=self.args.device, dtype=torch.int32)               
         
         print(f"ERROR: sampler._imgIdxs: image sampling strategy must be either 'all' or 'same'"
               + f" but is {self.args.training.sampling_strategy['imgs']}")
@@ -110,7 +110,7 @@ class Sampler():
         WH = self.img_wh[0]*self.img_wh[1]
 
         if ray_strategy == "random":
-            return torch.randint(0, WH, size=(B,), device=self.args.device)
+            return torch.randint(0, WH, size=(B,), device=self.args.device, dtype=torch.int32)
         
         if ray_strategy == "ordered":
             step = WH / B
@@ -121,7 +121,7 @@ class Sampler():
             return pix_idxs
         
         if ray_strategy == "closest":
-            pix_idxs = torch.randint(0, WH, size=(B,), device=self.args.device)
+            pix_idxs = torch.randint(0, WH, size=(B,), device=self.args.device, dtype=torch.int32)
             num_min_idxs = int(0.005 * B)
             pix_min_idxs = self.sensors_dict["USS"].imgs_min_idx
             pix_idxs[:num_min_idxs] = pix_min_idxs[img_idxs[:num_min_idxs]]
@@ -135,7 +135,7 @@ class Sampler():
             val_idxs_dict = self.fct_getValidDepthMask(img_idxs) # dict of sensor: valid depth; bool tensor (B, H*W)
 
             # random ints used to create B random permutation of H*W intergers
-            rand_ints = torch.randint(0, WH, (B, WH), device=self.args.device) # (B, H*W)
+            rand_ints = torch.randint(0, WH, (B, WH), device=self.args.device, dtype=torch.int32) # (B, H*W)
 
             # replace random ints with -n where depth is invalid in order to not sample them
             # n is the number of sensor for which the depth is invalid
@@ -143,7 +143,7 @@ class Sampler():
                 rand_ints = torch.where(
                     condition=val_idxs, 
                     input=rand_ints, 
-                    other=torch.minimum(rand_ints-1, -torch.ones_like(rand_ints, device=self.args.device))
+                    other=torch.minimum(rand_ints-1, -torch.ones_like(rand_ints, device=self.args.device, dtype=torch.int32))
                 ) # (B, H*W)
 
             # create random permutation for every row where invalid pixels are at the beginning   
