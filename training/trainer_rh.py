@@ -758,6 +758,7 @@ class TrainerRH(Trainer):
             ax.plot(self.logs['step'], self.logs['USS_close_loss'], label='USS_close')
             ax.plot(self.logs['step'], self.logs['USS_min_loss'], label='USS_min')
         ax.set_ylabel('loss')
+        ax.set_ylim([0, 1.0])
 
         ax.set_xlabel('step')
         secax = ax.secondary_xaxis(
@@ -772,13 +773,18 @@ class TrainerRH(Trainer):
         if 'mnn' in self.logs and 'psnr' in self.logs:
             ax = axes[1]
             not_nan = ~np.isnan(self.logs['mnn'])
-            lns1 = ax.plot(np.array(self.logs['step'])[not_nan], np.array(self.logs['mnn'])[not_nan], label='mnn')
+            lns1 = ax.plot(np.array(self.logs['step'])[not_nan], np.array(self.logs['mnn'])[not_nan], c="blue", label='mnn')
             ax.set_ylabel('mnn')
+            ax.set_ylim([0, 0.5])
+            ax.yaxis.label.set_color('blue') 
+            ax.tick_params(axis='y', colors='blue')
 
             ax2 = ax.twinx()
             not_nan = ~np.isnan(self.logs['psnr'])
-            lns2 = ax2.plot(np.array(self.logs['step'])[not_nan], np.array(self.logs['psnr'])[not_nan], label='psnr', color='r')
+            lns2 = ax2.plot(np.array(self.logs['step'])[not_nan], np.array(self.logs['psnr'])[not_nan], label='psnr', color='green')
             ax2.set_ylabel('psnr')
+            ax2.yaxis.label.set_color('green') 
+            ax2.tick_params(axis='y', colors='green')
 
             ax.set_xlabel('step')
             secax = ax.secondary_xaxis(
