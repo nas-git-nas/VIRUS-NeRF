@@ -983,7 +983,7 @@ class TrainerRH(Trainer):
         fig.colorbar(im, ax=ax)
 
         ax = axes[0,1]
-        im = ax.imshow(density_map.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=2 * (0.01 * MAX_SAMPLES / 3**0.5))
+        im = ax.imshow(density_map.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=10 * (0.01 * MAX_SAMPLES / 3**0.5))
         ax.set_ylabel(f'y [m]')
         ax.set_title(f'NeRF density')
         fig.colorbar(im, ax=ax)

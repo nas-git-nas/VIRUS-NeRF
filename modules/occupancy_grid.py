@@ -92,6 +92,8 @@ class OccupancyGrid(Grid):
         Returns:
             grid: occupancy grid; tensor (grid_size, grid_size, grid_size)
         """
+        self.update_step += 1
+
         # get data and calculate rays
         B = self.args.occ_grid.batch_size
         data = self.dataset(
@@ -145,9 +147,58 @@ class OccupancyGrid(Grid):
             threshold_occ=threshold,
         )
 
+        # if self.update_step > 3:
+        #     print("update all cells")
+        #     self.nerfUpdateAllCells(
+        #         threshold_occ=threshold,
+        #     )
+
         self.updateBitfield(
             occ_3d=self.occ_3d_grid,
             threshold=threshold,
+        )
+
+    @torch.no_grad()
+    def nerfUpdateAllCells(
+        self,
+        threshold_occ:float,
+    ):
+        """
+        Update grid by interfering nerf.
+        Args:
+            threshold_occ: threshold for occupancy grid; float
+        """
+        # define cell indices and positions
+        cell_idxs = create_meshgrid3d(
+            self.grid_size, 
+            self.grid_size, 
+            self.grid_size, 
+            False, 
+            dtype=torch.int32
+        ).reshape(-1, 3).to(device=self.args.device) # (N, 3)
+        cell_pos = self._idx2c(
+            idx=cell_idxs,
+        ) # (N, 3)
+
+        # add random noise
+        noise = torch.rand(size=cell_pos.shape, device=self.args.device, dtype=torch.float32)
+        cell_pos = cell_pos + self.cell_size * noise - self.cell_size/2
+        cell_pos = torch.clamp(cell_pos, -self.args.model.scale, self.args.model.scale) # limit to cube
+
+        # calculate cell occupancy probabilities
+        cell_density = self.fct_density(
+            x=cell_pos,
+        ) # (N,)
+        alpha = - np.log(threshold_occ)
+        thrshold_nerf = 0.01 * MAX_SAMPLES / 3**0.5
+        probs_emp = torch.exp(- alpha * cell_density / thrshold_nerf) # (N,)
+        probs_occ = 1 - probs_emp # (N,)
+
+        # update grid
+        self._updateGrid(
+            cell_idxs=cell_idxs,
+            probs_occ=probs_occ,
+            probs_emp=probs_emp,
         )
 
     @torch.no_grad()
@@ -159,11 +210,11 @@ class OccupancyGrid(Grid):
         threshold_occ:float,
     ):
         """
-        Update grid with ray measurement.
+        Update grid by interfering nerf.
         Args:
             rays_o: rays origins; tensor (N, 3)
             rays_d: rays directions; tensor (N, 3)
-            meas: measured distance in cube coordinates; tensor (N, 1)
+            meas: measured distance in cube coordinates; tensor (N,)
             threshold_occ: threshold for occupancy grid; float
         """
         # calculate cell distances
@@ -173,13 +224,14 @@ class OccupancyGrid(Grid):
         steps = torch.linspace(0, 1, self.M, device=self.args.device, dtype=torch.float32) # (M,)
         cell_dists = steps[None,:] * (meas + 5*stds)[:,None] # (N, M)
 
-        # calculate cell indices
+        # calculate cell positions
         rays_d = rays_d / torch.norm(rays_d, dim=1, keepdim=True) # normalize rays
         cell_pos = rays_o[:, None, :] + rays_d[:, None, :] * cell_dists[:, :, None]  # (N, M, 3)
+
+        # add random noise
+        noise = torch.rand(size=cell_pos.shape, device=self.args.device, dtype=torch.float32) - 0.5 # (N, M, 3)
+        cell_pos = cell_pos + 0.05 * cell_dists[:, :, None] * noise # (N, M, 3)
         cell_pos = cell_pos.reshape(-1, 3) # (N*M, 3)
-        cell_idxs = self._c2idx(
-            pos=cell_pos,
-        ) # (N*M, 3)
 
         cell_density = self.fct_density(
             x=cell_pos,
@@ -188,6 +240,11 @@ class OccupancyGrid(Grid):
         thrshold_nerf = 0.01 * MAX_SAMPLES / 3**0.5
         probs_emp = torch.exp(- alpha * cell_density / thrshold_nerf) # (N*M,)
         probs_occ = 1 - probs_emp # (N*M,)
+
+        # calculate cell indices   
+        cell_idxs = self._c2idx(
+            pos=cell_pos,
+        ) # (N*M, 3)
 
         # update grid
         self._updateGrid(
@@ -242,8 +299,6 @@ class OccupancyGrid(Grid):
         probs = (probs * probs_occ) / (probs * probs_occ + (1 - probs) * probs_emp) # (N*M,)
         self.occ_3d_grid[cell_idxs[:, 0], cell_idxs[:, 1], cell_idxs[:, 2]] = probs
 
-
-        self.update_step += 1
         if self.update_step <= self.decay_warmup:
             self.occ_3d_grid *= self.grid_decay
 
@@ -426,5 +481,20 @@ class OccupancyGrid(Grid):
         """
         map_idxs = (self.grid_size - 1) * (pos + self.args.model.scale) / (2 * self.args.model.scale) # (N, x y z)
         return torch.clamp(map_idxs.round().to(dtype=torch.int32), 0, self.grid_size-1) # convert to int
+    
+    @torch.no_grad()
+    def _idx2c(
+        self,
+        idx:torch.Tensor,
+    ):
+        """
+        Convert occupancy grid indices to cube coordinates.
+        Args:
+            idx: occupancy grid indices; tensor (N, 2/3)
+        Returns:
+            pos: position in cube coordinates; tensor (N, 2/3)
+        """
+        pos = (2 * self.args.model.scale) * (idx + 0.5) / self.grid_size - self.args.model.scale
+        return torch.clamp(pos, -self.args.model.scale, self.args.model.scale) # limit to cube
 
 
