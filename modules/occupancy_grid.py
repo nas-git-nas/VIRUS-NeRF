@@ -80,6 +80,8 @@ class OccupancyGrid(Grid):
 
 
 
+
+
     @torch.no_grad()
     def update(
         self,
@@ -94,59 +96,21 @@ class OccupancyGrid(Grid):
         """
         self.update_step += 1
 
-        # get data and calculate rays
-        B = self.args.occ_grid.batch_size
-        data = self.dataset(
-            batch_size=B,
-            sampling_strategy=self.args.occ_grid.sampling_strategy,
+        ray_update, nerf_update = self._sample()
+
+        print(f"OccGrid: num ray updates: {ray_update['rays_o'].shape[0]}, num nerf updates: {nerf_update['rays_o'].shape[0]}")
+
+        self.rayUpdate(
+            rays_o=ray_update["rays_o"],
+            rays_d=ray_update["rays_d"],
+            meas=ray_update["depth_meas"],
         )
-        rays_o, rays_d = get_rays(
-            directions=data['direction'], 
-            c2w=data['pose']
+        self.nerfUpdate(
+            rays_o=nerf_update["rays_o"],
+            rays_d=nerf_update["rays_d"],
+            meas=nerf_update["depth_meas"],
+            threshold_occ=threshold,
         )
-
-        # TODO: remove
-        self.height_c = torch.mean(rays_o[:, 2])
-
-        if "RGBD" in data['depth']:
-            depth_meas = data['depth']["RGBD"]
-        elif "USS" in data['depth'] and "ToF" in data['depth']:
-            # depth_meas = data['depth']["USS"]
-            # depth_tof_val = ~torch.isnan(data['depth']["ToF"])
-            # depth_meas[depth_tof_val] = data['depth']["ToF"][depth_tof_val]
-
-            depth_meas = torch.cat((data['depth']["USS"][:int(B/2)], data['depth']["ToF"][int(B/2):]), dim=0)
-
-
-            # print(f"depth_meas: {depth_meas.shape}, not nan: {torch.sum(~torch.isnan(depth_meas))}")
-
-        elif "USS" in data['depth']:
-            depth_meas = data['depth']["USS"]
-        elif "ToF" in data['depth']:
-            depth_meas = data['depth']["ToF"]
-        else:
-            print("ERROR: OccupancyGrid.update: no depth sensor found")
-
-
-        # remove nan values
-        depth_meas_val = ~torch.isnan(depth_meas)
-        rays_o = rays_o[depth_meas_val]
-        rays_d = rays_d[depth_meas_val]
-        depth_meas = depth_meas[depth_meas_val]
-
-        if self.update_step <= self.decay_warmup:
-            self.rayUpdate(
-                rays_o=rays_o,
-                rays_d=rays_d,
-                meas=depth_meas,
-            )
-        else:
-            self.nerfUpdate(
-                rays_o=rays_o,
-                rays_d=rays_d,
-                meas=depth_meas,
-                threshold_occ=threshold,
-            )
 
         # if self.update_step > 3:
         #     print("update all cells")
@@ -161,6 +125,68 @@ class OccupancyGrid(Grid):
             occ_3d=self.occ_3d_grid,
             threshold=threshold,
         )
+
+    @torch.no_grad()
+    def _sample(
+        self,
+    ):
+        """
+        Sample data, choose sensor for depth measurement and choose updating technique.
+        Returns:
+            ray_update: data for ray update; dict
+            nerf_update: data for nerf update; dict
+        """
+        # get data and calculate rays
+        B = self.args.occ_grid.batch_size
+        data = self.dataset(
+            batch_size=B,
+            sampling_strategy=self.args.occ_grid.sampling_strategy,
+            origin="occ"
+        )
+
+        # choose from which sensor to use the data
+        if "RGBD" in data['depth']:
+            depth_meas = data['depth']["RGBD"]
+        elif "USS" in data['depth'] and "ToF" in data['depth']:
+            depth_meas = torch.cat((data['depth']["USS"][:int(B/2)], data['depth']["ToF"][int(B/2):]), dim=0)
+        elif "USS" in data['depth']:
+            depth_meas = data['depth']["USS"]
+        elif "ToF" in data['depth']:
+            depth_meas = data['depth']["ToF"]
+        else:
+            print("ERROR: OccupancyGrid.update: no depth sensor found")
+
+        rays_o, rays_d = get_rays(
+            directions=data['direction'], 
+            c2w=data['pose']
+        )           
+        self.height_c = torch.mean(rays_o[:, 2]) # TODO: remove
+
+        # choose which updating technique is used: ray update or nerf update
+        ray_update_probs = torch.exp(- (data['sample_count']-1).to(dtype=torch.float32))
+        if torch.any(ray_update_probs > 1.0) or torch.any(ray_update_probs < 0.0):
+            print("ERROR: OccupancyGrid.update: ray_update_probs out of range")
+            torch.clamp(ray_update_probs, 0.0, 1.0)
+        ray_update_true = torch.bernoulli(ray_update_probs).to(dtype=torch.bool)
+
+        # remove nan values
+        depth_meas_val = ~torch.isnan(depth_meas)
+        rays_o = rays_o[depth_meas_val]
+        rays_d = rays_d[depth_meas_val]
+        depth_meas = depth_meas[depth_meas_val]
+        ray_update_true = ray_update_true[depth_meas_val]
+
+        ray_update = {
+            "rays_o": rays_o[ray_update_true],
+            "rays_d": rays_d[ray_update_true],
+            "depth_meas": depth_meas[ray_update_true],
+        }
+        nerf_update = {
+            "rays_o": rays_o[~ray_update_true],
+            "rays_d": rays_d[~ray_update_true],
+            "depth_meas": depth_meas[~ray_update_true],
+        }
+        return ray_update, nerf_update
 
     @torch.no_grad()
     def nerfUpdateAllCells(

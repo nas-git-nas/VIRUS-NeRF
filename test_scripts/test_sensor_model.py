@@ -33,6 +33,7 @@ def test_ToFModel():
         data = dataset(
             batch_size=1,
             sampling_strategy=args.training.sampling_strategy,
+            origin="nerf",
         )
         depths_tof[i] = data['depth']['ToF'].detach().cpu().numpy()
         depths_rgbd[i] = data['depth']['RGBD'].detach().cpu().numpy()

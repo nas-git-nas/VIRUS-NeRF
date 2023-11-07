@@ -57,17 +57,22 @@ class BaseDataset(Dataset):
         self, 
         batch_size:int,
         sampling_strategy:dict,
+        origin:str,
     ):
         """
         Get some data from the dataset.
         Args:
             batch_size: number of samples; int
             sampling_strategy: dictionary containing the sampling strategy for images and pixels; dict
+            origin: sampling origin; str
+                    'nerf': sample for nerf
+                    'occ': sample for occupancy grid
         """
         # sample image and pixel indices
-        img_idxs, pix_idxs = self.sampler(
+        img_idxs, pix_idxs, count = self.sampler(
             batch_size=batch_size,
             sampling_strategy=sampling_strategy,
+            origin=origin,
         )
 
         # sample data
@@ -75,6 +80,7 @@ class BaseDataset(Dataset):
         samples = {
             'img_idxs': img_idxs,
             'pix_idxs': pix_idxs,
+            'sample_count': count,
             'pose': self.poses[img_idxs],
             'direction': self.directions[pix_idxs],
             'rgb': rays[:, :3],

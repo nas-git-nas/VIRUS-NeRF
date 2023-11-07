@@ -87,6 +87,7 @@ class TrainerRH(Trainer):
             data = self.train_dataset(
                 batch_size=self.args.training.batch_size,
                 sampling_strategy=self.args.training.sampling_strategy,
+                origin="nerf",
             )
 
             direction = data['direction']
