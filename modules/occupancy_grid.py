@@ -57,7 +57,7 @@ class OccupancyGrid(Grid):
         self.M = 32 # number of samples for ray measurement
 
         
-        self.decay_warmup = 5
+        self.decay_warmup = 10
         self.false_detection_prob_every_m = 0.3 # probability of false detection every meter
         max_sensor_range = 25.0 # in meters
         self.std_min = 0.1 # minimum standard deviation of sensor model
@@ -241,7 +241,7 @@ class OccupancyGrid(Grid):
             x=cell_pos,
         ) # (N*M,)
         alpha = - np.log(threshold_occ)
-        thrshold_nerf = 0.01 * MAX_SAMPLES / 3**0.5
+        thrshold_nerf = min(0.01 * MAX_SAMPLES / 3**0.5, torch.mean(cell_density))
         probs_emp = torch.exp(- alpha * cell_density / thrshold_nerf) # (N*M,)
         probs_occ = 1 - probs_emp # (N*M,)
 
