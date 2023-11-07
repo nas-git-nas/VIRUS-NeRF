@@ -57,7 +57,7 @@ class OccupancyGrid(Grid):
         self.M = 32 # number of samples for ray measurement
 
         
-        self.decay_warmup = 20
+        self.decay_warmup = 5
         self.false_detection_prob_every_m = 0.3 # probability of false detection every meter
         max_sensor_range = 25.0 # in meters
         self.std_min = 0.1 # minimum standard deviation of sensor model
@@ -118,7 +118,7 @@ class OccupancyGrid(Grid):
             depth_meas = torch.cat((data['depth']["USS"][:int(B/2)], data['depth']["ToF"][int(B/2):]), dim=0)
 
 
-            print(f"depth_meas: {depth_meas.shape}, not nan: {torch.sum(~torch.isnan(depth_meas))}")
+            # print(f"depth_meas: {depth_meas.shape}, not nan: {torch.sum(~torch.isnan(depth_meas))}")
 
         elif "USS" in data['depth']:
             depth_meas = data['depth']["USS"]
@@ -134,24 +134,28 @@ class OccupancyGrid(Grid):
         rays_d = rays_d[depth_meas_val]
         depth_meas = depth_meas[depth_meas_val]
 
-        # self.rayUpdate(
-        #     rays_o=rays_o,
-        #     rays_d=rays_d,
-        #     meas=depth_meas,
-        # )
-
-        self.nerfUpdate(
-            rays_o=rays_o,
-            rays_d=rays_d,
-            meas=depth_meas,
-            threshold_occ=threshold,
-        )
+        if self.update_step <= self.decay_warmup:
+            self.rayUpdate(
+                rays_o=rays_o,
+                rays_d=rays_d,
+                meas=depth_meas,
+            )
+        else:
+            self.nerfUpdate(
+                rays_o=rays_o,
+                rays_d=rays_d,
+                meas=depth_meas,
+                threshold_occ=threshold,
+            )
 
         # if self.update_step > 3:
         #     print("update all cells")
         #     self.nerfUpdateAllCells(
         #         threshold_occ=threshold,
         #     )
+
+        if self.update_step <= self.decay_warmup:
+            self.occ_3d_grid *= self.grid_decay
 
         self.updateBitfield(
             occ_3d=self.occ_3d_grid,
@@ -298,9 +302,6 @@ class OccupancyGrid(Grid):
         probs = self.occ_3d_grid[cell_idxs[:, 0], cell_idxs[:, 1], cell_idxs[:, 2]] # (N*M,)
         probs = (probs * probs_occ) / (probs * probs_occ + (1 - probs) * probs_emp) # (N*M,)
         self.occ_3d_grid[cell_idxs[:, 0], cell_idxs[:, 1], cell_idxs[:, 2]] = probs
-
-        if self.update_step <= self.decay_warmup:
-            self.occ_3d_grid *= self.grid_decay
 
     @torch.no_grad()
     def _rayProb(
