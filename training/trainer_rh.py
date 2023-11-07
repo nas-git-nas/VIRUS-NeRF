@@ -80,7 +80,7 @@ class TrainerRH(Trainer):
         Training loop.
         """
         print(f"\n----- START TRAINING -----")
-        tic = time.time()
+        train_tic = time.time()
         for step in range(self.args.training.max_steps):
             self.model.train()
 
@@ -137,17 +137,20 @@ class TrainerRH(Trainer):
             self.grad_scaler.update()
             self.scheduler.step()
 
+            # evaluation
+            eval_tic = time.time()
             self._evaluateStep(
                 results=results, 
                 data=data, 
                 step=step, 
                 loss_dict=loss_dict,
-                tic=tic
+                tic=train_tic
             )
-
             self._plotOccGrid(
                 step=step,
             )
+            eval_toc = time.time()
+            train_tic += eval_toc - eval_tic # subtract evaluation time from training time
 
         self.saveModel()
 

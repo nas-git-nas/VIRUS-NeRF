@@ -168,15 +168,17 @@ class Sampler():
             return perm_idxs[:,-1] # (B), random pixel indices with valid depth (except entire row is invalid)
         
         if ray_strategy == "uss_tof_split":
-            uss_maks = torch.tensor(self.sensors_dict["USS"].mask, device=self.args.device, dtype=torch.bool)
-            uss_mask_idxs = torch.where(uss_maks)[0]
-            uss_rand_ints = torch.randint(0, uss_mask_idxs.shape[0], (int(B/2),), device=self.args.device, dtype=torch.int32)
-            uss_img_idxs = uss_mask_idxs[uss_rand_ints]
-
+            tof_num_samples = int(B/4)
             tof_mask = torch.tensor(self.sensors_dict["ToF"].mask, device=self.args.device, dtype=torch.bool)
             tof_mask_idxs = torch.where(tof_mask)[0]
-            tof_rand_ints = torch.randint(0, tof_mask_idxs.shape[0], (B-int(B/2),), device=self.args.device, dtype=torch.int32)
+            tof_rand_ints = torch.randint(0, tof_mask_idxs.shape[0], (tof_num_samples,), device=self.args.device, dtype=torch.int32)
             tof_img_idxs = tof_mask_idxs[tof_rand_ints]
+
+            uss_num_samples = B - tof_num_samples
+            uss_maks = torch.tensor(self.sensors_dict["USS"].mask, device=self.args.device, dtype=torch.bool)
+            uss_mask_idxs = torch.where(uss_maks)[0]
+            uss_rand_ints = torch.randint(0, uss_mask_idxs.shape[0], (uss_num_samples,), device=self.args.device, dtype=torch.int32)
+            uss_img_idxs = uss_mask_idxs[uss_rand_ints]
 
             return torch.cat((uss_img_idxs, tof_img_idxs), dim=0)
         
