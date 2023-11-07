@@ -746,17 +746,17 @@ class TrainerRH(Trainer):
 
         # plot losses
         ax = axes[0]
-        ax.plot(self.logs['step'], self.logs['loss'], label='total')
-        ax.plot(self.logs['step'], self.logs['color_loss'], label='color')
-        ax.plot(self.logs['step'], self.logs['depth_loss'], label='depth')
-        if "rgbd" in self.logs:
-            ax.plot(self.logs['step'], self.logs['rgbd_loss'], label='rgbd')
-        if "ToF" in self.logs:
-            ax.plot(self.logs['step'], self.logs['ToF_loss'], label='ToF')
-        if "USS" in self.logs:
-            ax.plot(self.logs['step'], self.logs['USS_loss'], label='USS')
-            ax.plot(self.logs['step'], self.logs['USS_close_loss'], label='USS_close')
-            ax.plot(self.logs['step'], self.logs['USS_min_loss'], label='USS_min')
+        mask = np.ones(self.args.eval.eval_every_n_steps+1) / (self.args.eval.eval_every_n_steps+1)
+        ax.plot(self.logs['step'], np.convolve(self.logs['loss'], mask, mode='same'), label='total')
+        ax.plot(self.logs['step'], np.convolve(self.logs['color_loss'], mask, mode='same'), label='color')
+        if "rgbd_loss" in self.logs:
+            ax.plot(self.logs['step'], np.convolve(self.logs['rgbd_loss'], mask, mode='same'), label='rgbd')
+        if "ToF_loss" in self.logs:
+            ax.plot(self.logs['step'], np.convolve(self.logs['ToF_loss'], mask, mode='same'), label='ToF')
+        if "USS_loss" in self.logs:
+            ax.plot(self.logs['step'], np.convolve(self.logs['USS_loss'], mask, mode='same'), label='USS')
+            ax.plot(self.logs['step'], np.convolve(self.logs['USS_close_loss'], mask, mode='same'), label='USS_close')
+            ax.plot(self.logs['step'], np.convolve(self.logs['USS_min_loss'], mask, mode='same'), label='USS_min')
         ax.set_ylabel('loss')
         ax.set_ylim([0, 1.0])
 
