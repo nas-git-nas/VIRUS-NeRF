@@ -108,7 +108,7 @@ class TrainerRH(Trainer):
                             density_threshold= 0.5,
                         )
                     else:
-                        print(f"ERROR: NGP:__init__: grid_type {self.args.occ_grid.grid_type} not implemented")
+                        self.args.logger.error(f"grid_type {self.args.occ_grid.grid_type} not implemented")
                     
 
                 # get rays and render image
@@ -359,8 +359,8 @@ class TrainerRH(Trainer):
         M = self.args.eval.res_angular
         N = data_w['depth'].shape[0] // M
         if data_w['depth'].shape[0] % M != 0:
-            print(f"ERROR: trainer_RH.evaluatePlot(): data_w['depth'].shape[0]={data_w['depth'].shape[0]} "
-                  f"should be a multiple of M={M}")
+            self.args.logger.error(f"ERROR: trainer_RH.evaluatePlot(): data_w['depth'].shape[0]={data_w['depth'].shape[0]} "
+                                    + f"should be a multiple of M={M}")
         
         # downsample data
         depth_w = data_w['depth'].reshape((N, M)) # (N, M)
@@ -368,8 +368,8 @@ class TrainerRH(Trainer):
         scan_angles = data_w['scan_angles'].reshape((N, M)) # (N, M)
         nn_dists = metrics_dict['nn_dists'] # (N, M)
         if self.args.eval.num_plot_pts > N:
-            print(f"WARNING: trainer_RH.evaluatePlot(): num_plot_pts={self.args.eval.num_plot_pts} "
-                  f"should be smaller or equal than N={N}")
+            self.args.logger.warning(f"trainer_RH.evaluatePlot(): num_plot_pts={self.args.eval.num_plot_pts} "
+                                        f"should be smaller or equal than N={N}")
             self.args.eval.num_plot_pts = N
         elif self.args.eval.num_plot_pts < N:
             idxs_temp = np.linspace(0, depth_w.shape[0]-1, self.args.eval.num_plot_pts, dtype=int)
@@ -625,7 +625,7 @@ class TrainerRH(Trainer):
         M = self.args.eval.res_angular
         N = rays_o_w.shape[0] // M
         if rays_o_w.shape[0] % M != 0:
-            print(f"ERROR: trainer_RH._createScanMaps(): rays_o.shape[0]={rays_o_w.shape[0]} % M={M} != 0")
+            self.args.logger.error(f"trainer_RH._createScanMaps(): rays_o_w.shape[0]={rays_o_w.shape[0]} % M={M} != 0")
         
         # convert depth to position in world coordinate system and then to map indices
         pos = self.test_dataset.scene.convertDepth2Pos(rays_o=rays_o_w, scan_depth=depth, scan_angles=scan_angles) # (N*M, 2)
@@ -953,7 +953,7 @@ class TrainerRH(Trainer):
 
         # TODO: optimize remove
         if not torch.allclose(bin_3d_grid, bin_3d_recovery):
-            print(f"ERROR: NGP:updateOccGrid: bin_3d_grid and bin_3d_recovery are not the same")
+            self.args.logger.error(f"bin_3d_grid and bin_3d_recovery are not the same")
 
         # convert from 3D to 2D
         occ_2d_grid = occ_3d_grid[:,:,height_o]

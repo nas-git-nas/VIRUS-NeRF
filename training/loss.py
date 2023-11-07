@@ -117,7 +117,7 @@ class Loss():
             elif sensor_name == 'USS':
                 depth_loss += self._depthLossUSS(results=results, data=data)
             else:
-                print(f"ERROR: loss.py: _depthLoss: sensor name '{sensor_name}' is invalid")
+                self.args.logger.error(f"sensor name '{sensor_name}' is invalid")
         depth_loss /= len(self.args.training.sensors)
         
         if self.log_loss:

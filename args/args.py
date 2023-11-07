@@ -3,10 +3,12 @@ import os
 import json
 from datetime import datetime
 import shutil
+import logging
 
 from args.h_params import HParamsDataset, HParamsModel, HParamsTraining, \
                             HParamsEvaluation, HParamsOccGrid, HParamsRobotAtHome, \
                             HParamsRGBD, HParamsUSS, HParamsToF
+from args.custom_formatter import FileFormatter, TerminalFormatter
 
 
 class Args():
@@ -56,6 +58,9 @@ class Args():
             shutil.rmtree(self.save_dir)
         os.mkdir(self.save_dir)
 
+        # initialize logging
+        self._initLogging()
+
         # rendering configuration
         self.exp_step_factor = 1 / 256 if self.model.scale > 0.5 else 0. 
 
@@ -102,6 +107,34 @@ class Args():
         with open(os.path.join(self.save_dir, "hparams.json"), "w") as outfile:
             outfile.write(json_object)
 
+    def _initLogging(
+        self,
+    ):
+        """
+        Create logger
+        Returns:
+            logger: logger; logging.Logger
+        """
+        # Create a custom logger
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.DEBUG)
+
+        # Create handlers
+        c_handler = logging.StreamHandler()
+        f_handler = logging.FileHandler(os.path.join(self.save_dir, "log.txt"))
+        c_handler.setLevel(logging.INFO)
+        f_handler.setLevel(logging.DEBUG)
+
+        # Create formatters and add it to handlers
+        c_format = TerminalFormatter()
+        f_format = FileFormatter()
+        c_handler.setFormatter(c_format)
+        f_handler.setFormatter(f_format)
+        
+
+        # Add handlers to the logger
+        self.logger.addHandler(c_handler)
+        self.logger.addHandler(f_handler)
 
 def test_args():
     args = Args("hparams.json")

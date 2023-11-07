@@ -31,8 +31,6 @@ from torchmetrics import (
     PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
 )
 
-
-
 warnings.filterwarnings("ignore")
 
 

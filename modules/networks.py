@@ -118,7 +118,7 @@ class NGP(nn.Module):
                 feature_per_level=4,
             )
         else:
-            raise NotImplementedError
+            self.args.logger.error(f"pos_encoder_type {pos_encoder_type} not implemented")
 
         self.xyz_encoder = MLP(
             input_dim=self.pos_encoder.out_dim,
@@ -161,7 +161,7 @@ class NGP(nn.Module):
                 fct_density=self.density,
             )
         else:
-            print(f"ERROR: NGP:__init__: grid_type {self.args.occ_grid.grid_type} not implemented")
+            self.args.logger.error(f"grid_type {self.args.occ_grid.grid_type} not implemented")
 
         
 

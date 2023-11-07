@@ -158,7 +158,7 @@ class OccupancyGrid(Grid):
         elif "ToF" in data['depth']:
             depth_meas = data['depth']["ToF"]
         else:
-            print("ERROR: OccupancyGrid.update: no depth sensor found")
+            self.args.logger.error("OccupancyGrid.update: no depth sensor found")
 
         rays_o, rays_d = get_rays(
             directions=data['direction'], 
@@ -235,7 +235,7 @@ class OccupancyGrid(Grid):
         thrshold_nerf = min(0.01 * MAX_SAMPLES / 3**0.5, torch.mean(cell_density))
         probs_emp = torch.exp(- alpha * cell_density / thrshold_nerf) # (N*M,)
         # probs_emp = self.nerf_correct_prob * probs_emp + (1 - self.nerf_correct_prob) * 0.5 # (N*M,)
-        # probs_emp = torch.clamp(probs_emp, 0.4, 0.6) # (N*M,)
+        probs_emp = torch.clamp(probs_emp, 0.4, 1.0) # (N*M,)
         probs_occ = 1 - probs_emp # (N*M,)
 
         # calculate cell indices   

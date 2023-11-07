@@ -95,7 +95,7 @@ class Metrics():
             elif metric == 'ssim':
                 dict['ssim'] = self._ssim(rgb=data['rgb'], rgb_gt=data['rgb_gt'])
             else:
-                print(f"WARNING: metric {metric} not implemented")
+                self.args.logger.warning(f"metric {metric} not implemented")
 
         return dict
     
@@ -247,7 +247,7 @@ class Metrics():
         """
         W, H = self.img_wh
         if rgb.shape[0] % (W*H) != 0:
-            print(f"ERROR: metric:_psnr: rgb.shape[0] = {rgb.shape[0]} must be divisible by W*H = {W*H}")
+            self.args.logger.error(f"rgb.shape[0] = {rgb.shape[0]} must be divisible by W*H = {W*H}")
         num_imgs = rgb.shape[0] // (W*H)
 
         test_psnrs = []
@@ -276,7 +276,7 @@ class Metrics():
         """
         W, H = self.img_wh
         if rgb.shape[0] % (W*H) != 0:
-            print(f"ERROR: metric:_psnr: rgb.shape[0] = {rgb.shape[0]} must be divisible by W*H = {W*H}")
+            self.args.logger.error(f"rgb.shape[0] = {rgb.shape[0]} must be divisible by W*H = {W*H}")
         num_imgs = rgb.shape[0] // (W*H)
 
         test_ssims = []

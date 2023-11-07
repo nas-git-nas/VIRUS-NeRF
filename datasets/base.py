@@ -22,7 +22,7 @@ class BaseDataset(Dataset):
         self.split = split
 
     def read_intrinsics(self):
-        raise NotImplementedError
+        pass
 
     def __len__(self):
         return len(self.poses)
@@ -122,9 +122,9 @@ class BaseDataset(Dataset):
 
         # verify dimensions and reshape tensors
         if rays.shape[0] != depths.shape[0]:
-            print(f"ERROR: base.reduceImgHeight: rays and depths must have the same number of images")
+            self.args.logger.error(f"rays and depths must have the same number of images")
         if rays.shape[1] != W*H or directions.shape[0] != W*H or depths.shape[1] != W*H:
-            print(f"ERROR: base.reduceImgHeight: rays, directions and depths must have the same number of pixels = {W*H}")
+            self.args.logger.error(f"rays, directions and depths must have the same number of pixels = {W*H}")
         rays = rays.reshape(N, H, W, 3)
         directions = directions.reshape(H, W, 3)
         depths = depths.reshape(N, H, W)
@@ -182,9 +182,9 @@ class BaseDataset(Dataset):
 
         # verify that split is correct
         if split_ratio['train'] + split_ratio['val'] + split_ratio['test'] != 1.0:
-            print(f"ERROR: robot_at_home.py: splitDataset: split ratios do not sum up to 1.0")
+            self.args.logger.error(f"split ratios do not sum up to 1.0")
         if split_ratio['train']*10 % 1 != 0 or split_ratio['val']*10 % 1 != 0 or split_ratio['test']*10 % 1 != 0:
-            print(f"ERROR: robot_at_home.py: splitDataset: split ratios must be multiples of 0.1")
+            self.args.logger.error(f"split ratios must be multiples of 0.1")
         
         # get indices for each sensor
         split_idxs = {"train": np.empty(0, dtype=int), "val": np.empty(0, dtype=int), "test": np.empty(0, dtype=int)}

@@ -104,8 +104,8 @@ class Sampler():
             idx = torch.randint(0, self.dataset_len, size=(1,), device=self.args.device, dtype=torch.int32)
             return idx * torch.ones(batch_size, device=self.args.device, dtype=torch.int32)               
         
-        print(f"ERROR: sampler._imgIdxs: image sampling strategy must be either 'all' or 'same'"
-              + f" but is {self.args.training.sampling_strategy['imgs']}")
+        self.args.logger.error(f"image sampling strategy must be either 'all' or 'same'"
+                + f" but is {self.args.training.sampling_strategy['imgs']}")
 
     def _pixIdxs(
             self,
@@ -205,7 +205,7 @@ class Sampler():
         if origin == "nerf":
             count_is_max = self.sample_count["nerf"][img_idxs, pix_idxs] == 255
             if torch.any(count_is_max):
-                print(f"WARNING: sampler._count: overflows from 255->0: limit count to 255") 
+                self.args.logger.warning(f"overflows from 255->0: limit count to 255")
             self.sample_count["nerf"][img_idxs, pix_idxs] = torch.where(
                 condition=count_is_max,
                 input=self.sample_count["nerf"][img_idxs, pix_idxs],
@@ -216,7 +216,7 @@ class Sampler():
         if origin == "occ":
             count_is_max = self.sample_count["occ"][img_idxs, pix_idxs] == 255
             if torch.any(count_is_max):
-                print(f"WARNING: sampler._count: overflows from 255->0: limit count to 255") 
+                self.args.logger.warning(f"sampler._count: overflows from 255->0: limit count to 255")
             self.sample_count["occ"][img_idxs, pix_idxs] = torch.where(
                 condition=count_is_max,
                 input=self.sample_count["occ"][img_idxs, pix_idxs],
@@ -224,4 +224,4 @@ class Sampler():
             )
             return self.sample_count["occ"][img_idxs, pix_idxs]
 
-        print(f"ERROR: sampler._count: origin must be either 'nerf' or 'occ'") 
+        self.args.logger.error(f"origin must be either 'nerf' or 'occ'")
