@@ -979,18 +979,18 @@ class TrainerRH(Trainer):
         ax = axes[0,0]
         im = ax.imshow(density_map_gt.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=1)
         ax.set_ylabel(f'y [m]')
-        ax.set_title(f'Ground Truth (at h={height_w:.2}m)')
+        ax.set_title(f'Ground Truth')
         fig.colorbar(im, ax=ax)
 
         ax = axes[0,1]
-        im = ax.imshow(density_map.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(density_map))
+        im = ax.imshow(density_map.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=2 * (0.01 * MAX_SAMPLES / 3**0.5))
         ax.set_ylabel(f'y [m]')
-        ax.set_title(f'NeRF density (at h={height_w:.2}m)')
+        ax.set_title(f'NeRF density')
         fig.colorbar(im, ax=ax)
 
         ax = axes[0,2]
         im = ax.imshow(density_map_thr.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=1)
-        ax.set_title(f'NeRF binary (at h={height_w:.2}m)')
+        ax.set_title(f'NeRF binary')
         fig.colorbar(im, ax=ax)
 
         fig.delaxes(axes[1,0])
@@ -999,13 +999,13 @@ class TrainerRH(Trainer):
         im = ax.imshow(occ_2d_grid.T, origin='lower', cmap='viridis', extent=extent, vmin=0, vmax=1)
         ax.set_xlabel(f'x [m]')
         ax.set_ylabel(f'y [m]')
-        ax.set_title(f'OccGrid density (at h={height_w:.2}m)')
+        ax.set_title(f'OccGrid density')
         fig.colorbar(im, ax=ax)
 
         ax = axes[1,2]
         im = ax.imshow(bin_2d_grid.T, origin='lower', cmap='viridis', extent=extent, vmin=0, vmax=1)
         ax.set_ylabel(f'y [m]')
-        ax.set_title(f'OccGrid binary (h={height_w:.2}m)')
+        ax.set_title(f'OccGrid binary')
         fig.colorbar(im, ax=ax)
 
         plt.tight_layout()

@@ -132,11 +132,11 @@ class OccupancyGrid(Grid):
         rays_d = rays_d[depth_meas_val]
         depth_meas = depth_meas[depth_meas_val]
 
-        self.rayUpdate(
-            rays_o=rays_o,
-            rays_d=rays_d,
-            meas=depth_meas,
-        )
+        # self.rayUpdate(
+        #     rays_o=rays_o,
+        #     rays_d=rays_d,
+        #     meas=depth_meas,
+        # )
 
         self.nerfUpdate(
             rays_o=rays_o,
