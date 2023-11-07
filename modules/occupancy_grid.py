@@ -148,7 +148,10 @@ class OccupancyGrid(Grid):
         if "RGBD" in data['depth']:
             depth_meas = data['depth']["RGBD"]
         elif "USS" in data['depth'] and "ToF" in data['depth']:
-            depth_meas = torch.cat((data['depth']["USS"][:int(B/2)], data['depth']["ToF"][int(B/2):]), dim=0)
+            # depth_meas = torch.cat((data['depth']["USS"][:int(B/2)], data['depth']["ToF"][int(B/2):]), dim=0)
+            valid_depth_tof = ~torch.isnan(data['depth']["ToF"])
+            depth_meas = data['depth']["ToF"]
+            depth_meas[~valid_depth_tof] = data['depth']["USS"][~valid_depth_tof]
         elif "USS" in data['depth']:
             depth_meas = data['depth']["USS"]
         elif "ToF" in data['depth']:
@@ -163,11 +166,13 @@ class OccupancyGrid(Grid):
         self.height_c = torch.mean(rays_o[:, 2]) # TODO: remove
 
         # choose which updating technique is used: ray update or nerf update
-        ray_update_probs = torch.exp(- (data['sample_count'].to(dtype=torch.float32) - 0.3))
-        if torch.any(ray_update_probs > 1.0) or torch.any(ray_update_probs < 0.0):
-            print("ERROR: OccupancyGrid.update: ray_update_probs out of range")
-            torch.clamp(ray_update_probs, 0.0, 1.0)
-        ray_update_true = torch.bernoulli(ray_update_probs).to(dtype=torch.bool)
+        # ray_update_probs = torch.exp(- (data['sample_count'].to(dtype=torch.float32) - 0.3))
+        # if torch.any(ray_update_probs > 1.0) or torch.any(ray_update_probs < 0.0):
+        #     print("ERROR: OccupancyGrid.update: ray_update_probs out of range")
+        #     torch.clamp(ray_update_probs, 0.0, 1.0)
+        # ray_update_true = torch.bernoulli(ray_update_probs).to(dtype=torch.bool)
+
+        ray_update_true = valid_depth_tof
 
         # remove nan values
         depth_meas_val = ~torch.isnan(depth_meas)
@@ -188,48 +193,7 @@ class OccupancyGrid(Grid):
         }
         return ray_update, nerf_update
 
-    @torch.no_grad()
-    def nerfUpdateAllCells(
-        self,
-        threshold_occ:float,
-    ):
-        """
-        Update grid by interfering nerf.
-        Args:
-            threshold_occ: threshold for occupancy grid; float
-        """
-        # define cell indices and positions
-        cell_idxs = create_meshgrid3d(
-            self.grid_size, 
-            self.grid_size, 
-            self.grid_size, 
-            False, 
-            dtype=torch.int32
-        ).reshape(-1, 3).to(device=self.args.device) # (N, 3)
-        cell_pos = self._idx2c(
-            idx=cell_idxs,
-        ) # (N, 3)
 
-        # add random noise
-        noise = torch.rand(size=cell_pos.shape, device=self.args.device, dtype=torch.float32)
-        cell_pos = cell_pos + self.cell_size * noise - self.cell_size/2
-        cell_pos = torch.clamp(cell_pos, -self.args.model.scale, self.args.model.scale) # limit to cube
-
-        # calculate cell occupancy probabilities
-        cell_density = self.fct_density(
-            x=cell_pos,
-        ) # (N,)
-        alpha = - np.log(threshold_occ)
-        thrshold_nerf = 0.01 * MAX_SAMPLES / 3**0.5
-        probs_emp = torch.exp(- alpha * cell_density / thrshold_nerf) # (N,)
-        probs_occ = 1 - probs_emp # (N,)
-
-        # update grid
-        self._updateGrid(
-            cell_idxs=cell_idxs,
-            probs_occ=probs_occ,
-            probs_emp=probs_emp,
-        )
 
     @torch.no_grad()
     def nerfUpdate(
@@ -269,6 +233,7 @@ class OccupancyGrid(Grid):
         alpha = - np.log(threshold_occ)
         thrshold_nerf = min(0.01 * MAX_SAMPLES / 3**0.5, torch.mean(cell_density))
         probs_emp = torch.exp(- alpha * cell_density / thrshold_nerf) # (N*M,)
+        probs_emp = torch.clamp(probs_emp, 0.4, 0.6)
         probs_occ = 1 - probs_emp # (N*M,)
 
         # calculate cell indices   
@@ -525,3 +490,45 @@ class OccupancyGrid(Grid):
         return torch.clamp(pos, -self.args.model.scale, self.args.model.scale) # limit to cube
 
 
+    @torch.no_grad()
+    def nerfUpdateAllCells(
+        self,
+        threshold_occ:float,
+    ):
+        """
+        Update grid by interfering nerf.
+        Args:
+            threshold_occ: threshold for occupancy grid; float
+        """
+        # define cell indices and positions
+        cell_idxs = create_meshgrid3d(
+            self.grid_size, 
+            self.grid_size, 
+            self.grid_size, 
+            False, 
+            dtype=torch.int32
+        ).reshape(-1, 3).to(device=self.args.device) # (N, 3)
+        cell_pos = self._idx2c(
+            idx=cell_idxs,
+        ) # (N, 3)
+
+        # add random noise
+        noise = torch.rand(size=cell_pos.shape, device=self.args.device, dtype=torch.float32)
+        cell_pos = cell_pos + self.cell_size * noise - self.cell_size/2
+        cell_pos = torch.clamp(cell_pos, -self.args.model.scale, self.args.model.scale) # limit to cube
+
+        # calculate cell occupancy probabilities
+        cell_density = self.fct_density(
+            x=cell_pos,
+        ) # (N,)
+        alpha = - np.log(threshold_occ)
+        thrshold_nerf = 0.01 * MAX_SAMPLES / 3**0.5
+        probs_emp = torch.exp(- alpha * cell_density / thrshold_nerf) # (N,)
+        probs_occ = 1 - probs_emp # (N,)
+
+        # update grid
+        self._updateGrid(
+            cell_idxs=cell_idxs,
+            probs_occ=probs_occ,
+            probs_emp=probs_emp,
+        )
