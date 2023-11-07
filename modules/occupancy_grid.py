@@ -163,7 +163,7 @@ class OccupancyGrid(Grid):
         self.height_c = torch.mean(rays_o[:, 2]) # TODO: remove
 
         # choose which updating technique is used: ray update or nerf update
-        ray_update_probs = torch.exp(- (data['sample_count']-1).to(dtype=torch.float32))
+        ray_update_probs = torch.exp(- (data['sample_count'].to(dtype=torch.float32) - 0.3))
         if torch.any(ray_update_probs > 1.0) or torch.any(ray_update_probs < 0.0):
             print("ERROR: OccupancyGrid.update: ray_update_probs out of range")
             torch.clamp(ray_update_probs, 0.0, 1.0)
