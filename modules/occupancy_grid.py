@@ -99,7 +99,7 @@ class OccupancyGrid(Grid):
 
         ray_update, nerf_update = self._sample()
 
-        print(f"OccGrid: num ray updates: {ray_update['rays_o'].shape[0]}, num nerf updates: {nerf_update['rays_o'].shape[0]}")
+        # print(f"OccGrid: num ray updates: {ray_update['rays_o'].shape[0]}, num nerf updates: {nerf_update['rays_o'].shape[0]}")
 
         self.rayUpdate(
             rays_o=ray_update["rays_o"],
@@ -234,7 +234,8 @@ class OccupancyGrid(Grid):
         alpha = - np.log(threshold_occ)
         thrshold_nerf = min(0.01 * MAX_SAMPLES / 3**0.5, torch.mean(cell_density))
         probs_emp = torch.exp(- alpha * cell_density / thrshold_nerf) # (N*M,)
-        probs_emp = self.nerf_correct_prob * probs_emp + (1 - self.nerf_correct_prob) * 0.5 # (N*M,)
+        # probs_emp = self.nerf_correct_prob * probs_emp + (1 - self.nerf_correct_prob) * 0.5 # (N*M,)
+        probs_emp = torch.clamp(probs_emp, 0.4, 0.6) # (N*M,)
         probs_occ = 1 - probs_emp # (N*M,)
 
         # calculate cell indices   
