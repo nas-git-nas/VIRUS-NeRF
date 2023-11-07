@@ -168,7 +168,7 @@ class Sampler():
             return perm_idxs[:,-1] # (B), random pixel indices with valid depth (except entire row is invalid)
         
         if ray_strategy == "uss_tof_split":
-            tof_num_samples = int(B/4)
+            tof_num_samples = int(B/2)
             tof_mask = torch.tensor(self.sensors_dict["ToF"].mask, device=self.args.device, dtype=torch.bool)
             tof_mask_idxs = torch.where(tof_mask)[0]
             tof_rand_ints = torch.randint(0, tof_mask_idxs.shape[0], (tof_num_samples,), device=self.args.device, dtype=torch.int32)
