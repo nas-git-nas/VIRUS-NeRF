@@ -61,19 +61,113 @@ def linInterpolateArray(
     # return y1 in original order of x2
     return y2[idxs_sort2]
 
+def linInterpolateNans(
+    arr:np.array,
+):
+    """
+    Replace nan values in array by linear interpolation of closest valid values.
+    Args:
+        arr: input array; np.array of shape (N,)
+    Returns:
+        arr: array with replaced nan values; np.array of shape (N,)
+    """
+    arr = np.copy(arr)
+    N = arr.shape[0]
+    n = np.sum(~np.isnan(arr))
+
+    if n == 0:
+        print(f"ERROR: data_fcts.convolveIgnorNan: all values are nan")
+        return arr
+    
+    if n == N:
+        return arr
+
+    # find next value above nan values
+    arr_val_idxs = np.arange(N)[~np.isnan(arr)] # [0, N-1], (n,)
+    cumsum = np.cumsum(~np.isnan(arr)) # (N,)
+    next_val_idx_above = arr_val_idxs[np.clip(cumsum, 0, n-1)] # (N,)
+    next_val_above = arr[next_val_idx_above] # (N,) 
+
+    arr_val_idxs_inv = np.arange(N)[~np.isnan(np.flip(arr))] # [0, N-1], (n,)
+    cumsum_inv = np.cumsum(~np.isnan(np.flip(arr))) # (N,)
+    next_val_idx_below = arr_val_idxs_inv[np.clip(cumsum_inv, 0, n-1)] # (N,)
+    next_val_idx_below = N - 1 - np.flip(next_val_idx_below)
+    next_val_below = arr[next_val_idx_below] # (N,)
+      
+    # calculate weights for linear interpolation
+    next_val_below_dist = (np.arange(N) - next_val_idx_below).astype(np.int64) # (N,)
+    next_val_above_dist = (next_val_idx_above - np.arange(N)).astype(np.int64) # (N,)
+    next_val_below_dist = np.where(
+        next_val_below_dist<=0, 
+        np.iinfo(np.int64).max,
+        next_val_below_dist,
+    )
+    next_val_above_dist = np.where(
+        next_val_above_dist<=0,
+        np.iinfo(np.int64).max,
+        next_val_above_dist,
+    )
+    weigts_below = 1 / next_val_below_dist # (N,)
+    weigts_above = 1 / next_val_above_dist # (N,)
+    weights_sum = weigts_below + weigts_above # (N,)
+    weigts_below = weigts_below / weights_sum # (N,)
+    weigts_above = weigts_above / weights_sum # (N,)
+    
+    # linear interpolation of nan values
+    arr_inter = weigts_below * next_val_below + weigts_above * next_val_above # linear interpolation
+    arr[np.isnan(arr)] = arr_inter[np.isnan(arr)] # replace nan values by linear interpolation
+    return arr
+
+def convolveIgnorNans(
+    arr:np.array,
+    kernel:np.array,
+):
+    """
+    Convolve array while ignoring nan values e.g. replace nan values by linear interpolation.
+    Args:
+        arr: input array; np.array of shape (N,)
+        kernel: kernel for convolution; np.array of shape (M,)
+    Returns:
+        arr_conv: convolved array; np.array of shape (N,)
+    """
+    arr = np.copy(arr)
+    kernel = np.copy(kernel)
+
+    # linear interpolate nan values
+    arr = linInterpolateNans(arr)
+
+    # convolve array
+    return np.convolve(arr, kernel, mode="same")
+
+def dataConverged(
+    arr:np.array,
+    threshold:float,
+    data_increasing:bool
+):
+    """
+    Verify at which index the data has converged.
+    Args:
+        arr: input array; np.array of shape (N,)
+        threshold: threshold for convergence; float
+        data_increasing: whether the data is increasing or decreasing; bool
+    Returns:
+        idx_converged: index at which the data has converged; int
+                        return -1 if data has not converged
+    """
+    arr = np.copy(arr)
+
+    arr_binary = np.where(
+        arr > threshold, 
+        1 if data_increasing else 0, 
+        0 if data_increasing else 1,
+    )
+    arr_binary = np.cumprod(arr_binary[::-1])[::-1]
+
+    if not np.any(arr_binary):
+        return -1 # data has not converged
+    return np.argmax(arr_binary)
 
 
 
 
 
-def test_linInterpolateArray():
-    x1 = np.array([1, 2, 3, 4, 5])
-    y1 = 2*x1
-    x2 = np.array([2.5, 4.5, 3.5, 4.5])
-
-    y2 = linInterpolateArray(x1, y1, x2)
-    print(f"y1: {y1}")
-    print(f"y2: {y2}")
-
-if __name__ == "__main__":
-    test_linInterpolateArray()
