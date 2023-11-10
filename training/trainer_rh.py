@@ -754,9 +754,9 @@ class TrainerRH(Trainer):
         if "ToF_loss" in self.logs:
             ax.plot(self.logs['step'], np.convolve(self.logs['ToF_loss'], mask, mode='same'), label='ToF')
         if "USS_loss" in self.logs:
-            ax.plot(self.logs['step'], np.convolve(self.logs['USS_loss'], mask, mode='same'), label='USS')
-            ax.plot(self.logs['step'], np.convolve(self.logs['USS_close_loss'], mask, mode='same'), label='USS_close')
-            ax.plot(self.logs['step'], np.convolve(self.logs['USS_min_loss'], mask, mode='same'), label='USS_min')
+            # ax.plot(self.logs['step'], np.convolve(self.logs['USS_loss'], mask, mode='same'), label='USS')
+            ax.plot(self.logs['step'], np.convolve(self.logs['USS_close_loss'], mask, mode='same'), label='USS(close)')
+            ax.plot(self.logs['step'], np.convolve(self.logs['USS_min_loss'], mask, mode='same'), label='USS(min)')
         ax.set_ylabel('loss')
         ax.set_ylim([0, 1.0])
 
@@ -939,31 +939,35 @@ class TrainerRH(Trainer):
             pos_c=height_c,
         )
 
-        occ_3d_grid = self.model.occupancy_grid.getOccupancyCartesianGrid()
+        occ_3d_grid = self.model.occupancy_grid.getOccupancyCartesianGrid(
+            clone=True,
+        )
         bin_3d_grid = self.model.occupancy_grid.getBinaryCartesianGrid(
-            threshold=0.5,
-        )
-        bitfield = self.model.occupancy_grid.getBitfield()
-        bin_morton_grid = self.model.occupancy_grid.bitfield2morton(
-            bin_bitfield=bitfield,
-        )
-        bin_3d_recovery = self.model.occupancy_grid.morton2cartesian(
-            grid_morton=bin_morton_grid,
+            threshold=self.model.occupancy_grid.threshold,
         )
 
-        # TODO: optimize remove
-        if not torch.allclose(bin_3d_grid, bin_3d_recovery):
-            self.args.logger.error(f"bin_3d_grid and bin_3d_recovery are not the same")
+        # verify that the binary grid is correct
+        if self.args.model.debug_mode:
+            bitfield = self.model.occupancy_grid.getBitfield(
+                clone=True,
+            )
+            bin_morton_grid = self.model.occupancy_grid.bitfield2morton(
+                bin_bitfield=bitfield,
+            )
+            bin_3d_recovery = self.model.occupancy_grid.morton2cartesian(
+                grid_morton=bin_morton_grid,
+            )
+
+            if not torch.allclose(bin_3d_grid, bin_3d_recovery):
+                self.args.logger.error(f"bin_3d_grid and bin_3d_recovery are not the same")
 
         # convert from 3D to 2D
         occ_2d_grid = occ_3d_grid[:,:,height_o]
         bin_2d_grid = bin_3d_grid[:,:,height_o]
-        bin_2d_recovery = bin_3d_recovery[:,:,height_o]
 
         # convert from tensor to array
         occ_2d_grid = occ_2d_grid.detach().clone().cpu().numpy()
         bin_2d_grid = bin_2d_grid.detach().clone().cpu().numpy()
-        bin_2d_recovery = bin_2d_recovery.detach().clone().cpu().numpy()
 
         # create density maps
         density_map_gt = self.test_dataset.scene.getSliceMap(

@@ -22,10 +22,12 @@ class Grid():
         args:Args,
         grid_size:int,
         cascades:int,
+        morton_structure:bool,
     ) -> None:
         self.args = args
         self.grid_size = grid_size
         self.cascades = cascades
+        self.morton_structure = morton_structure
 
         self.grid_coords = create_meshgrid3d(
             self.grid_size, 
@@ -36,7 +38,11 @@ class Grid():
         ).reshape(-1, 3).to(device=self.args.device)
 
         self.bitfield = torch.zeros(self.cascades * self.grid_size**3 // 8, dtype=torch.uint8, device=self.args.device)
-        self.occ_3d_grid = torch.zeros(self.grid_size, self.grid_size, self.grid_size)
+
+        if morton_structure:
+            self.occ_morton_grid = torch.zeros(self.cascades, self.grid_size**3, device=self.args.device)
+        else:
+            self.occ_3d_grid = torch.zeros(self.grid_size, self.grid_size, self.grid_size)
 
     @abstractmethod
     def update(self):
@@ -45,25 +51,42 @@ class Grid():
     @torch.no_grad()
     def getBitfield(
         self,
+        clone:bool=False,
     ):
         """
         Get bitfield.
+        Args:
+            clone: whether to clone the bitfield; bool
         Returns:
             grid: bitfield in morton layout; tensor of uint8 (grid_size**3 // 8,)
         """
+        if clone:
+            return self.bitfield.clone().detach()
         return self.bitfield
     
     @torch.no_grad()
     def getOccupancyCartesianGrid(
         self,
+        clone:bool=False,
     ):
         """
         Get occupancy grid.
+        Args:
+            clone: whether to clone the grid; bool
         Returns:
             grid: cartesian occupancy grid; tensor (grid_size, grid_size, grid_size)
         """
-        return self.occ_3d_grid
-    
+        if self.morton_structure:
+            grid = self.morton2cartesian(
+                grid_morton=self.occ_morton_grid[0]
+            )
+        else:
+            grid = self.occ_3d_grid
+        
+        if clone:
+            return grid.clone().detach()
+        return grid    
+
     @torch.no_grad()
     def getBinaryCartesianGrid(
         self,
@@ -76,8 +99,15 @@ class Grid():
         Returns:
             grid: binary grid; tensor of bool (grid_size, grid_size, grid_size)
         """
+        if self.morton_structure:
+            grid = self.morton2cartesian(
+                grid_morton=self.occ_morton_grid[0]
+            )
+        else:
+            grid = self.occ_3d_grid
+        
         return self.thresholdGrid(
-            grid=self.occ_3d_grid,
+            grid=grid,
             threshold=threshold,
         )
 
@@ -87,8 +117,6 @@ class Grid():
     ):
         """
         Get all cells from the density grid.
-
-
         Outputs:
             cells: list of tubles (of length self.cascades):
                     indices: morton indices; tensor of int32 (grid_size**3,)
@@ -102,25 +130,28 @@ class Grid():
     @torch.no_grad()
     def updateBitfield(
         self, 
-        occ_3d:torch.tensor,
+        grid:torch.tensor,
         threshold:float,
+        convert_cart2morton:bool,
     ):
         """
         Update bitfield with cartesian occupancy grid.
         Args:
-            occ_3d: cartesian occupancy grid; tensor of float32 (grid_size, grid_size, grid_size)
+            grid: cartesian occupancy grid; tensor of float32 (grid_size, grid_size, grid_size)
             threshold: threshold for occupancy grid; float
-        Returns:
-            bin_bitfield: morton bitfield; tensor of uint8 (grid_size**3 // 8,)
+            convert_cart2morton: whether grid is cartesian and must be converted to morton structure first; bool
         """
-        occ_morton = self.cartesian2morton(
-            grid_3d=occ_3d
-        )
-        bin_bitfield = self.morton2bitfield(
+        if convert_cart2morton:
+            occ_morton = self.cartesian2morton(
+                grid_3d=grid
+            )
+        else:
+            occ_morton = grid
+        
+        self.bitfield = self.morton2bitfield(
             occ_morton=occ_morton, 
             threshold=threshold
         )
-        self.bitfield = bin_bitfield
     
     @torch.no_grad()
     def cartesian2morton(
@@ -194,6 +225,8 @@ class Grid():
         Returns:
             bin_morton: morton binary grid; tensor of bool (grid_size**3,)
         """
+        bin_bitfield = bin_bitfield.clone().detach()
+
         mask = torch.tensor([[1, 2, 4, 8, 16, 32, 64, 128]], dtype=torch.uint8, device=self.args.device)
         mask = mask.repeat(bin_bitfield.shape[0], 1)
 

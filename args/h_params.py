@@ -38,6 +38,7 @@ class HParamsModel(HParams):
         self.ckpt_path = None
         self.scale = None
         self.encoder_type = None
+        self.debug_mode = None
 
         HParams.__init__(self, name="model")
      

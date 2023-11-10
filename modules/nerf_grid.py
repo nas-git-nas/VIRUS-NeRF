@@ -11,60 +11,30 @@ from modules.utils import (
 from einops import rearrange
 
 from args.args import Args
+from modules.grid import Grid
 
 
-class NeRFGrid(torch.nn.Module):
+#class NeRFGrid(torch.nn.Module):
+class NeRFGrid(Grid):
     def __init__(
         self,
         args:Args,
         grid_size:int,
         fct_density:callable,
     ):
-        super().__init__()
-
         self.args = args
         self.grid_size = grid_size
         self.scale = args.model.scale
         self.fct_density = fct_density
-
         self.cascades = max(1 + int(np.ceil(np.log2(2 * self.scale))), 1)
-        
-        self.grid = torch.zeros(self.cascades, self.grid_size**3, device=self.args.device)
-        self.grid_coords = create_meshgrid3d(
-            self.grid_size, 
-            self.grid_size, 
-            self.grid_size, 
-            False, 
-            dtype=torch.int32
-        ).reshape(-1, 3).to(device=self.args.device)
 
-        # self.register_buffer(
-        #     'density_grid',
-        #     torch.zeros(self.cascades, self.grid_size**3),
-
-        # self.register_buffer(
-        #     'grid_coords',
-        #     create_meshgrid3d(
-        #         self.grid_size, 
-        #         self.grid_size, 
-        #         self.grid_size, 
-        #         False,
-        #         dtype=torch.int32
-        #     ).reshape(-1, 3),
-        # )
-
-    @torch.no_grad()
-    def get_all_cells(self):
-        """
-        Get all cells from the density grid.
-        Outputs:
-            cells: list (of length self.cascades) of indices and coords
-                   selected at each cascade
-        """
-        indices = morton3D(self.grid_coords).long()
-        cells = [(indices, self.grid_coords)] * self.cascades
-
-        return cells
+        super().__init__(
+            args=args,
+            grid_size=grid_size,
+            cascades=self.cascades,
+            morton_structure=True,
+        )
+        self.threshold = 0.5
 
     @torch.no_grad()
     def sample_uniform_and_occupied_cells(self, M, density_threshold):
@@ -84,7 +54,7 @@ class NeRFGrid(torch.nn.Module):
             indices1 = morton3D(coords1).long()
             # occupied cells
             indices2 = torch.nonzero(
-                self.grid[c] > density_threshold)[:, 0]
+                self.occ_morton_grid[c] > density_threshold)[:, 0]
             if len(indices2) > 0:
                 rand_idx = torch.randint(len(indices2), (M, ),
                                          device=self.args.device)
@@ -108,10 +78,10 @@ class NeRFGrid(torch.nn.Module):
             chunk: the chunk size to split the cells (to avoid OOM)
         """
         N_cams = poses.shape[0]
-        self.count_grid = torch.zeros_like(self.grid)
+        self.count_grid = torch.zeros_like(self.occ_morton_grid)
         w2c_R = rearrange(poses[:, :3, :3], 'n a b -> n b a')  # (N_cams, 3, 3)
         w2c_T = -w2c_R @ poses[:, :3, 3:]  # (N_cams, 3, 1)
-        cells = self.get_all_cells()
+        cells = self.getAllCells()
         for c in range(self.cascades):
             indices, coords = cells[c]
             for i in range(0, len(indices), chunk):
@@ -137,7 +107,7 @@ class NeRFGrid(torch.nn.Module):
                 too_near_to_any_cam = too_near_to_cam.any(0)
                 # a valid cell should be visible by at least one camera and not too close to any camera
                 valid_mask = (count > 0) & (~too_near_to_any_cam)
-                self.grid[c, indices[i:i+chunk]] = \
+                self.occ_morton_grid[c, indices[i:i+chunk]] = \
                     torch.where(valid_mask, 0., -1.)
                 
     @torch.no_grad()
@@ -148,9 +118,9 @@ class NeRFGrid(torch.nn.Module):
         decay=0.95,
         erode=False       
     ):
-        density_grid_tmp = torch.zeros_like(self.grid)
+        density_grid_tmp = torch.zeros_like(self.occ_morton_grid)
         if warmup:  # during the first steps
-            cells = self.get_all_cells()
+            cells = self.getAllCells()
         else:
             cells = self.sample_uniform_and_occupied_cells(
                 self.grid_size**3 // 4, density_threshold)
@@ -168,9 +138,20 @@ class NeRFGrid(torch.nn.Module):
         if erode:
             # My own logic. decay more the cells that are visible to few cameras
             decay = torch.clamp(decay**(1 / self.count_grid), 0.1, 0.95)
-        self.grid = \
-            torch.where(self.grid<0,
-                        self.grid,
-                        torch.maximum(self.grid*decay, density_grid_tmp))
+        self.occ_morton_grid = \
+            torch.where(self.occ_morton_grid<0,
+                        self.occ_morton_grid,
+                        torch.maximum(self.occ_morton_grid*decay, density_grid_tmp))
+        
+        # determine threshold
+        mean_density = self.occ_morton_grid[self.occ_morton_grid > 0].mean().item()
+        self.threshold = min(mean_density, density_threshold)
 
-        return self.grid
+        # update bitfield
+        self.updateBitfield(
+            grid=self.occ_morton_grid,
+            threshold=self.threshold,
+            convert_cart2morton=False,
+        )
+    
+

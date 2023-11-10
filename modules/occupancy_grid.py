@@ -39,6 +39,7 @@ class OccupancyGrid(Grid):
             args=args,
             grid_size=grid_size,
             cascades=self.cascades,
+            morton_structure=False,
         )
 
 
@@ -79,9 +80,7 @@ class OccupancyGrid(Grid):
 
         self.update_step = 0
 
-
-
-
+        self.threshold = 0.5
 
     @torch.no_grad()
     def update(
@@ -122,9 +121,12 @@ class OccupancyGrid(Grid):
         if self.update_step <= self.decay_warmup:
             self.occ_3d_grid *= self.grid_decay
 
+        
+        self.threshold = threshold
         self.updateBitfield(
             occ_3d=self.occ_3d_grid,
             threshold=threshold,
+            convert_cart2morton=True,
         )
 
     @torch.no_grad()

@@ -13,7 +13,8 @@
     {
         "ckpt_path": false, 
         "scale": 0.5,
-        "encoder_type": "hash"
+        "encoder_type": "hash",
+        "debug_mode": true
     },
     "training":
     {
@@ -41,7 +42,7 @@
     },
     "occ_grid":
     {
-        "grid_type": "occ",
+        "grid_type": "nerf",
         "batch_size": 64,
         "sampling_strategy": {"imgs": "all", "rays": "uss_tof_split"},
         "warmup_steps": 256,
