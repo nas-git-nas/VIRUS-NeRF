@@ -124,7 +124,7 @@ class OccupancyGrid(Grid):
         
         self.threshold = threshold
         self.updateBitfield(
-            occ_3d=self.occ_3d_grid,
+            grid=self.occ_3d_grid,
             threshold=threshold,
             convert_cart2morton=True,
         )
