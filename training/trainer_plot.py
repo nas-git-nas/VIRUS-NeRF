@@ -319,20 +319,22 @@ class TrainerPlot(TrainerBase):
             ax.tick_params(axis='y', colors='blue')
 
             idx1 = dataConverged(
-                arr=np.array(logs['mnn'])[not_nan],
+                arr=np.array(logs['mnn']),
                 threshold=1.1 * metrics_dict['mnn'],
                 data_increasing=False,
             )
             if idx1 != -1:
                 vln1 = ax.axvline(logs['step'][idx1], linestyle=(0, (1, 5)), c=color, label='mnn 10%')
+                print(f"mnn converged 10% at step {logs['step'][idx1]}, idx1={idx1}, threshold={1.1 * metrics_dict['mnn']}")
 
             idx2 = dataConverged(
-                arr=np.array(logs['mnn'])[not_nan],
-                threshold=1.01 * metrics_dict['mnn'],
+                arr=np.array(logs['mnn']),
+                threshold=1.02 * metrics_dict['mnn'],
                 data_increasing=False,
             )
             if idx2 != -1:
-                vln2 = ax.axvline(logs['step'][idx2], linestyle=(0, (1, 1)), c=color, label='mnn 1%')
+                vln2 = ax.axvline(logs['step'][idx2], linestyle=(0, (1, 1)), c=color, label='mnn 2%')
+                print(f"mnn converged 10% at step {logs['step'][idx2]}, idx1={idx2}, threshold={1.02 * metrics_dict['mnn']}")
 
             ax2 = ax.twinx()
             color = 'tab:green'
