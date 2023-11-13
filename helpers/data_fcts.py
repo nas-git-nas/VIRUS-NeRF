@@ -161,6 +161,9 @@ def dataConverged(
         1 if data_increasing else 0, 
         0 if data_increasing else 1,
     )
+
+
+    
     arr_binary = np.cumprod(arr_binary[::-1])[::-1]
 
     if not np.any(arr_binary):
