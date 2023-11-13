@@ -1,4 +1,6 @@
 import torch
+import numpy as np
+import random
 import os
 import json
 from datetime import datetime
@@ -12,7 +14,11 @@ from args.custom_formatter import FileFormatter, TerminalFormatter
 
 
 class Args():
-    def __init__(self, file_name) -> None:
+    def __init__(
+        self, 
+        file_name
+    ) -> None:
+        
         # hyper parameters
         self.dataset = HParamsDataset()
         self.model = HParamsModel()
@@ -42,9 +48,16 @@ class Args():
                     self.tof = HParamsToF()
                     self.tof.setHParams(hparams)
 
-        # general
+        # device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # random seed
         self.seed = 23
+        random.seed(self.seed)
+        np.random.seed(self.seed)
+        torch.manual_seed(self.seed)
+        torch.cuda.manual_seed(self.seed)
+        torch.backends.cudnn.deterministic=True
 
         # create saving directory
         t = datetime.now()

@@ -3,8 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from args.args import Args
-from datasets.robot_at_home_scene import RobotAtHomeScene
-from datasets.robot_at_home import RobotAtHome
+from datasets.scene_base import SceneBase
+from datasets.dataset_base import DatasetBase
 from datasets.ray_utils import get_rays
 from modules.grid import Grid
 from modules.rendering import MAX_SAMPLES, render
@@ -24,8 +24,8 @@ class OccupancyGrid(Grid):
         self,
         args:Args,
         grid_size:int,
-        rh_scene:RobotAtHomeScene=None,
-        dataset:RobotAtHome=None,
+        scene:SceneBase=None,
+        dataset:DatasetBase=None,
         fct_density:callable=None,
     ) -> None:
         
@@ -72,11 +72,11 @@ class OccupancyGrid(Grid):
         self.grid_decay = (0.5/0.51)**(1/self.decay_warmup) # decay of grid probabilities
         self.grid_decay = ((self.grid_decay*1000) // 1) / 1000 # floor to 3 decimals
 
-        if rh_scene is not None:
-            self.false_detection_prob_every_m = self.false_detection_prob_every_m / rh_scene.w2cTransformation(pos=1, only_scale=True, copy=False)
-            self.std_min = rh_scene.w2cTransformation(pos=self.std_min, only_scale=True, copy=False)
-            self.std_every_m = self.std_every_m / rh_scene.w2cTransformation(pos=1, only_scale=True, copy=False)
-            self.attenuation_every_m = self.attenuation_every_m / rh_scene.w2cTransformation(pos=1, only_scale=True, copy=False)
+        if scene is not None:
+            self.false_detection_prob_every_m = self.false_detection_prob_every_m / scene.w2c(pos=1, only_scale=True, copy=False)
+            self.std_min = scene.w2c(pos=self.std_min, only_scale=True, copy=False)
+            self.std_every_m = self.std_every_m / scene.w2c(pos=1, only_scale=True, copy=False)
+            self.attenuation_every_m = self.attenuation_every_m / scene.w2c(pos=1, only_scale=True, copy=False)
 
         self.update_step = 0
 

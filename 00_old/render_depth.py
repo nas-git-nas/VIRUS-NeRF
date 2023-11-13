@@ -7,7 +7,7 @@ from datasets.robot_at_home import RobotAtHomeDataset
 from datasets.ray_utils import get_rays
 
 
-def convertDepth2Pos(depths, rays_o, rays_d):
+def depth2pos(depths, rays_o, rays_d):
     """
     Convert camera depth measurements to 3D positions.
     Returns for invalid depth values (nan) again np.nan.
@@ -80,7 +80,7 @@ def renderScene(dataset, depths, rays_o, rays_d):
         rgbs: (N, 3) scene color
     """
     # convert depth to 3D position
-    pos, val_idxs = convertDepth2Pos(depths=depths, rays_o=rays_o, rays_d=rays_d)
+    pos, val_idxs = depth2pos(depths=depths, rays_o=rays_o, rays_d=rays_d)
 
     # get scene point cloud
     scene_file = dataset.scene.scene_file.values[0]

@@ -7,7 +7,6 @@ from torchmetrics import (
     PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
 )
 
-from datasets.robot_at_home_scene import RobotAtHomeScene
 from args.args import Args
 from helpers.geometric_fcts import findNearestNeighbour
 

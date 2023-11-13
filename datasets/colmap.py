@@ -5,14 +5,14 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-from .base import BaseDataset
+from datasets.dataset_base import DatasetBase
 from .colmap_utils import (read_cameras_binary, read_images_binary,
                            read_points3d_binary)
 from .color_utils import read_image
 from .ray_utils import center_poses, create_spheric_poses, get_ray_directions
 
 
-class ColmapDataset(BaseDataset):
+class ColmapDataset(DatasetBase):
 
     def __init__(self, root_dir, split='train', downsample=1.0, read_meta=True):
         super().__init__(root_dir, split, downsample)

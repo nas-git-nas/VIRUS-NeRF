@@ -2,13 +2,13 @@ import torch
 import torch.nn.functional as F
 
 from args.args import Args
-from datasets.robot_at_home_scene import RobotAtHomeScene
+from datasets.scene_base import SceneBase
 
 class Loss():
     def __init__(
             self,
             args:Args,
-            rh_scene:RobotAtHomeScene=None,
+            scene:SceneBase=None,
             sensors_dict:dict=None,
     ) -> None:
         """
@@ -26,7 +26,7 @@ class Loss():
         self.step = 0
 
         if 'USS' in self.args.training.sensors:
-            uss_depth_tol = rh_scene.w2cTransformation(pos=0.03, only_scale=True, copy=True)
+            uss_depth_tol = scene.w2c(pos=0.03, only_scale=True, copy=True)
             self.uss_depth_tol = torch.tensor(uss_depth_tol, device=self.args.device, dtype=torch.float32)
 
             self.sensors_dict = sensors_dict

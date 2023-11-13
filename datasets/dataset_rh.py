@@ -23,23 +23,28 @@ from datasets.sensor_model import RGBDModel, ToFModel, USSModel
 from args.args import Args
 from training.sampler import Sampler
 
-try:
-    from .ray_utils import get_rays
-    from .base import BaseDataset
-    from .color_utils import read_image
-    from .ray_utils import get_ray_directions
-    from .robot_at_home_scene import RobotAtHomeScene
-except:
-    from ray_utils import get_rays
-    from base import BaseDataset
-    from color_utils import read_image
-    from ray_utils import get_ray_directions
-    from robot_at_home_scene import RobotAtHomeScene
+# try:
+#     from .ray_utils import get_rays
+#     from .base import DatasetBase
+#     from .color_utils import read_image
+#     from .ray_utils import get_ray_directions
+#     from .robot_at_home_scene import RobotAtHomeScene
+# except:
+
+from datasets.ray_utils import get_rays, get_ray_directions
+from datasets.dataset_base import DatasetBase
+from datasets.color_utils import read_image
+from datasets.scene_rh import SceneRH
 
 
-class RobotAtHomeDataset(BaseDataset):
+class DatasetRH(DatasetBase):
 
-    def __init__(self, args:Args, split:str='train'):
+    def __init__(
+        self, 
+        args:Args, 
+        split:str='train',
+        scene:SceneRH=None,
+    ):
 
         super().__init__(args=args, split=split)
 
@@ -55,11 +60,16 @@ class RobotAtHomeDataset(BaseDataset):
         )
 
         # load dataframe
-        self.df = self.__loadRHDataframe(split=split)
+        self.df = self._loadRHDataframe(split=split)
 
         # load scene
-        # TODO: create base class for this
-        self.scene = RobotAtHomeScene(rh=self.rh, args=self.args)
+        if scene is None:
+            self.scene = SceneRH(
+                rh=self.rh, 
+                args=self.args
+            )
+        else:
+            self.scene = scene
 
         img_wh, K, directions = self.read_intrinsics()
         rays, depths, poses = self.read_meta(
@@ -184,7 +194,7 @@ class RobotAtHomeDataset(BaseDataset):
                 self.args.logger.error(f"robot_at_home.py: read_meta: depth image has more than one channel")
             # depth = self.scalePosition(pos=depth, only_scale=True) # (H, W), convert to cube coordinate system [-0.5, 0.5]
             depth[depth==0] = np.nan # set invalid depth values to nan
-            depth = self.scene.w2cTransformation(depth.flatten(), only_scale=True) # (H*W,), convert to cube coordinate system [-0.5, 0.5]
+            depth = self.scene.w2c(depth.flatten(), only_scale=True) # (H*W,), convert to cube coordinate system [-0.5, 0.5]
             depths[i,:] = depth
 
             # if i == 0 or i==50 or i==100 or i==200 or i==300 or i==400:
@@ -245,7 +255,7 @@ class RobotAtHomeDataset(BaseDataset):
 
         # translate and scale position
         # poses[:,:,3] = self.scalePosition(pos=poses[:,:,3])
-        poses[:,:,3] = self.scene.w2cTransformation(pos=poses[:,:,3], copy=False)
+        poses[:,:,3] = self.scene.w2c(pos=poses[:,:,3], copy=False)
 
         return torch.tensor(rays, dtype=torch.float32), depths, torch.tensor(poses, dtype=torch.float32)
     
@@ -307,7 +317,7 @@ class RobotAtHomeDataset(BaseDataset):
         idxs = np.where(mask)[0]
         return idxs
     
-    def __loadRHDataframe(self, split):
+    def _loadRHDataframe(self, split):
         """
         Load robot@home data frame
         Args:

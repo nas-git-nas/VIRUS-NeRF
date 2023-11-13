@@ -125,7 +125,7 @@ class TrainerRH(Trainer):
     #         weights = weights[data['img_idxs']] # (N,)
 
     #         # mask data
-    #         depth_tolerance = self.train_dataset.scene.w2cTransformation(pos=0.03, only_scale=True, copy=True)
+    #         depth_tolerance = self.train_dataset.scene.w2c(pos=0.03, only_scale=True, copy=True)
     #         depth_tolerance = torch.tensor(depth_tolerance, device=self.args.device, dtype=torch.float32)
     #         uss_mask = ~torch.isnan(data['depth'])
     #         depth_mask = results['depth'] < depths_min + depth_tolerance  
@@ -246,8 +246,8 @@ class TrainerRH(Trainer):
     #         density: density map of slice; array of shape (res,res)
     #     """
     #     # convert distances from meters to cube coordinates
-    #     height_c = self.train_dataset.scene.w2cTransformation(pos=np.array([[0.0, 0.0, height_w]]), copy=True)[0,2]
-    #     tolerance_c = self.train_dataset.scene.w2cTransformation(pos=tolerance_w, only_scale=True, copy=True)
+    #     height_c = self.train_dataset.scene.w2c(pos=np.array([[0.0, 0.0, height_w]]), copy=True)[0,2]
+    #     tolerance_c = self.train_dataset.scene.w2c(pos=tolerance_w, only_scale=True, copy=True)
 
     #     slice_pts = torch.linspace(self.test_dataset.scene.w2c_params["cube_min"], self.test_dataset.scene.w2c_params["cube_max"], res) # (slice_res,)
     #     m1, m2 = torch.meshgrid(slice_pts, slice_pts) # (slice_res,slice_res), (slice_res,slice_res)

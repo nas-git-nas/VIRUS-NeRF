@@ -20,30 +20,11 @@ from contextlib import nullcontext
 # from gui import NGPGUI
 # from opt import get_opts
 from args.args import Args
-from datasets import dataset_dict
-from datasets.ray_utils import get_rays
-from datasets.robot_at_home import RobotAtHomeDataset
-
+from datasets.dataset_rh import DatasetRH
 from modules.networks import NGP
-from modules.distortion import distortion_loss
-from modules.rendering import MAX_SAMPLES, render
-from modules.utils import depth2img, save_deployment_model
+from modules.rendering import render
+from helpers.geometric_fcts import createScanPos
 
-from datasets import dataset_dict
-from datasets.ray_utils import get_rays
-
-from modules.networks import NGP
-from modules.distortion import distortion_loss
-from modules.rendering import MAX_SAMPLES, render
-from modules.utils import depth2img, save_deployment_model
-from helpers.geometric_fcts import findNearestNeighbour
-from helpers.data_fcts import linInterpolateArray, convolveIgnorNans, dataConverged
-from training.metrics_rh import MetricsRH
-
-from modules.occupancy_grid import OccupancyGrid
-
-from training.trainer import Trainer
-from training.loss import Loss
 
 
 
@@ -64,7 +45,7 @@ class TrainerBase():
 
         # datasets   
         if self.args.dataset.name == 'robot_at_home':
-            dataset = RobotAtHomeDataset    
+            dataset = DatasetRH    
         
         self.train_dataset = dataset(
             args = self.args,
@@ -74,6 +55,7 @@ class TrainerBase():
         self.test_dataset = dataset(
             args = self.args,
             split='test',
+            scene=self.train_dataset.scene,
         ).to(self.args.device)
 
         # model
@@ -82,7 +64,7 @@ class TrainerBase():
             'pos_encoder_type': self.args.model.encoder_type,
             'max_res': self.args.occ_grid.max_res, 
             'half_opt': False, # TODO: args
-            'rh_scene': self.train_dataset.scene,
+            'scene': self.train_dataset.scene,
             'args': self.args,
             'dataset': self.train_dataset,
         }
@@ -112,11 +94,14 @@ class TrainerBase():
             density_map: density map of slice; array of shape (L, L)
         """
         # create position grid
-        pos_avg = self.createMapPos(
+        pos_avg = createScanPos(
             res_map=res_map,
-            height_w=height_w,
+            height_c=self.train_dataset.scene.w2c(pos=np.array([[0.0, 0.0, height_w]]), copy=True)[0,2],
             num_avg_heights=num_avg_heights,
-            tolerance_w=tolerance_w,
+            tolerance_c=self.train_dataset.scene.w2c(pos=tolerance_w, only_scale=True, copy=True),
+            cube_min=self.test_dataset.scene.w2c_params["cube_min"],
+            cube_max=self.test_dataset.scene.w2c_params["cube_max"],
+            device=self.args.device,
         ) # (L*L*A, 3)
 
         # interfere density map
@@ -138,72 +123,6 @@ class TrainerBase():
         density_map_thr[density_map >= threshold] = 1.0
 
         return density_map, density_map_thr # (L, L), (L, L)
-    
-    def createMapPos(
-            self,
-            res_map:int,
-            height_w:float,
-            num_avg_heights:int,
-            tolerance_w:float,
-    ):
-        """
-        Create map positions to evaluate density for different heights.
-        Args:
-            res_map: number of samples in each dimension (L); int
-            height_w: height of slice in world coordinates (meters); float
-            num_avg_heights: number of heights to average over (A); int
-            tolerance_w: tolerance in world coordinates (meters); float
-        Returns:
-            pos_avg: map positions for different heights; array of shape (L*L*A, 3)
-        """
-        # convert distances from meters to cube coordinates
-        height_c = self.train_dataset.scene.w2cTransformation(pos=np.array([[0.0, 0.0, height_w]]), copy=True)[0,2]
-        tolerance_c = self.train_dataset.scene.w2cTransformation(pos=tolerance_w, only_scale=True, copy=True)
-
-        # create map positions
-        pos = torch.linspace(self.test_dataset.scene.w2c_params["cube_min"], self.test_dataset.scene.w2c_params["cube_max"], res_map).to(self.args.device) # (L,)
-        m1, m2 = torch.meshgrid(pos, pos) # (L, L), (L, L)
-        pos = torch.stack((m1.reshape(-1), m2.reshape(-1)), dim=1) # (L*L, 2)
-
-        # create map positions for different heights
-        pos_avg = torch.zeros(res_map*res_map, num_avg_heights, 3).to(self.args.device) # (L*L, A, 3)
-        for i, h in enumerate(np.linspace(height_c-tolerance_c, height_c+tolerance_c, num_avg_heights)):
-            pos_avg[:,i,:2] = pos
-            pos_avg[:,i,2] = h
-
-        return pos_avg.reshape(-1, 3) # (L*L*A, 3)
-
-    def createScanMaps(
-            self,
-            rays_o_w:np.array,
-            depth:np.array,
-            scan_angles:np.array,
-    ):
-        """
-        Create scan maps for given rays and depths.
-        Args:
-            rays_o_w: ray origins in world coordinates (meters); numpy array of shape (N*M, 3)
-            depth: depths in wolrd coordinates (meters); numpy array of shape (N*M,)
-            scan_angles: scan angles; numpy array of shape (N*M,)
-        Returns:
-            scan_maps: scan maps; numpy array of shape (N, M, M)
-        """
-        M = self.args.eval.res_angular
-        N = rays_o_w.shape[0] // M
-        if rays_o_w.shape[0] % M != 0:
-            self.args.logger.error(f"trainer_RH.createScanMaps(): rays_o_w.shape[0]={rays_o_w.shape[0]} % M={M} != 0")
-        
-        # convert depth to position in world coordinate system and then to map indices
-        pos = self.test_dataset.scene.convertDepth2Pos(rays_o=rays_o_w, scan_depth=depth, scan_angles=scan_angles) # (N*M, 2)
-        idxs = self.test_dataset.scene.w2idxTransformation(pos=pos, res=M) # (N*M, 2)
-        idxs = idxs.reshape(N, M, 2) # (N, M, 2)
-
-        # create scan map
-        scan_maps = np.zeros((N, M, M))
-        for i in range(N):
-            scan_maps[i, idxs[i,:,0], idxs[i,:,1]] = 1.0
-
-        return scan_maps # (N, M, M)
     
     def _loadCheckpoint(
         self, 
@@ -314,6 +233,39 @@ class TrainerBase():
                     sigmas = self.model.density(pos[batch_start:batch_end])
                     bar()
                     yield sigmas
+
+    def _scanRays2scanMap(
+            self,
+            rays_o_w:np.array,
+            depth:np.array,
+            scan_angles:np.array,
+    ):
+        """
+        Create scan maps for given rays and depths.
+        Args:
+            rays_o_w: ray origins in world coordinates (meters); numpy array of shape (N*M, 3)
+            depth: depths in wolrd coordinates (meters); numpy array of shape (N*M,)
+            scan_angles: scan angles; numpy array of shape (N*M,)
+        Returns:
+            scan_maps: scan maps; numpy array of shape (N, L, L)
+        """
+        M = self.args.eval.res_angular
+        L = self.args.eval.res_map
+        N = rays_o_w.shape[0] // M
+        if rays_o_w.shape[0] % M != 0:
+            self.args.logger.error(f"rays_o_w.shape[0]={rays_o_w.shape[0]} % M={M} != 0")
+        
+        # convert depth to position in world coordinate system and then to map indices
+        pos = self.test_dataset.scene.depth2pos(rays_o=rays_o_w, scan_depth=depth, scan_angles=scan_angles) # (N*M, 2)
+        idxs = self.test_dataset.scene.w2idx(pos=pos, res=L) # (N*M, 2)
+        idxs = idxs.reshape(N, M, 2) # (N, M, 2)
+
+        # create scan map
+        scan_maps = np.zeros((N, L, L))
+        for i in range(N):
+            scan_maps[i, idxs[i,:,0], idxs[i,:,1]] = 1.0
+
+        return scan_maps # (N, L, L)
 
     def _step2time(
         self,

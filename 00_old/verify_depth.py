@@ -6,7 +6,7 @@ from alive_progress import alive_bar
 from datasets.robot_at_home import RobotAtHomeDataset
 from datasets.ray_utils import get_rays
 
-def convertDepth2Pos(depths, rays_o, rays_d):
+def depth2pos(depths, rays_o, rays_d):
     """
     Convert camera depth measurements to 3D positions.
     Returns for invalid depth values (nan) again np.nan.
@@ -115,7 +115,7 @@ def verifyDepth():
                     depths = dataset.scalePosition(depths, only_scale=True)
 
                     # find position of depth values
-                    depth_pos, val_idxs = convertDepth2Pos(depths, rays_o, rays_d) # (H*W, 3)
+                    depth_pos, val_idxs = depth2pos(depths, rays_o, rays_d) # (H*W, 3)
                     depth_pos = depth_pos[val_idxs] # (N, 3)
 
                     # update depth map

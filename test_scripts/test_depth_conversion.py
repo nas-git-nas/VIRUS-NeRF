@@ -30,8 +30,8 @@ def createScanMap(
             scan_map: scan maps; numpy array of shape (map_res, map_res)
         """
         # convert depth to position in world coordinate system and then to map indices
-        pos = dataset.scene.convertDepth2Pos(rays_o=rays_o_w, scan_depth=depth, scan_angles=scan_angles) # (N*M, 2)
-        idxs = dataset.scene.w2idxTransformation(pos=pos, res=map_res) # (N*M, 2)
+        pos = dataset.scene.depth2pos(rays_o=rays_o_w, scan_depth=depth, scan_angles=scan_angles) # (N*M, 2)
+        idxs = dataset.scene.w2idx(pos=pos, res=map_res) # (N*M, 2)
 
         # create scan map
         scan_map = np.zeros((map_res, map_res))
@@ -90,9 +90,9 @@ def main():
         rays_o_in_world_coord=False, 
         height_tolerance=height_tol
     ) # (L, L)
-    depth_w_gt = dataset.scene.c2wTransformation(pos=depth_c_gt, only_scale=True, copy=True)
+    depth_w_gt = dataset.scene.c2w(pos=depth_c_gt, only_scale=True, copy=True)
 
-    rays_o_w = dataset.scene.c2wTransformation(pos=rays_o.detach().cpu().numpy(), copy=True)
+    rays_o_w = dataset.scene.c2w(pos=rays_o.detach().cpu().numpy(), copy=True)
     rmses = np.zeros((len(alphas), len(betas)))
     maes = np.zeros((len(alphas), len(betas)))
     nns = np.zeros((len(alphas), len(betas)))
@@ -102,7 +102,7 @@ def main():
                 # get depths and convert it to world coordinates
                 depth_c = dataset.depths[img_idxs, pix_idxs] # (num_imgs*num_pixs,)
                 depth_c = beta + alpha*depth_c.clone().detach().cpu().numpy()
-                depth_w = dataset.scene.c2wTransformation(pos=depth_c, only_scale=True, copy=True)
+                depth_w = dataset.scene.c2w(pos=depth_c, only_scale=True, copy=True)
 
                 # calculate nearest neighbor error
                 metric_dict = metrics.evaluate(
@@ -139,7 +139,7 @@ def main():
     best_alpha_idx = best_idx // len(betas)
     best_beta_idx = best_idx % len(betas)
     best_pair = (alphas[best_alpha_idx], betas[best_beta_idx])
-    best_beta_c = dataset.scene.c2wTransformation(pos=best_pair[1], only_scale=True, copy=True)
+    best_beta_c = dataset.scene.c2w(pos=best_pair[1], only_scale=True, copy=True)
     print(f"\nRMSE:")
     print(f"best pair (alpha,beta): {best_pair}")
     print(f"best beta in world coordinates: {best_beta_c}")
@@ -149,7 +149,7 @@ def main():
     best_alpha_idx = best_idx // len(betas)
     best_beta_idx = best_idx % len(betas)
     best_pair = (alphas[best_alpha_idx], betas[best_beta_idx])
-    best_beta_c = dataset.scene.c2wTransformation(pos=best_pair[1], only_scale=True, copy=True)
+    best_beta_c = dataset.scene.c2w(pos=best_pair[1], only_scale=True, copy=True)
     print(f"\nMARE:")
     print(f"best pair (alpha,beta): {best_pair}")
     print(f"best beta in world coordinates: {best_beta_c}")
@@ -159,7 +159,7 @@ def main():
     best_alpha_idx = best_idx // len(betas)
     best_beta_idx = best_idx % len(betas)
     best_pair = (alphas[best_alpha_idx], betas[best_beta_idx])
-    best_beta_c = dataset.scene.c2wTransformation(pos=best_pair[1], only_scale=True, copy=True)
+    best_beta_c = dataset.scene.c2w(pos=best_pair[1], only_scale=True, copy=True)
     print(f"\nNN:")
     print(f"best pair (alpha,beta): {best_pair}")
     print(f"best beta in world coordinates: {best_beta_c}")
@@ -169,7 +169,7 @@ def main():
     fig, axes = plt.subplots(ncols=3, nrows=3, figsize=(12,8))
 
     scale = args.model.scale
-    extent = dataset.scene.c2wTransformation(pos=np.array([[-scale,-scale],[scale,scale]]), copy=False)
+    extent = dataset.scene.c2w(pos=np.array([[-scale,-scale],[scale,scale]]), copy=False)
     extent = extent.T.flatten()
     pos_robot = np.unique(rays_o_w, axis=0)
     pos_obj = rays_o_w + np.stack([depth_w_zero*np.cos(scan_angles), depth_w_zero*np.sin(scan_angles), np.zeros_like(depth_w_zero)], axis=1)

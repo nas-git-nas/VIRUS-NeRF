@@ -8,7 +8,7 @@ from args.args import Args
 
 
 
-class BaseDataset(Dataset):
+class DatasetBase(Dataset):
     """
     Define length and sampling method
     """
@@ -27,32 +27,6 @@ class BaseDataset(Dataset):
     def __len__(self):
         return len(self.poses)
     
-    def to(self, device):
-        self.rays = self.rays.to(device)
-        self.poses = self.poses.to(device)
-        self.K = self.K.to(device)
-        self.directions = self.directions.to(device)
-        if hasattr(self, 'depths_dict'):
-            for key in self.depths_dict.keys():
-                self.depths_dict[key] = self.depths_dict[key].to(device)
-        return self
-    
-    def getValidDepthMask(
-        self,
-        img_idxs:torch.Tensor,
-    ):
-        """
-        Get valid depth masks for each sensor.
-        Args:
-            img_idxs: indices of images; tensor of int64 (batch_size,)
-        Returns:
-            val_depth_masks: valid depth masks for each sensor; dict of tensors of bool (batch_size, H*W)
-        """
-        val_depth_masks = {}
-        for sensor, sensor_depths in self.depths_dict.items():
-            val_depth_masks[sensor] = ~torch.isnan(sensor_depths[img_idxs])
-        return val_depth_masks
-
     def __call__(
         self, 
         batch_size:int,
@@ -91,6 +65,32 @@ class BaseDataset(Dataset):
                 samples['depth'][sensor] = sensor_depths[img_idxs, pix_idxs]
 
         return samples
+    
+    def to(self, device):
+        self.rays = self.rays.to(device)
+        self.poses = self.poses.to(device)
+        self.K = self.K.to(device)
+        self.directions = self.directions.to(device)
+        if hasattr(self, 'depths_dict'):
+            for key in self.depths_dict.keys():
+                self.depths_dict[key] = self.depths_dict[key].to(device)
+        return self
+    
+    def getValidDepthMask(
+        self,
+        img_idxs:torch.Tensor,
+    ):
+        """
+        Get valid depth masks for each sensor.
+        Args:
+            img_idxs: indices of images; tensor of int64 (batch_size,)
+        Returns:
+            val_depth_masks: valid depth masks for each sensor; dict of tensors of bool (batch_size, H*W)
+        """
+        val_depth_masks = {}
+        for sensor, sensor_depths in self.depths_dict.items():
+            val_depth_masks[sensor] = ~torch.isnan(sensor_depths[img_idxs])
+        return val_depth_masks
     
     def reduceImgHeight(
         self,

@@ -12,7 +12,7 @@ def plotTrainerRHSlice(trainer:TrainerRH, res:int, heights_w:list, tolerance_w:f
     fig, axes = plt.subplots(ncols=2+len(thresholds), nrows=len(heights_w), figsize=(12,6))
     extent_c = np.array([[trainer.train_dataset.scene.w2c_params["cube_min"], trainer.train_dataset.scene.w2c_params["cube_min"]], 
                          [trainer.train_dataset.scene.w2c_params["cube_max"], trainer.train_dataset.scene.w2c_params["cube_max"]]])
-    extent_w = trainer.train_dataset.scene.c2wTransformation(pos=extent_c)
+    extent_w = trainer.train_dataset.scene.c2w(pos=extent_c)
     extent = [extent_w[0,0], extent_w[1,0], extent_w[0,1], extent_w[1,1]]
     
     for i, h_w in enumerate(heights_w):
@@ -70,12 +70,12 @@ def plotTrainerRHScan(trainer:TrainerRH, res:int, res_angular:int, np_test_pts:i
     
 
     # convert scan depth to position in world coordinate system
-    rays_o_w = trainer.test_dataset.scene.c2wTransformation(pos=rays_o_c, copy=True)
-    depth_pos_w = trainer.test_dataset.scene.convertDepth2Pos(rays_o=rays_o_w, scan_depth=depth_w, scan_angles=scan_angles) # (N*M, 2)
+    rays_o_w = trainer.test_dataset.scene.c2w(pos=rays_o_c, copy=True)
+    depth_pos_w = trainer.test_dataset.scene.depth2pos(rays_o=rays_o_w, scan_depth=depth_w, scan_angles=scan_angles) # (N*M, 2)
 
     # create slice map
     scan_maps = np.zeros((np_test_pts,res,res))
-    scan_maps_idxs = trainer.test_dataset.scene.w2idxTransformation(pos=depth_pos_w, res=res) # (N*M, 2)
+    scan_maps_idxs = trainer.test_dataset.scene.w2idx(pos=depth_pos_w, res=res) # (N*M, 2)
     scan_maps_idxs = scan_maps_idxs.reshape(np_test_pts, res_angular, 2)
     for i in range(np_test_pts):
         scan_maps[i,scan_maps_idxs[i,:,0],scan_maps_idxs[i,:,1]] = 1.0
@@ -89,8 +89,8 @@ def plotTrainerRHScan(trainer:TrainerRH, res:int, res_angular:int, np_test_pts:i
     density_map[density_map >= 10] = 1.0  
 
     # convert depth to position in world coordinate system
-    pos_w = trainer.test_dataset.scene.convertDepth2Pos(rays_o_w, depth_w, scan_angles)
-    pos_w_gt = trainer.test_dataset.scene.convertDepth2Pos(rays_o_w, depth_w_gt, scan_angles)
+    pos_w = trainer.test_dataset.scene.depth2pos(rays_o_w, depth_w, scan_angles)
+    pos_w_gt = trainer.test_dataset.scene.depth2pos(rays_o_w, depth_w_gt, scan_angles)
 
     #
     depth_w = depth_w.reshape(np_test_pts, res_angular)
@@ -109,7 +109,7 @@ def plotTrainerRHScan(trainer:TrainerRH, res:int, res_angular:int, np_test_pts:i
 
     # plot
     fig, axes = plt.subplots(ncols=1+np_test_pts, nrows=4, figsize=(9,9))
-    extent = trainer.test_dataset.scene.c2wTransformation(pos=np.array([[-0.5,-0.5],[0.5,0.5]]), copy=False)
+    extent = trainer.test_dataset.scene.c2w(pos=np.array([[-0.5,-0.5],[0.5,0.5]]), copy=False)
     extent = extent.T.flatten()
 
     scan_maps_comb = np.zeros((np_test_pts,res,res))

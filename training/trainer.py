@@ -2,7 +2,7 @@ import glob
 import os
 import time
 import tqdm
-import random
+
 import warnings
 
 import torch
@@ -20,17 +20,13 @@ from contextlib import nullcontext
 # from gui import NGPGUI
 # from opt import get_opts
 from args.args import Args
-from datasets import dataset_dict
 from datasets.ray_utils import get_rays
-from datasets.robot_at_home import RobotAtHomeDataset
+from datasets.dataset_rh import DatasetRH
 
 from modules.networks import NGP
 from modules.distortion import distortion_loss
 from modules.rendering import MAX_SAMPLES, render
 from modules.utils import depth2img, save_deployment_model
-
-from datasets import dataset_dict
-from datasets.ray_utils import get_rays
 
 from modules.networks import NGP
 from modules.distortion import distortion_loss
@@ -59,16 +55,12 @@ class Trainer(TrainerPlot):
         hparams_file,
     ) -> None:
         print(f"\n----- START INITIALIZING -----")
-    
-        # set seed
-        random.seed(self.args.seed)
-        np.random.seed(self.args.seed)
-        torch.manual_seed(self.args.seed)
 
         TrainerPlot.__init__(
             self,
             hparams_file=hparams_file,
         )
+        
 
         # # TODO: remove this
         # self.model.mark_invisible_cells(
@@ -103,14 +95,14 @@ class Trainer(TrainerPlot):
         # loss function
         self.loss = Loss(
             args=self.args,
-            rh_scene=self.train_dataset.scene,
+            scene=self.train_dataset.scene,
             sensors_dict=self.train_dataset.sensors_dict,
         )
 
         # metrics
         self.metrics = MetricsRH(
             args=self.args,
-            rh_scene=self.train_dataset.scene,
+            scene=self.train_dataset.scene,
             img_wh=self.train_dataset.img_wh,
         )
 
@@ -422,7 +414,7 @@ class Trainer(TrainerPlot):
         rays_o_img_idxs = self.test_dataset.poses[img_idxs, :3, 3].detach().clone() # (N, 3)
 
         # convert height tolerance to cube coordinates
-        h_tol_c = self.test_dataset.scene.w2cTransformation(pos=self.args.eval.height_tolerance, only_scale=True, copy=True)
+        h_tol_c = self.test_dataset.scene.w2c(pos=self.args.eval.height_tolerance, only_scale=True, copy=True)
 
         # create scan rays for averaging over different heights
         rays_o, rays_d = createScanRays(
@@ -467,9 +459,9 @@ class Trainer(TrainerPlot):
         )
 
         # convert depth to world coordinates (meters)
-        depth_w = self.test_dataset.scene.c2wTransformation(pos=depth, only_scale=True, copy=True)
-        depth_w_gt = self.test_dataset.scene.c2wTransformation(pos=depth_gt, only_scale=True, copy=True)
-        rays_o_w = self.test_dataset.scene.c2wTransformation(pos=rays_o, copy=True) # (N*M, 3)
+        depth_w = self.test_dataset.scene.c2w(pos=depth, only_scale=True, copy=True)
+        depth_w_gt = self.test_dataset.scene.c2w(pos=depth_gt, only_scale=True, copy=True)
+        rays_o_w = self.test_dataset.scene.c2w(pos=rays_o, copy=True) # (N*M, 3)
         data_w = {
             'depth': depth_w,
             'depth_gt': depth_w_gt,

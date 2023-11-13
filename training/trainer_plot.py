@@ -7,16 +7,13 @@ from modules.networks import NGP
 from modules.distortion import distortion_loss
 from modules.rendering import MAX_SAMPLES, render
 from modules.utils import depth2img, save_deployment_model
-from helpers.geometric_fcts import findNearestNeighbour
+from helpers.geometric_fcts import findNearestNeighbour,  createScanPos
 from helpers.data_fcts import linInterpolateArray, convolveIgnorNans, dataConverged
 from training.metrics_rh import MetricsRH
 
 from modules.occupancy_grid import OccupancyGrid
 
 from training.trainer_base import TrainerBase
-from training.loss import Loss
-from args.args import Args
-from datasets.robot_at_home import RobotAtHomeDataset
 
 
 class TrainerPlot(TrainerBase):
@@ -37,10 +34,10 @@ class TrainerPlot(TrainerBase):
             return
 
         height_w = 1.0
-        height_c = self.train_dataset.scene.w2cTransformation(pos=np.array([[0.0, 0.0, height_w]]), copy=False)[0,2]
+        height_c = self.train_dataset.scene.w2c(pos=np.array([[0.0, 0.0, height_w]]), copy=False)[0,2]
         if self.args.occ_grid.grid_type == "occ": # TODO: remove after debugging
             height_c = self.model.occupancy_grid.height_c.detach().cpu().numpy()
-            height_w = self.train_dataset.scene.c2wTransformation(pos=np.array([[0.0, 0.0, height_c]]), copy=False)[0,2]
+            height_w = self.train_dataset.scene.c2w(pos=np.array([[0.0, 0.0, height_c]]), copy=False)[0,2]
 
         # convert height from cube to occupancy grid coordinates
         height_o = self.model.occupancy_grid.c2oCoordinates(
@@ -95,7 +92,7 @@ class TrainerPlot(TrainerBase):
         # plot occupancy grid
         fig, axes = plt.subplots(ncols=3, nrows=2, figsize=(9,6))
         scale = self.args.model.scale
-        extent = self.test_dataset.scene.c2wTransformation(pos=np.array([[-scale,-scale],[scale,scale]]), copy=False)
+        extent = self.test_dataset.scene.c2w(pos=np.array([[-scale,-scale],[scale,scale]]), copy=False)
         extent = extent.T.flatten()
 
         ax = axes[0,0]
@@ -171,7 +168,7 @@ class TrainerPlot(TrainerBase):
         scan_angles = scan_angles.flatten() # (N*M,)
 
         # create scan maps
-        scan_maps = self.createScanMaps(
+        scan_maps = self._scanRays2scanMap(
             rays_o_w=rays_o_w,
             depth=depth_w,
             scan_angles=scan_angles,
@@ -203,7 +200,7 @@ class TrainerPlot(TrainerBase):
         fig, axes = plt.subplots(ncols=1+self.args.eval.num_plot_pts, nrows=4, figsize=(9,9))
 
         scale = self.args.model.scale
-        extent = self.test_dataset.scene.c2wTransformation(pos=np.array([[-scale,-scale],[scale,scale]]), copy=False)
+        extent = self.test_dataset.scene.c2w(pos=np.array([[-scale,-scale],[scale,scale]]), copy=False)
         extent = extent.T.flatten()
 
         ax = axes[0,0]

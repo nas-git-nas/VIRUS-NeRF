@@ -52,7 +52,6 @@ def findNearestNeighbour(array1, array2, batch_size=None, progress_bar=False, ig
     return nn_idxs, nn_dists
 
 def createScanRays(
-        self,
         rays_o:torch.Tensor,
         res_angular:int,
         h_tol_c:float,
@@ -60,6 +59,9 @@ def createScanRays(
 ):
     """
     Create scan rays for gievn image indices.
+        N: number of points
+        M: number of angular samples
+        A: number of heights to average over
     Args:
         rays_o: ray origins; array of shape (N, 3)
         res_angular: number of angular samples (M); int
@@ -77,7 +79,7 @@ def createScanRays(
 
     # create directions
     rays_d = torch.linspace(-np.pi, np.pi-2*np.pi/res_angular, res_angular, 
-                            dtype=torch.float32, device=self.args.device) # (M,)
+                            dtype=torch.float32, device=rays_o.device) # (M,)
     rays_d = torch.stack((torch.cos(rays_d), torch.sin(rays_d), torch.zeros_like(rays_d)), axis=1) # (M, 3)
     rays_d = rays_d.repeat(N, 1) # (N*M, 3)
 
@@ -85,11 +87,46 @@ def createScanRays(
         return rays_o, rays_d
 
     # get rays for different heights
-    rays_o_avg = torch.zeros(N*res_angular, num_avg_heights, 3).to(self.args.device) # (N*M, A, 3)
-    rays_d_avg = torch.zeros(N*res_angular, num_avg_heights, 3).to(self.args.device) # (N*M, A, 3)   
+    rays_o_avg = torch.zeros(N*res_angular, num_avg_heights, 3).to(rays_o.device) # (N*M, A, 3)
+    rays_d_avg = torch.zeros(N*res_angular, num_avg_heights, 3).to(rays_o.device) # (N*M, A, 3)   
     for i, h in enumerate(np.linspace(-h_tol_c, h_tol_c, num_avg_heights)):
-        h_tensor = torch.tensor([0.0, 0.0, h], dtype=torch.float32, device=self.args.device)
+        h_tensor = torch.tensor([0.0, 0.0, h], dtype=torch.float32, device=rays_o.device)
         rays_o_avg[:,i,:] = rays_o + h_tensor
         rays_d_avg[:,i,:] = rays_d
 
     return rays_o_avg.reshape(-1, 3), rays_d_avg.reshape(-1, 3) # (N*M*A, 3), (N*M*A, 3)
+
+def createScanPos(
+        res_map:int,
+        height_c:float,
+        num_avg_heights:int,
+        tolerance_c:float,
+        cube_min:float,
+        cube_max:float,
+        device:str,
+):
+    """
+    Create map positions to evaluate density for different heights.
+        N: number of points
+        M: number of angular samples
+        A: number of heights to average over
+    Args:
+        res_map: number of samples in each dimension (L); int
+        height_c: height of slice in cube coordinates; float
+        num_avg_heights: number of heights to average over (A); int
+        tolerance_c: tolerance in cube coordinates; float
+    Returns:
+        pos_avg: map positions for different heights; array of shape (L*L*A, 3)
+    """
+    # create map positions
+    pos = torch.linspace(cube_min, cube_max, res_map).to(device) # (L,)
+    m1, m2 = torch.meshgrid(pos, pos) # (L, L), (L, L)
+    pos = torch.stack((m1.reshape(-1), m2.reshape(-1)), dim=1) # (L*L, 2)
+
+    # create map positions for different heights
+    pos_avg = torch.zeros(res_map*res_map, num_avg_heights, 3).to(device) # (L*L, A, 3)
+    for i, h in enumerate(np.linspace(height_c-tolerance_c, height_c+tolerance_c, num_avg_heights)):
+        pos_avg[:,i,:2] = pos
+        pos_avg[:,i,2] = h
+
+    return pos_avg.reshape(-1, 3) # (L*L*A, 3)
