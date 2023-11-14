@@ -326,6 +326,50 @@ class OccupancyGrid(Grid):
     #     return cell_dists, cell_pos, cell_idxs
 
     @torch.no_grad()
+    def _rayUpdate(
+        self,
+        rays_o:torch.Tensor,
+        rays_d:torch.Tensor,
+        meas:torch.Tensor,
+    ):
+        """
+        Update grid with ray measurement.
+        Args:
+            rays_o: rays origins; tensor (N, 3)
+            rays_d: rays directions; tensor (N, 3)
+            meas: measured distance in cube coordinates; tensor (N, 1)
+        """
+        # # calculate probabilities for each cell
+        # cell_idxs, probs_occ, probs_emp = self._rayProb(
+        #     rays_o=rays_o,
+        #     rays_d=rays_d,
+        #     meas=meas,
+        # ) # (N*M, 3), (N*M,), (N*M,)
+
+        cell_dists, _, cell_idxs = self._calcPos(
+            rays_o=rays_o,
+            rays_d=rays_d,
+            meas=meas,
+            add_noise=False,
+        ) # (N, M), _, (N*M, 3)
+        
+
+        # calculate cell probabilities
+        probs_occ, probs_emp = self._rayProb(
+            meas=meas, 
+            dists=cell_dists,
+        )  # (N, M), (N, M)
+        probs_occ = probs_occ.reshape(-1) # (N*M,)
+        probs_emp = probs_emp.reshape(-1) # (N*M,)
+
+        # update grid
+        self._updateGrid(
+            cell_idxs=cell_idxs,
+            probs_occ=probs_occ,
+            probs_emp=probs_emp,
+        )
+
+    @torch.no_grad()
     def _nerfUpdate(
         self,
         rays_o:torch.Tensor,
@@ -378,50 +422,6 @@ class OccupancyGrid(Grid):
         # cell_idxs = self._c2idx(
         #     pos=cell_pos,
         # ) # (N*M, 3)
-
-        # update grid
-        self._updateGrid(
-            cell_idxs=cell_idxs,
-            probs_occ=probs_occ,
-            probs_emp=probs_emp,
-        )
-
-    @torch.no_grad()
-    def _rayUpdate(
-        self,
-        rays_o:torch.Tensor,
-        rays_d:torch.Tensor,
-        meas:torch.Tensor,
-    ):
-        """
-        Update grid with ray measurement.
-        Args:
-            rays_o: rays origins; tensor (N, 3)
-            rays_d: rays directions; tensor (N, 3)
-            meas: measured distance in cube coordinates; tensor (N, 1)
-        """
-        # # calculate probabilities for each cell
-        # cell_idxs, probs_occ, probs_emp = self._rayProb(
-        #     rays_o=rays_o,
-        #     rays_d=rays_d,
-        #     meas=meas,
-        # ) # (N*M, 3), (N*M,), (N*M,)
-
-        cell_dists, _, cell_idxs = self._calcPos(
-            rays_o=rays_o,
-            rays_d=rays_d,
-            meas=meas,
-            add_noise=False,
-        ) # (N, M), _, (N*M, 3)
-        
-
-        # calculate cell probabilities
-        probs_occ, probs_emp = self._rayMeasProb(
-            meas=meas, 
-            dists=cell_dists,
-        )  # (N, M), (N, M)
-        probs_occ = probs_occ.reshape(-1) # (N*M,)
-        probs_emp = probs_emp.reshape(-1) # (N*M,)
 
         # update grid
         self._updateGrid(
@@ -493,12 +493,19 @@ class OccupancyGrid(Grid):
             cell_idxs: indices of cell; tensor (N*M, 3)
         """
         # # calculate cell distances
-        # stds = self._calcStd(
-        #     dists=meas,
-        # ) # (N,)
-        steps = torch.linspace(0, 1.5, self.M, device=self.args.device, dtype=torch.float32) # (M,)
-        cell_dists = steps[None,:] * meas[:,None] # (N, M)
-        # cell_dists = steps[None,:] * (meas + 5*stds)[:,None] # (N, M)
+        # steps = torch.linspace(0, 1.5, self.M, device=self.args.device, dtype=torch.float32) # (M,)
+        # cell_dists = steps[None,:] * meas[:,None] # (N, M)
+
+        # calculate cell distances
+        stds = self._calcStd(
+            dists=meas,
+        ) # (N,)
+        steps = torch.linspace(0, 1, self.M, device=self.args.device, dtype=torch.float32) # (M,)
+        cell_dists = steps[None,:] * (meas + 5*stds)[:,None] # (N, M)
+
+
+        if not torch.allclose(1.5*meas, meas+5*stds):
+            print(f"ERROR: OccupancyGrid._calcPos: cell_dists are not equal")
 
         # calculate cell positions      
         rays_d = rays_d / torch.norm(rays_d, dim=1, keepdim=True) # normalize rays
@@ -536,7 +543,7 @@ class OccupancyGrid(Grid):
         self.occ_3d_grid[cell_idxs[:, 0], cell_idxs[:, 1], cell_idxs[:, 2]] = probs
 
     @torch.no_grad()
-    def _rayMeasProb(
+    def _rayProb(
         self,
         meas:torch.Tensor,
         dists:torch.Tensor,
@@ -587,6 +594,27 @@ class OccupancyGrid(Grid):
 
         if return_probs:
             return probs_occ, probs_emp, probs_equal_emp, probs_equal_occ, probs_notless_emp, probs_notless_occ
+        return probs_occ, probs_emp
+    
+    @torch.no_grad()
+    def _nerfProb(
+        self,
+        cell_pos:torch.Tensor,
+        threshold_occ:float,
+    ):
+        # interfere NeRF
+        cell_density = self.fct_density(
+            x=cell_pos,
+        ) # (N*M,)
+
+        # convert density to probability
+        alpha = - np.log(threshold_occ)
+        thrshold_nerf = min(self.nerf_threshold_max, torch.mean(cell_density))
+        probs_emp = torch.exp(- alpha * cell_density / thrshold_nerf) # (N*M,)
+        # probs_emp = self.nerf_correct_prob * probs_emp + (1 - self.nerf_correct_prob) * 0.5 # (N*M,)
+        probs_emp = torch.clamp(probs_emp, 1-self.nerf_prob_max, self.nerf_prob_max) # (N*M,)
+        probs_occ = 1 - probs_emp # (N*M,)
+
         return probs_occ, probs_emp
     
     @torch.no_grad()
