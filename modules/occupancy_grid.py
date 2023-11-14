@@ -413,7 +413,7 @@ class OccupancyGrid(Grid):
             abs(torch.max(cell_density).item() - threshold_nerf),
             abs(torch.min(cell_density).item() - threshold_nerf),
         )
-        delta = min(delta, 100 * self.nerf_threshold_max)
+        delta = min(delta, 10000 * self.nerf_threshold_max) # avoid delta to be infinity
 
         probs_occ = 0.5 * torch.ones_like(cell_density, device=self.args.device, dtype=torch.float32) # (N*M,)
         probs_occ += (cell_density - threshold_nerf) / (2 * delta) # (N*M,)
