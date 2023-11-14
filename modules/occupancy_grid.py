@@ -66,7 +66,7 @@ class OccupancyGrid(Grid):
         self.attenuation_min = 1.0 # minimum attenuation of sensor model
         self.nerf_correct_prob = 0.02 # probability of nerf interference correctnes
 
-        self.pos_noise_every_m = 0.05 # noise added every m
+        self.pos_noise_every_m = 0.025 # noise added every m
         self.nerf_prob_max = 0.6 # maximum probability of nerf interference
         self.nerf_threshold_max = 0.01 * MAX_SAMPLES / 3**0.5
 
@@ -357,21 +357,21 @@ class OccupancyGrid(Grid):
         # cell_pos = cell_pos + 0.05 * cell_dists[:, :, None] * noise # (N, M, 3)
         # cell_pos = cell_pos.reshape(-1, 3) # (N*M, 3)
 
-        cell_dists, cell_pos, cell_idxs = self._calcPos(
+        _, cell_pos, cell_idxs = self._calcPos(
             rays_o=rays_o,
             rays_d=rays_d,
             meas=meas,
             add_noise=True,
-        ) # (N, M), (N*M, 3), (N*M, 3)
+        ) # _, (N*M, 3), (N*M, 3)
 
         cell_density = self.fct_density(
             x=cell_pos,
         ) # (N*M,)
         alpha = - np.log(threshold_occ)
-        thrshold_nerf = min(0.01 * MAX_SAMPLES / 3**0.5, torch.mean(cell_density))
+        thrshold_nerf = min(self.nerf_threshold_max, torch.mean(cell_density))
         probs_emp = torch.exp(- alpha * cell_density / thrshold_nerf) # (N*M,)
         # probs_emp = self.nerf_correct_prob * probs_emp + (1 - self.nerf_correct_prob) * 0.5 # (N*M,)
-        probs_emp = torch.clamp(probs_emp, 0.4, 0.6) # (N*M,)
+        probs_emp = torch.clamp(probs_emp, 1-self.nerf_prob_max, self.nerf_prob_max) # (N*M,)
         probs_occ = 1 - probs_emp # (N*M,)
 
         # # calculate cell indices   
@@ -407,12 +407,12 @@ class OccupancyGrid(Grid):
         #     meas=meas,
         # ) # (N*M, 3), (N*M,), (N*M,)
 
-        cell_dists, cell_pos, cell_idxs = self._calcPos(
+        cell_dists, _, cell_idxs = self._calcPos(
             rays_o=rays_o,
             rays_d=rays_d,
             meas=meas,
             add_noise=False,
-        ) # (N, M), (N*M, 3), (N*M, 3)
+        ) # (N, M), _, (N*M, 3)
         
 
         # calculate cell probabilities
@@ -492,12 +492,13 @@ class OccupancyGrid(Grid):
             cell_pos: positions of cell; tensor (N*M, 3)
             cell_idxs: indices of cell; tensor (N*M, 3)
         """
-        # calculate cell distances
-        stds = self._calcStd(
-            dists=meas,
-        ) # (N,)
-        steps = torch.linspace(0, 1, self.M, device=self.args.device, dtype=torch.float32) # (M,)
-        cell_dists = steps[None,:] * (meas + 5*stds)[:,None] # (N, M)
+        # # calculate cell distances
+        # stds = self._calcStd(
+        #     dists=meas,
+        # ) # (N,)
+        steps = torch.linspace(0, 1.5, self.M, device=self.args.device, dtype=torch.float32) # (M,)
+        cell_dists = steps[None,:] * meas[:,None] # (N, M)
+        # cell_dists = steps[None,:] * (meas + 5*stds)[:,None] # (N, M)
 
         # calculate cell positions      
         rays_d = rays_d / torch.norm(rays_d, dim=1, keepdim=True) # normalize rays
@@ -505,8 +506,8 @@ class OccupancyGrid(Grid):
 
         # add random noise
         if add_noise:
-            noise = torch.rand(size=cell_pos.shape, device=self.args.device, dtype=torch.float32) - 0.5 # (N, M, 3)
-            cell_pos = cell_pos + 0.05 * cell_dists[:, :, None] * noise # (N, M, 3)
+            noise = 2*torch.rand(size=cell_pos.shape, device=self.args.device, dtype=torch.float32) - 1 # (N, M, 3)
+            cell_pos = cell_pos + self.pos_noise_every_m * cell_dists[:, :, None] * noise # (N, M, 3)
 
         # calculate cell indices
         cell_pos = cell_pos.reshape(-1, 3) # (N*M, 3)
