@@ -76,6 +76,17 @@ class DatasetBase(Dataset):
                 self.depths_dict[key] = self.depths_dict[key].to(device)
         return self
     
+    def getMeanHeight(
+        self,
+    ):
+        """
+        Get mean height of the images.
+        Returns:
+            mean_height: mean height of the images; float
+        """
+        mean_height = torch.mean(self.poses[:, 2, 3])
+        return mean_height
+    
     def getValidDepthMask(
         self,
         img_idxs:torch.Tensor,

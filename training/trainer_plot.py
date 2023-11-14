@@ -33,13 +33,9 @@ class TrainerPlot(TrainerBase):
         if step % self.args.occ_grid.update_interval != 0:
             return
 
-        height_w = 1.0
-        height_c = self.train_dataset.scene.w2c(pos=np.array([[0.0, 0.0, height_w]]), copy=False)[0,2]
-        if self.args.occ_grid.grid_type == "occ": # TODO: remove after debugging
-            height_c = self.model.occupancy_grid.height_c.detach().cpu().numpy()
-            height_w = self.train_dataset.scene.c2w(pos=np.array([[0.0, 0.0, height_c]]), copy=False)[0,2]
-
-        # convert height from cube to occupancy grid coordinates
+        # calculate mean height in cube, world and occupancy grid coordinates
+        height_c = self.train_dataset.getMeanHeight()
+        height_w = self.train_dataset.scene.c2w(pos=np.array([[0.0, 0.0, height_c]]), copy=False)[0,2]
         height_o = self.model.occupancy_grid.c2oCoordinates(
             pos_c=height_c,
         )
@@ -278,6 +274,8 @@ class TrainerPlot(TrainerBase):
         Args:
             logs: logs dictionary
             metrics_dict: dict of metrics
+        Returns:
+            metrics_dict: dict of metrics
         """
         fig, axes = plt.subplots(ncols=2, nrows=1, figsize=(12,8))
 
@@ -324,8 +322,9 @@ class TrainerPlot(TrainerBase):
                 data_increasing=False,
             )
             if idx1 != -1:
-                vln1 = ax.axvline(np.array(logs['step'])[not_nan][idx1], linestyle=(0, (1, 5)), c=color, label='mnn 25%')
-                print(f"mnn converged 25% at step {logs['step'][idx1]}, idx1={idx1}, threshold={1.25 * metrics_dict['mnn']}")
+                vln1 = ax.axvline(np.array(logs['step'])[not_nan][idx1], linestyle=(0, (1, 5)), c="black", label='converged 25%')
+                metrics_dict['mnn_converged_25'] = np.array(logs['time'])[not_nan][idx1]
+                # print(f"mnn converged 25% at step {logs['step'][idx1]}, idx1={idx1}, threshold={1.25 * metrics_dict['mnn']}")
 
             idx2 = dataConverged(
                 arr=np.array(logs['mnn'])[not_nan],
@@ -333,8 +332,9 @@ class TrainerPlot(TrainerBase):
                 data_increasing=False,
             )
             if idx2 != -1:
-                vln2 = ax.axvline(np.array(logs['step'])[not_nan][idx2], linestyle=(0, (1, 1)), c=color, label='mnn 10%')
-                print(f"mnn converged 10% at step {logs['step'][idx2]}, idx1={idx2}, threshold={1.1 * metrics_dict['mnn']}")
+                vln2 = ax.axvline(np.array(logs['step'])[not_nan][idx2], linestyle=(0, (1, 1)), c="black", label='converged 10%')
+                metrics_dict['mnn_converged_10'] = np.array(logs['time'])[not_nan][idx2]
+                # print(f"mnn converged 10% at step {logs['step'][idx2]}, idx1={idx2}, threshold={1.1 * metrics_dict['mnn']}")
 
             ax2 = ax.twinx()
             color = 'tab:green'
@@ -363,6 +363,8 @@ class TrainerPlot(TrainerBase):
         plt.tight_layout()
         plt.savefig(os.path.join(self.args.save_dir, "losses.pdf"))
         plt.savefig(os.path.join(self.args.save_dir, "losses.png"))
+
+        return metrics_dict
 
 
  

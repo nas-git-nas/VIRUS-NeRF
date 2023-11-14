@@ -234,6 +234,16 @@ class Trainer(TrainerPlot):
         depth_metrics, data_w = self._evaluateDepth(img_idxs=img_idxs_sensor)
         metrics_dict.update(depth_metrics)
 
+        # create plots
+        self._plotEvaluation(
+            data_w=data_w, 
+            metrics_dict=metrics_dict,
+        )
+        metrics_dict = self._plotLosses(
+            logs=self.logs,
+            metrics_dict=metrics_dict,
+        )
+
         # print and save metrics
         print(
             f"evaluation: " \
@@ -247,18 +257,6 @@ class Trainer(TrainerPlot):
         del metrics_df['nn_dists']
         metrics_df = pd.DataFrame(metrics_df, index=[0])
         metrics_df.to_csv(os.path.join(self.args.save_dir, "metrics.csv"), index=False)
-
-        # create plots
-        self._plotEvaluation(
-            data_w=data_w, 
-            metrics_dict=metrics_dict,
-        )
-        self._plotLosses(
-            logs=self.logs,
-            metrics_dict=metrics_dict,
-        )
-
-
 
     @torch.no_grad()
     def _evaluateStep(

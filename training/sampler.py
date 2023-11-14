@@ -134,7 +134,7 @@ class Sampler():
             pix_idxs = torch.clamp(pix_idxs, min=0, max=WH-1)
             return pix_idxs
         
-        if ray_strategy == "entire_img":
+        if ray_strategy == "entire_img" or ray_strategy == "valid_rgbd":
             return torch.arange(0, WH, device=self.args.device, dtype=torch.int32)
         
         if ray_strategy == "closest":
@@ -147,6 +147,20 @@ class Sampler():
         if ray_strategy == "weighted":
             pix_idxs = self.rgn.choice(WH, size=(B,), p=self.weights)
             return torch.from_numpy(pix_idxs).to(torch.int64)
+        
+        if ray_strategy == "valid_tof":
+            tof_mask = torch.tensor(self.sensors_dict["ToF"].mask, device=self.args.device, dtype=torch.bool)
+            tof_mask_idxs = torch.where(tof_mask)[0]
+            tof_rand_ints = torch.randint(0, tof_mask_idxs.shape[0], (B,), device=self.args.device, dtype=torch.int32)
+            tof_img_idxs = tof_mask_idxs[tof_rand_ints]
+            return tof_img_idxs
+
+        if ray_strategy == "valid_uss":
+            uss_maks = torch.tensor(self.sensors_dict["USS"].mask, device=self.args.device, dtype=torch.bool)
+            uss_mask_idxs = torch.where(uss_maks)[0]
+            uss_rand_ints = torch.randint(0, uss_mask_idxs.shape[0], (B,), device=self.args.device, dtype=torch.int32)
+            uss_img_idxs = uss_mask_idxs[uss_rand_ints]
+            return uss_img_idxs
         
         if ray_strategy == "valid_depth":
             val_idxs_dict = self.fct_getValidDepthMask(img_idxs) # dict of sensor: valid depth; bool tensor (B, H*W)
