@@ -98,11 +98,6 @@ class OccupancyGrid(Grid):
         Returns:
             grid: occupancy grid; tensor (grid_size, grid_size, grid_size)
         """
-        # warmup decay
-        self.update_step += 1
-        if self.update_step <= self.decay_warmup:
-            self.occ_3d_grid *= self.grid_decay
-
         # sample depth measurements
         ray_update, nerf_update = self._sample()
 
@@ -120,6 +115,11 @@ class OccupancyGrid(Grid):
                 meas=nerf_update["depth_meas"],
                 threshold_occ=threshold,
             )
+
+        # warmup decay
+        self.update_step += 1
+        if self.update_step <= self.decay_warmup:
+            self.occ_3d_grid *= self.grid_decay
         
         # update binary bitfield
         self.threshold = threshold
@@ -139,33 +139,87 @@ class OccupancyGrid(Grid):
             ray_update: data for ray update; dict
             nerf_update: data for nerf update; dict
         """
+        # get data and calculate rays
         B = self.args.occ_grid.batch_size
-        B_ray = int(B * self.ray_update_batch_ratio)
-        B_nerf = B - B_ray  
-        
-        # sample data for ray and nerf updates 
-        if self.args.occ_grid.sampling_strategy['rays'] == "rgbd":
-            ray_update = self._sampleBatch(
-                B=B_ray,
-                sensor="RGBD",
-            )
-            nerf_update = self._sampleBatch(
-                B=B_nerf,
-                sensor="RGBD",
-            )
-        elif self.args.occ_grid.sampling_strategy['rays'] == "uss_tof": 
-            ray_update = self._sampleBatch(
-                B=B_ray,
-                sensor="ToF",
-            )
-            nerf_update = self._sampleBatch(
-                B=B_nerf,
-                sensor="USS",
-            )
-        else:
-            self.args.logger.error("occupancy grid sampling strategy does not exist")
+        data = self.dataset(
+            batch_size=B,
+            sampling_strategy=self.args.occ_grid.sampling_strategy,
+            origin="occ",
+        )
 
+        # choose from which sensor to use the data
+        if "RGBD" in data['depth']:
+            depth_meas = data['depth']["RGBD"]
+        elif "USS" in data['depth'] and "ToF" in data['depth']:
+            # depth_meas = torch.cat((data['depth']["USS"][:int(B/2)], data['depth']["ToF"][int(B/2):]), dim=0)
+            valid_depth_tof = ~torch.isnan(data['depth']["ToF"])
+            depth_meas = data['depth']["ToF"]
+            depth_meas[~valid_depth_tof] = data['depth']["USS"][~valid_depth_tof]
+        elif "USS" in data['depth']:
+            depth_meas = data['depth']["USS"]
+        elif "ToF" in data['depth']:
+            depth_meas = data['depth']["ToF"]
+        else:
+            self.args.logger.error("OccupancyGrid.update: no depth sensor found")
+
+        rays_o, rays_d = get_rays(
+            directions=data['direction'], 
+            c2w=data['pose']
+        )           
+        self.height_c = torch.mean(rays_o[:, 2]) # TODO: remove
+
+
+        ray_update_true = valid_depth_tof
+
+        # remove nan values
+        depth_meas_val = ~torch.isnan(depth_meas)
+        rays_o = rays_o[depth_meas_val]
+        rays_d = rays_d[depth_meas_val]
+        depth_meas = depth_meas[depth_meas_val]
+        ray_update_true = ray_update_true[depth_meas_val]
+
+        ray_update = {
+            "rays_o": rays_o[ray_update_true],
+            "rays_d": rays_d[ray_update_true],
+            "depth_meas": depth_meas[ray_update_true],
+            "batch_size": torch.sum(ray_update_true),
+        }
+        nerf_update = {
+            "rays_o": rays_o[~ray_update_true],
+            "rays_d": rays_d[~ray_update_true],
+            "depth_meas": depth_meas[~ray_update_true],
+            "batch_size": torch.sum(~ray_update_true),
+        }
         return ray_update, nerf_update
+    
+    # TODO: debug
+        # B = self.args.occ_grid.batch_size
+        # B_ray = int(B * self.ray_update_batch_ratio)
+        # B_nerf = B - B_ray  
+        
+        # # sample data for ray and nerf updates 
+        # if self.args.occ_grid.sampling_strategy['rays'] == "rgbd":
+        #     ray_update = self._sampleBatch(
+        #         B=B_ray,
+        #         sensor="RGBD",
+        #     )
+        #     nerf_update = self._sampleBatch(
+        #         B=B_nerf,
+        #         sensor="RGBD",
+        #     )
+        # elif self.args.occ_grid.sampling_strategy['rays'] == "uss_tof": 
+        #     ray_update = self._sampleBatch(
+        #         B=B_ray,
+        #         sensor="ToF",
+        #     )
+        #     nerf_update = self._sampleBatch(
+        #         B=B_nerf,
+        #         sensor="USS",
+        #     )
+        # else:
+        #     self.args.logger.error("occupancy grid sampling strategy does not exist")
+
+        # return ray_update, nerf_update
 
     @torch.no_grad()
     def _sampleBatch(
@@ -187,7 +241,7 @@ class OccupancyGrid(Grid):
         """
         data = self.dataset(
             batch_size=B,
-            sampling_strategy={ "imgs": "all", "rays": "valid_"+sensor.lower() },
+            sampling_strategy={ "imgs": self.args.occ_grid.sampling_strategy['imgs'], "rays": "valid_"+sensor.lower() },
             origin="occ"
         )
         rays_o, rays_d = get_rays(
@@ -467,8 +521,11 @@ class OccupancyGrid(Grid):
         Returns:
             attenuations: attenuation of sensor model; tensor (same shape as dists)
         """
-        attenuation = self.attenuation_min * (1 - self.attenuation_every_m * dists)
-        return torch.clamp(attenuation, 0, 1)
+        return self.attenuation_min * (1 - torch.minimum(torch.ones_like(dists, device=self.args.device, dtype=torch.float32), self.attenuation_every_m*dists))
+        
+        # # TODO: debug
+        # attenuation = self.attenuation_min * (1 - self.attenuation_every_m * dists)
+        # return torch.clamp(attenuation, 0, 1)
 
     @torch.no_grad()
     def _c2idx(
