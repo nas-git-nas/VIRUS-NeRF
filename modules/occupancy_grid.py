@@ -409,18 +409,20 @@ class OccupancyGrid(Grid):
 
         # convert density to probability
         threshold_nerf = min(self.nerf_threshold_max, torch.mean(cell_density))
-        # delta = torch.max(
-        #     torch.abs(torch.max(cell_density) - threshold_nerf),
-        #     torch.abs(torch.min(cell_density) - threshold_nerf),
-        # )
+        delta = max(
+            abs(torch.max(cell_density).item() - threshold_nerf),
+            abs(torch.min(cell_density).item() - threshold_nerf),
+        )
+        delta = min(delta, 100 * self.nerf_threshold_max)
+
         probs_occ = 0.5 * torch.ones_like(cell_density, device=self.args.device, dtype=torch.float32) # (N*M,)
-        probs_occ += (cell_density - threshold_nerf) / (2 * self.nerf_threshold_max) # (N*M,)
+        probs_occ += (cell_density - threshold_nerf) / (2 * delta) # (N*M,)
         probs_occ = torch.clamp(probs_occ, 0, 1) # (N*M,)
         probs_emp = 1 - probs_occ # (N*M,)
 
         print(f"_nerfProb: threshold_nerf={threshold_nerf:.3f}; probs occ mean={torch.mean(probs_occ):.3f}," \
-              f"min={torch.min(probs_occ):.3f}, max={torch.max(probs_occ):.3f}, mean_above={torch.min(probs_occ[probs_occ>0.5]):.3f}," \
-              f"mean_below={torch.max(probs_occ[probs_occ<0.5]):.3f}")
+              f"min={torch.min(probs_occ):.3f}, max={torch.max(probs_occ):.3f}, mean_above={torch.mean(probs_occ[probs_occ>0.5]):.3f}," \
+              f"mean_below={torch.mean(probs_occ[probs_occ<0.5]):.3f}")
         
         return probs_occ, probs_emp
     
