@@ -85,7 +85,7 @@ class DatasetBase(Dataset):
             mean_height: mean height of the images; float
         """
         mean_height = torch.mean(self.poses[:, 2, 3])
-        return mean_height
+        return mean_height.item()
     
     def getValidDepthMask(
         self,
