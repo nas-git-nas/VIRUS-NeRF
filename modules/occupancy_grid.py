@@ -361,7 +361,7 @@ class OccupancyGrid(Grid):
             rays_o=rays_o,
             rays_d=rays_d,
             meas=meas,
-            add_noise=False,
+            add_noise=True,
         ) # (N, M), (N*M, 3), (N*M, 3)
 
         cell_density = self.fct_density(
