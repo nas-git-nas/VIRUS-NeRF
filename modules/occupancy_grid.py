@@ -200,6 +200,131 @@ class OccupancyGrid(Grid):
         }
         return ray_update, nerf_update
 
+    # @torch.no_grad()
+    # def _nerfUpdate(
+    #     self,
+    #     rays_o:torch.Tensor,
+    #     rays_d:torch.Tensor,
+    #     meas:torch.Tensor,
+    #     threshold_occ:float,
+    # ):
+    #     """
+    #     Update grid by interfering nerf.
+    #     Args:
+    #         rays_o: rays origins; tensor (N, 3)
+    #         rays_d: rays directions; tensor (N, 3)
+    #         meas: measured distance in cube coordinates; tensor (N,)
+    #         threshold_occ: threshold for occupancy grid; float
+    #     """
+
+    #     # calculate cell positions and indices
+    #     _, cell_pos, cell_idxs = self._calcPos(
+    #         rays_o=rays_o,
+    #         rays_d=rays_d,
+    #         meas=meas,
+    #         add_noise=True,
+    #     ) # _, (N*M, 3), (N*M, 3)
+
+    #     # interfere NeRF
+    #     cell_density = self.fct_density(
+    #         x=cell_pos,
+    #     ) # (N*M,)
+
+    #     # calculate cell occupancy probabilities
+    #     alpha = - np.log(threshold_occ)
+    #     nerf_threshold = min(self.nerf_threshold_max, torch.mean(cell_density))
+    #     probs_emp = torch.exp(- alpha * cell_density / nerf_threshold) # (N*M,)
+    #     print(f"occgrid: _nerfUpdate: total: {probs_emp.shape[0]}, too high: {torch.sum(probs_emp > self.nerf_prob_max)}, too low: {torch.sum(probs_emp < 1-self.nerf_prob_max)}")
+    #     probs_emp = torch.clamp(probs_emp, 1-self.nerf_prob_max, self.nerf_prob_max) # (N*M,)
+    #     probs_occ = 1 - probs_emp # (N*M,)
+
+    #     # update grid
+    #     self._updateGrid(
+    #         cell_idxs=cell_idxs,
+    #         probs_occ=probs_occ,
+    #         probs_emp=probs_emp,
+    #     )
+
+    # @torch.no_grad()
+    # def _rayUpdate(
+    #     self,
+    #     rays_o:torch.Tensor,
+    #     rays_d:torch.Tensor,
+    #     meas:torch.Tensor,
+    # ):
+    #     """
+    #     Update grid with ray measurement.
+    #     Args:
+    #         rays_o: rays origins; tensor (N, 3)
+    #         rays_d: rays directions; tensor (N, 3)
+    #         meas: measured distance in cube coordinates; tensor (N, 1)
+    #     """
+    #     # calculate cell distances and indices
+    #     cell_dists, _, cell_idxs = self._calcPos(
+    #         rays_o=rays_o,
+    #         rays_d=rays_d,
+    #         meas=meas,
+    #         add_noise=False,
+    #     ) # (N, M), _, (N*M, 3)
+        
+
+    #     # calculate cell probabilities
+    #     probs_occ, probs_emp = self._rayMeasProb(
+    #         meas=meas, 
+    #         dists=cell_dists,
+    #     )  # (N, M), (N, M)
+    #     probs_occ = probs_occ.reshape(-1) # (N*M,)
+    #     probs_emp = probs_emp.reshape(-1) # (N*M,)
+
+    #     # update grid
+    #     self._updateGrid(
+    #         cell_idxs=cell_idxs,
+    #         probs_occ=probs_occ,
+    #         probs_emp=probs_emp,
+    #     )
+
+    # @torch.no_grad()
+    # def _calcPos(
+    #     self,
+    #     rays_o:torch.Tensor,
+    #     rays_d:torch.Tensor,
+    #     meas:torch.Tensor,
+    #     add_noise:bool,
+    # ):
+    #     """
+    #     Update grid with ray measurement.
+    #     Args:
+    #         rays_o: rays origins; tensor (N, 3)
+    #         rays_d: rays directions; tensor (N, 3)
+    #         meas: measured distance in cube coordinates; tensor (N,)
+    #         add_noise: whether to add noise to cell positions; bool
+    #     Returns:
+    #         cell_dists: distances to cell; tensor (N, M)
+    #         cell_pos: positions of cell; tensor (N*M, 3)
+    #         cell_idxs: indices of cell; tensor (N*M, 3)
+    #     """
+    #     # calculate cell distances (1.5 times longer than measurement to update cells beyond estimation)
+    #     steps = torch.linspace(0, 1.5, self.M, device=self.args.device, dtype=torch.float32) # (M,)
+    #     cell_dists = steps[None,:] * meas[:,None] # (N, M)
+
+    #     # calculate cell positions
+    #     rays_d = rays_d / torch.norm(rays_d, dim=1, keepdim=True) # normalize rays
+    #     cell_pos = rays_o[:, None, :] + rays_d[:, None, :] * cell_dists[:, :, None]  # (N, M, 3)
+
+    #     # add random noise
+    #     if add_noise:
+    #         noise = torch.rand(size=cell_pos.shape, device=self.args.device, dtype=torch.float32) - 0.5 # (N, M, 3)
+    #         cell_pos = cell_pos +  self.pos_noise_every_m * cell_dists[:, :, None] * noise # (N, M, 3)
+            
+
+    #     # calculate cell indices
+    #     cell_pos = cell_pos.reshape(-1, 3) # (N*M, 3)
+    #     cell_idxs = self._c2idx(
+    #         pos=cell_pos.reshape(-1, 3),
+    #     ) # (N*M, 3)
+
+    #     return cell_dists, cell_pos, cell_idxs
+
     @torch.no_grad()
     def _nerfUpdate(
         self,
@@ -216,27 +341,36 @@ class OccupancyGrid(Grid):
             meas: measured distance in cube coordinates; tensor (N,)
             threshold_occ: threshold for occupancy grid; float
         """
+        # calculate cell distances
+        stds = self._calcStd(
+            dists=meas,
+        ) # (N,)
+        steps = torch.linspace(0, 1, self.M, device=self.args.device, dtype=torch.float32) # (M,)
+        cell_dists = steps[None,:] * (meas + 5*stds)[:,None] # (N, M)
 
-        # calculate cell positions and indices
-        _, cell_pos, cell_idxs = self._calcPos(
-            rays_o=rays_o,
-            rays_d=rays_d,
-            meas=meas,
-            add_noise=True,
-        ) # _, (N*M, 3), (N*M, 3)
+        # calculate cell positions
+        rays_d = rays_d / torch.norm(rays_d, dim=1, keepdim=True) # normalize rays
+        cell_pos = rays_o[:, None, :] + rays_d[:, None, :] * cell_dists[:, :, None]  # (N, M, 3)
 
-        # interfere NeRF
+        # add random noise
+        noise = torch.rand(size=cell_pos.shape, device=self.args.device, dtype=torch.float32) - 0.5 # (N, M, 3)
+        cell_pos = cell_pos + 0.05 * cell_dists[:, :, None] * noise # (N, M, 3)
+        cell_pos = cell_pos.reshape(-1, 3) # (N*M, 3)
+
         cell_density = self.fct_density(
             x=cell_pos,
         ) # (N*M,)
-
-        # calculate cell occupancy probabilities
         alpha = - np.log(threshold_occ)
-        nerf_threshold = min(self.nerf_threshold_max, torch.mean(cell_density))
-        probs_emp = torch.exp(- alpha * cell_density / nerf_threshold) # (N*M,)
-        print(f"occgrid: _nerfUpdate: total: {probs_emp.shape[0]}, too high: {torch.sum(probs_emp > self.nerf_prob_max)}, too low: {torch.sum(probs_emp < 1-self.nerf_prob_max)}")
-        probs_emp = torch.clamp(probs_emp, 1-self.nerf_prob_max, self.nerf_prob_max) # (N*M,)
+        thrshold_nerf = min(0.01 * MAX_SAMPLES / 3**0.5, torch.mean(cell_density))
+        probs_emp = torch.exp(- alpha * cell_density / thrshold_nerf) # (N*M,)
+        # probs_emp = self.nerf_correct_prob * probs_emp + (1 - self.nerf_correct_prob) * 0.5 # (N*M,)
+        probs_emp = torch.clamp(probs_emp, 0.4, 0.6) # (N*M,)
         probs_occ = 1 - probs_emp # (N*M,)
+
+        # calculate cell indices   
+        cell_idxs = self._c2idx(
+            pos=cell_pos,
+        ) # (N*M, 3)
 
         # update grid
         self._updateGrid(
@@ -259,13 +393,44 @@ class OccupancyGrid(Grid):
             rays_d: rays directions; tensor (N, 3)
             meas: measured distance in cube coordinates; tensor (N, 1)
         """
-        # calculate cell distances and indices
-        cell_dists, _, cell_idxs = self._calcPos(
+        # calculate probabilities for each cell
+        cell_idxs, probs_occ, probs_emp = self._rayProb(
             rays_o=rays_o,
             rays_d=rays_d,
             meas=meas,
-            add_noise=False,
-        ) # (N, M), _, (N*M, 3)
+        ) # (N*M, 3), (N*M,), (N*M,)
+
+        # update grid
+        self._updateGrid(
+            cell_idxs=cell_idxs,
+            probs_occ=probs_occ,
+            probs_emp=probs_emp,
+        )
+
+    @torch.no_grad()
+    def _rayProb(
+        self,
+        rays_o:torch.Tensor,
+        rays_d:torch.Tensor,
+        meas:torch.Tensor,
+    ):
+        """
+        Update grid with ray measurement.
+        Args:
+            rays_o: rays origins; tensor (N, 3)
+            rays_d: rays directions; tensor (N, 3)
+            meas: measured distance in cube coordinates; tensor (N,)
+        Returns:
+            cell_idxs: indices of cells to update; tensor (N*M, 3)
+            probs_occ: probabilities of measurements given cell is occupied; tensor (N*M,)
+            probs_emp: probabilities of measurements given cell is empty; tensor (N*M,)
+        """
+        # calculate cell distances
+        stds = self._calcStd(
+            dists=meas,
+        ) # (N,)
+        steps = torch.linspace(0, 1, self.M, device=self.args.device, dtype=torch.float32) # (M,)
+        cell_dists = steps[None,:] * (meas + 5*stds)[:,None] # (N, M)
         
 
         # calculate cell probabilities
@@ -276,179 +441,14 @@ class OccupancyGrid(Grid):
         probs_occ = probs_occ.reshape(-1) # (N*M,)
         probs_emp = probs_emp.reshape(-1) # (N*M,)
 
-        # update grid
-        self._updateGrid(
-            cell_idxs=cell_idxs,
-            probs_occ=probs_occ,
-            probs_emp=probs_emp,
-        )
-
-    @torch.no_grad()
-    def _calcPos(
-        self,
-        rays_o:torch.Tensor,
-        rays_d:torch.Tensor,
-        meas:torch.Tensor,
-        add_noise:bool,
-    ):
-        """
-        Update grid with ray measurement.
-        Args:
-            rays_o: rays origins; tensor (N, 3)
-            rays_d: rays directions; tensor (N, 3)
-            meas: measured distance in cube coordinates; tensor (N,)
-            add_noise: whether to add noise to cell positions; bool
-        Returns:
-            cell_dists: distances to cell; tensor (N, M)
-            cell_pos: positions of cell; tensor (N*M, 3)
-            cell_idxs: indices of cell; tensor (N*M, 3)
-        """
-        # calculate cell distances (1.5 times longer than measurement to update cells beyond estimation)
-        steps = torch.linspace(0, 1.5, self.M, device=self.args.device, dtype=torch.float32) # (M,)
-        cell_dists = steps[None,:] * meas[:,None] # (N, M)
-
-        # calculate cell positions
+        # calculate cell indices
         rays_d = rays_d / torch.norm(rays_d, dim=1, keepdim=True) # normalize rays
         cell_pos = rays_o[:, None, :] + rays_d[:, None, :] * cell_dists[:, :, None]  # (N, M, 3)
-
-        # add random noise
-        if add_noise:
-            noise = torch.rand(size=cell_pos.shape, device=self.args.device, dtype=torch.float32) - 0.5 # (N, M, 3)
-            cell_pos = cell_pos +  self.pos_noise_every_m * cell_dists[:, :, None] * noise # (N, M, 3)
-            
-
-        # calculate cell indices
-        cell_pos = cell_pos.reshape(-1, 3) # (N*M, 3)
         cell_idxs = self._c2idx(
             pos=cell_pos.reshape(-1, 3),
         ) # (N*M, 3)
 
-        return cell_dists, cell_pos, cell_idxs
-
-    # @torch.no_grad()
-    # def nerfUpdate(
-    #     self,
-    #     rays_o:torch.Tensor,
-    #     rays_d:torch.Tensor,
-    #     meas:torch.Tensor,
-    #     threshold_occ:float,
-    # ):
-    #     """
-    #     Update grid by interfering nerf.
-    #     Args:
-    #         rays_o: rays origins; tensor (N, 3)
-    #         rays_d: rays directions; tensor (N, 3)
-    #         meas: measured distance in cube coordinates; tensor (N,)
-    #         threshold_occ: threshold for occupancy grid; float
-    #     """
-    #     # calculate cell distances
-    #     stds = self._calcStd(
-    #         dists=meas,
-    #     ) # (N,)
-    #     steps = torch.linspace(0, 1, self.M, device=self.args.device, dtype=torch.float32) # (M,)
-    #     cell_dists = steps[None,:] * (meas + 5*stds)[:,None] # (N, M)
-
-    #     # calculate cell positions
-    #     rays_d = rays_d / torch.norm(rays_d, dim=1, keepdim=True) # normalize rays
-    #     cell_pos = rays_o[:, None, :] + rays_d[:, None, :] * cell_dists[:, :, None]  # (N, M, 3)
-
-    #     # add random noise
-    #     noise = torch.rand(size=cell_pos.shape, device=self.args.device, dtype=torch.float32) - 0.5 # (N, M, 3)
-    #     cell_pos = cell_pos + 0.05 * cell_dists[:, :, None] * noise # (N, M, 3)
-    #     cell_pos = cell_pos.reshape(-1, 3) # (N*M, 3)
-
-    #     cell_density = self.fct_density(
-    #         x=cell_pos,
-    #     ) # (N*M,)
-    #     alpha = - np.log(threshold_occ)
-    #     thrshold_nerf = min(0.01 * MAX_SAMPLES / 3**0.5, torch.mean(cell_density))
-    #     probs_emp = torch.exp(- alpha * cell_density / thrshold_nerf) # (N*M,)
-    #     # probs_emp = self.nerf_correct_prob * probs_emp + (1 - self.nerf_correct_prob) * 0.5 # (N*M,)
-    #     probs_emp = torch.clamp(probs_emp, 0.4, 0.6) # (N*M,)
-    #     probs_occ = 1 - probs_emp # (N*M,)
-
-    #     # calculate cell indices   
-    #     cell_idxs = self._c2idx(
-    #         pos=cell_pos,
-    #     ) # (N*M, 3)
-
-    #     # update grid
-    #     self._updateGrid(
-    #         cell_idxs=cell_idxs,
-    #         probs_occ=probs_occ,
-    #         probs_emp=probs_emp,
-    #     )
-
-    # @torch.no_grad()
-    # def rayUpdate(
-    #     self,
-    #     rays_o:torch.Tensor,
-    #     rays_d:torch.Tensor,
-    #     meas:torch.Tensor,
-    # ):
-    #     """
-    #     Update grid with ray measurement.
-    #     Args:
-    #         rays_o: rays origins; tensor (N, 3)
-    #         rays_d: rays directions; tensor (N, 3)
-    #         meas: measured distance in cube coordinates; tensor (N, 1)
-    #     """
-    #     # calculate probabilities for each cell
-    #     cell_idxs, probs_occ, probs_emp = self._rayProb(
-    #         rays_o=rays_o,
-    #         rays_d=rays_d,
-    #         meas=meas,
-    #     ) # (N*M, 3), (N*M,), (N*M,)
-
-    #     # update grid
-    #     self._updateGrid(
-    #         cell_idxs=cell_idxs,
-    #         probs_occ=probs_occ,
-    #         probs_emp=probs_emp,
-    #     )
-
-    # @torch.no_grad()
-    # def _rayProb(
-    #     self,
-    #     rays_o:torch.Tensor,
-    #     rays_d:torch.Tensor,
-    #     meas:torch.Tensor,
-    # ):
-    #     """
-    #     Update grid with ray measurement.
-    #     Args:
-    #         rays_o: rays origins; tensor (N, 3)
-    #         rays_d: rays directions; tensor (N, 3)
-    #         meas: measured distance in cube coordinates; tensor (N,)
-    #     Returns:
-    #         cell_idxs: indices of cells to update; tensor (N*M, 3)
-    #         probs_occ: probabilities of measurements given cell is occupied; tensor (N*M,)
-    #         probs_emp: probabilities of measurements given cell is empty; tensor (N*M,)
-    #     """
-    #     # calculate cell distances
-    #     stds = self._calcStd(
-    #         dists=meas,
-    #     ) # (N,)
-    #     steps = torch.linspace(0, 1, self.M, device=self.args.device, dtype=torch.float32) # (M,)
-    #     cell_dists = steps[None,:] * (meas + 5*stds)[:,None] # (N, M)
-        
-
-    #     # calculate cell probabilities
-    #     probs_occ, probs_emp = self._rayMeasProb(
-    #         meas=meas, 
-    #         dists=cell_dists,
-    #     )  # (N, M), (N, M)
-    #     probs_occ = probs_occ.reshape(-1) # (N*M,)
-    #     probs_emp = probs_emp.reshape(-1) # (N*M,)
-
-    #     # calculate cell indices
-    #     rays_d = rays_d / torch.norm(rays_d, dim=1, keepdim=True) # normalize rays
-    #     cell_pos = rays_o[:, None, :] + rays_d[:, None, :] * cell_dists[:, :, None]  # (N, M, 3)
-    #     cell_idxs = self._c2idx(
-    #         pos=cell_pos.reshape(-1, 3),
-    #     ) # (N*M, 3)
-
-    #     return cell_idxs, probs_occ, probs_emp
+        return cell_idxs, probs_occ, probs_emp
     
     @torch.no_grad()
     def _updateGrid(
