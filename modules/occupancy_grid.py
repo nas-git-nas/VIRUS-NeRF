@@ -88,8 +88,7 @@ class OccupancyGrid(Grid):
 
         self.threshold = 0.5
 
-        print(f"std_min: {self.std_min}, std_every_m: {self.std_every_m}, attenuation_every_m: {self.attenuation_every_m}, false_detection_prob_every_m: {self.false_detection_prob_every_m}")
-
+ 
     @torch.no_grad()
     def update(
         self,
@@ -208,121 +207,6 @@ class OccupancyGrid(Grid):
             "depth_meas": depth_meas[valid_depth],
         }   
 
-
-    # @torch.no_grad()
-    # def update(
-    #     self,
-    #     threshold:float,
-    # ):
-    #     """
-    #     Update grid with image.
-    #     Args:
-    #         threshold: threshold for occupancy grid; float
-    #     Returns:
-    #         grid: occupancy grid; tensor (grid_size, grid_size, grid_size)
-    #     """
-    #     self.update_step += 1
-
-    #     ray_update, nerf_update = self._sample()
-
-    #     # print(f"OccGrid: num ray updates: {ray_update['rays_o'].shape[0]}, num nerf updates: {nerf_update['rays_o'].shape[0]}")
-
-    #     self._rayUpdate(
-    #         rays_o=ray_update["rays_o"],
-    #         rays_d=ray_update["rays_d"],
-    #         meas=ray_update["depth_meas"],
-    #     )
-    #     self._nerfUpdate(
-    #         rays_o=nerf_update["rays_o"],
-    #         rays_d=nerf_update["rays_d"],
-    #         meas=nerf_update["depth_meas"],
-    #         threshold_occ=threshold,
-    #     )
-
-    #     # if self.update_step > 3:
-    #     #     print("update all cells")
-    #     #     self.nerfUpdateAllCells(
-    #     #         threshold_occ=threshold,
-    #     #     )
-
-    #     if self.update_step <= self.decay_warmup:
-    #         self.occ_3d_grid *= self.grid_decay
-
-        
-    #     self.threshold = threshold
-    #     self.updateBitfield(
-    #         grid=self.occ_3d_grid,
-    #         threshold=threshold,
-    #         convert_cart2morton=True,
-    #     )
-
-    # @torch.no_grad()
-    # def _sample(
-    #     self,
-    # ):
-    #     """
-    #     Sample data, choose sensor for depth measurement and choose updating technique.
-    #     Returns:
-    #         ray_update: data for ray update; dict
-    #         nerf_update: data for nerf update; dict
-    #     """
-    #     # get data and calculate rays
-    #     B = self.args.occ_grid.batch_size
-    #     data = self.dataset(
-    #         batch_size=B,
-    #         sampling_strategy=self.args.occ_grid.sampling_strategy,
-    #         origin="occ"
-    #     )
-
-    #     # choose from which sensor to use the data
-    #     if "RGBD" in data['depth']:
-    #         depth_meas = data['depth']["RGBD"]
-    #     elif "USS" in data['depth'] and "ToF" in data['depth']:
-    #         # depth_meas = torch.cat((data['depth']["USS"][:int(B/2)], data['depth']["ToF"][int(B/2):]), dim=0)
-    #         valid_depth_tof = ~torch.isnan(data['depth']["ToF"])
-    #         depth_meas = data['depth']["ToF"]
-    #         depth_meas[~valid_depth_tof] = data['depth']["USS"][~valid_depth_tof]
-    #     elif "USS" in data['depth']:
-    #         depth_meas = data['depth']["USS"]
-    #     elif "ToF" in data['depth']:
-    #         depth_meas = data['depth']["ToF"]
-    #     else:
-    #         self.args.logger.error("OccupancyGrid.update: no depth sensor found")
-
-    #     rays_o, rays_d = get_rays(
-    #         directions=data['direction'], 
-    #         c2w=data['pose']
-    #     )           
-    #     self.height_c = torch.mean(rays_o[:, 2]) # TODO: remove
-
-    #     # choose which updating technique is used: ray update or nerf update
-    #     # ray_update_probs = torch.exp(- (data['sample_count'].to(dtype=torch.float32) - 0.3))
-    #     # if torch.any(ray_update_probs > 1.0) or torch.any(ray_update_probs < 0.0):
-    #     #     print("ERROR: OccupancyGrid.update: ray_update_probs out of range")
-    #     #     torch.clamp(ray_update_probs, 0.0, 1.0)
-    #     # ray_update_true = torch.bernoulli(ray_update_probs).to(dtype=torch.bool)
-
-    #     ray_update_true = valid_depth_tof
-
-    #     # remove nan values
-    #     depth_meas_val = ~torch.isnan(depth_meas)
-    #     rays_o = rays_o[depth_meas_val]
-    #     rays_d = rays_d[depth_meas_val]
-    #     depth_meas = depth_meas[depth_meas_val]
-    #     ray_update_true = ray_update_true[depth_meas_val]
-
-    #     ray_update = {
-    #         "rays_o": rays_o[ray_update_true],
-    #         "rays_d": rays_d[ray_update_true],
-    #         "depth_meas": depth_meas[ray_update_true],
-    #     }
-    #     nerf_update = {
-    #         "rays_o": rays_o[~ray_update_true],
-    #         "rays_d": rays_d[~ray_update_true],
-    #         "depth_meas": depth_meas[~ray_update_true],
-    #     }
-    #     return ray_update, nerf_update
-
     @torch.no_grad()
     def _rayUpdate(
         self,
@@ -401,7 +285,7 @@ class OccupancyGrid(Grid):
         self,
         rays_o:torch.Tensor,
         rays_d:torch.Tensor,
-        meas:torch.Tensor,
+        meas:torch.Tensor, # TODO: remove this
         add_noise:bool,
     ):
         """
@@ -516,13 +400,28 @@ class OccupancyGrid(Grid):
         ) # (N*M,)
 
         # convert density to probability
-        alpha = - np.log(threshold_occ)
-        thrshold_nerf = min(self.nerf_threshold_max, torch.mean(cell_density))
-        probs_emp = torch.exp(- alpha * cell_density / thrshold_nerf) # (N*M,)
-        # probs_emp = self.nerf_correct_prob * probs_emp + (1 - self.nerf_correct_prob) * 0.5 # (N*M,)
-        probs_emp = torch.clamp(probs_emp, 1-self.nerf_prob_max, self.nerf_prob_max) # (N*M,)
-        probs_occ = 1 - probs_emp # (N*M,)
+        # alpha = - np.log(threshold_occ)
+        # threshold_nerf = min(self.nerf_threshold_max, torch.mean(cell_density))
+        # probs_emp = torch.exp(- alpha * cell_density / threshold_nerf) # (N*M,)
+        # # probs_emp = self.nerf_correct_prob * probs_emp + (1 - self.nerf_correct_prob) * 0.5 # (N*M,)
+        # probs_emp = torch.clamp(probs_emp, 1-self.nerf_prob_max, self.nerf_prob_max) # (N*M,)
+        # probs_occ = 1 - probs_emp # (N*M,)
 
+        # convert density to probability
+        threshold_nerf = min(self.nerf_threshold_max, torch.mean(cell_density))
+        # delta = torch.max(
+        #     torch.abs(torch.max(cell_density) - threshold_nerf),
+        #     torch.abs(torch.min(cell_density) - threshold_nerf),
+        # )
+        probs_occ = 0.5 * torch.ones_like(cell_density, device=self.args.device, dtype=torch.float32) # (N*M,)
+        probs_occ += (cell_density - threshold_nerf) / (2 * self.nerf_threshold_max) # (N*M,)
+        probs_occ = torch.clamp(probs_occ, 0, 1) # (N*M,)
+        probs_emp = 1 - probs_occ # (N*M,)
+
+        print(f"_nerfProb: threshold_nerf={threshold_nerf:.3f}; probs occ mean={torch.mean(probs_occ):.3f}," \
+              f"min={torch.min(probs_occ):.3f}, max={torch.max(probs_occ):.3f}, mean_above={torch.min(probs_occ[probs_occ>0.5]):.3f}," \
+              f"mean_below={torch.max(probs_occ[probs_occ<0.5]):.3f}")
+        
         return probs_occ, probs_emp
     
     @torch.no_grad()
@@ -611,7 +510,6 @@ class OccupancyGrid(Grid):
         """
         attenuation = self.attenuation_min * (1 - self.attenuation_every_m * dists)
         return torch.clamp(attenuation, 0, 1)
-        # return self.attenuation_min * (1 - torch.minimum(torch.ones_like(dists, device=self.args.device, dtype=torch.float32), self.attenuation_every_m*dists))
 
     @torch.no_grad()
     def _c2idx(
