@@ -8,6 +8,7 @@ from datasets.dataset_base import DatasetBase
 from datasets.ray_utils import get_rays
 from modules.grid import Grid
 from modules.rendering import MAX_SAMPLES, render
+from helpers.geometric_fcts import distToCubeBorder
 
 from kornia.utils.grid import create_meshgrid3d
 
@@ -85,6 +86,8 @@ class OccupancyGrid(Grid):
         self.update_step = 0
 
         self.threshold = 0.5
+
+        print(f"std_min: {self.std_min}, std_every_m: {self.std_every_m}, attenuation_every_m: {self.attenuation_every_m}, false_detection_prob_every_m: {self.false_detection_prob_every_m}")
 
     @torch.no_grad()
     def update(
@@ -496,19 +499,25 @@ class OccupancyGrid(Grid):
         # steps = torch.linspace(0, 1.5, self.M, device=self.args.device, dtype=torch.float32) # (M,)
         # cell_dists = steps[None,:] * meas[:,None] # (N, M)
 
-        # calculate cell distances
-        stds = self._calcStd(
-            dists=meas,
+        # # calculate cell distances
+        # stds = self._calcStd(
+        #     dists=meas,
+        # ) # (N,)
+        # steps = torch.linspace(0, 1, self.M, device=self.args.device, dtype=torch.float32) # (M,)
+        # cell_dists = steps[None,:] * (meas + 5*stds)[:,None] # (N, M)
+
+        rays_d = rays_d / torch.norm(rays_d, dim=1, keepdim=True) # normalize rays
+        dists_to_border = distToCubeBorder(
+            rays_o=rays_o,
+            rays_d=rays_d,
+            cube_max=self.args.model.scale,
+            cube_min=-self.args.model.scale,
         ) # (N,)
         steps = torch.linspace(0, 1, self.M, device=self.args.device, dtype=torch.float32) # (M,)
-        cell_dists = steps[None,:] * (meas + 5*stds)[:,None] # (N, M)
-
-
-        if not torch.allclose(1.5*meas, meas+5*stds):
-            print(f"ERROR: OccupancyGrid._calcPos: cell_dists are not equal")
+        cell_dists = steps[None,:] * dists_to_border[:,None] # (N, M)
 
         # calculate cell positions      
-        rays_d = rays_d / torch.norm(rays_d, dim=1, keepdim=True) # normalize rays
+        # rays_d = rays_d / torch.norm(rays_d, dim=1, keepdim=True) # normalize rays
         cell_pos = rays_o[:, None, :] + rays_d[:, None, :] * cell_dists[:, :, None]  # (N, M, 3)
 
         # add random noise

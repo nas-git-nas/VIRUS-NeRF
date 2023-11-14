@@ -130,3 +130,25 @@ def createScanPos(
         pos_avg[:,i,2] = h
 
     return pos_avg.reshape(-1, 3) # (L*L*A, 3)
+
+def distToCubeBorder(
+    rays_o:torch.Tensor,
+    rays_d:torch.Tensor,
+    cube_min:float,
+    cube_max:float,
+):
+    """
+    Calculate distance from ray origins to cube borders.
+    Cube is considered to be of equal length in all dimensions.
+    Args:
+        rays_o: ray origins; tensor of shape (N, 3)
+        rays_d: ray directions; tensor of shape (N, 3)
+        cube_min: minimum cube coordinate; float
+        cube_max: maximum cube coordinate; float
+    Returns:
+        dists: distance from ray origins to cube borders; tensor of shape (N,)
+    """
+    dists = torch.inf * torch.ones(rays_o.shape, device=rays_o.device, dtype=torch.float32) # (N, 3)
+    dists[rays_d > 0] = (cube_max - rays_o)[rays_d > 0] / rays_d[rays_d > 0]
+    dists[rays_d < 0] = (cube_min - rays_o)[rays_d < 0] / rays_d[rays_d < 0]
+    return torch.min(dists, dim=1)[0] # (N,)
