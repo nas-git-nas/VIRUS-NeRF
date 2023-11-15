@@ -419,12 +419,20 @@ class OccupancyGrid(Grid):
         # probs_occ = torch.clamp(probs_occ, 0, 1) # (N*M,)
         # probs_emp = 1 - probs_occ # (N*M,)
 
+        # # convert density to probability
+        # threshold_nerf = min(self.nerf_threshold_max, torch.mean(cell_density).item())
+        # h_thr = - np.log(threshold_nerf + 1) / np.log(0.5)
+        # h = torch.log(cell_density + 1)
+        # probs_emp = torch.exp(- h / h_thr)
+        # probs_occ = 1 - probs_emp
+
         # convert density to probability
         threshold_nerf = min(self.nerf_threshold_max, torch.mean(cell_density).item())
-        h_thr = - np.log(threshold_nerf + 1) / np.log(0.5)
-        h = torch.log(cell_density + 1)
-        probs_emp = torch.exp(- h / h_thr)
-        probs_occ = 1 - probs_emp
+        h_thr = - np.log(threshold_nerf)
+        h = torch.log(cell_density)
+        probs_occ = 1 / (1 + torch.exp(- (h - h_thr) / 100))
+        probs_emp = 1 - probs_occ
+
 
         # TODO: try log scale, sigmoid
 
