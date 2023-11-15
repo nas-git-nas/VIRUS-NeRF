@@ -392,7 +392,7 @@ class OccupancyGrid(Grid):
     def _nerfProb(
         self,
         cell_pos:torch.Tensor,
-        threshold_occ:float,
+        threshold_occ:float, # TODO: remove this
     ):
         # interfere NeRF
         cell_density = self.fct_density(
@@ -407,22 +407,30 @@ class OccupancyGrid(Grid):
         # probs_emp = torch.clamp(probs_emp, 1-self.nerf_prob_max, self.nerf_prob_max) # (N*M,)
         # probs_occ = 1 - probs_emp # (N*M,)
 
-        # convert density to probability
-        threshold_nerf = min(self.nerf_threshold_max, torch.mean(cell_density))
-        delta = max(
-            abs(torch.max(cell_density).item() - threshold_nerf),
-            abs(torch.min(cell_density).item() - threshold_nerf),
-        )
-        delta = min(delta, 10000 * self.nerf_threshold_max) # avoid delta to be infinity
+        # # convert density to probability
+        # threshold_nerf = min(self.nerf_threshold_max, torch.mean(cell_density))
+        # delta = max(
+        #     abs(torch.max(cell_density).item() - threshold_nerf),
+        #     abs(torch.min(cell_density).item() - threshold_nerf),
+        # )
+        # delta = min(delta, 100 * self.nerf_threshold_max) # avoid delta to be infinity
+        # probs_occ = 0.5 * torch.ones_like(cell_density, device=self.args.device, dtype=torch.float32) # (N*M,)
+        # probs_occ += (cell_density - threshold_nerf) / (2 * delta) # (N*M,)
+        # probs_occ = torch.clamp(probs_occ, 0, 1) # (N*M,)
+        # probs_emp = 1 - probs_occ # (N*M,)
 
-        probs_occ = 0.5 * torch.ones_like(cell_density, device=self.args.device, dtype=torch.float32) # (N*M,)
-        probs_occ += (cell_density - threshold_nerf) / (2 * delta) # (N*M,)
-        probs_occ = torch.clamp(probs_occ, 0, 1) # (N*M,)
-        probs_emp = 1 - probs_occ # (N*M,)
+        # convert density to probability
+        threshold_nerf = min(self.nerf_threshold_max, torch.mean(cell_density).item())
+        h_thr = - np.log(threshold_nerf + 1) / np.log(0.5)
+        h = torch.log(cell_density + 1)
+        probs_emp = torch.exp(- h / h_thr)
+        probs_occ = 1 - probs_emp
+
+        # TODO: try log scale, sigmoid
 
         print(f"_nerfProb: threshold_nerf={threshold_nerf:.3f}; probs occ mean={torch.mean(probs_occ):.3f}," \
-              f"min={torch.min(probs_occ):.3f}, max={torch.max(probs_occ):.3f}, mean_above={torch.mean(probs_occ[probs_occ>0.5]):.3f}," \
-              f"mean_below={torch.mean(probs_occ[probs_occ<0.5]):.3f}")
+              f"min={torch.min(probs_occ):.3f}, max={torch.max(probs_occ):.3f}, " \
+              f"mean_above={torch.mean(probs_occ[probs_occ>0.5]):.3f}, mean_below={torch.mean(probs_occ[probs_occ<0.5]):.3f}")
         
         return probs_occ, probs_emp
     
