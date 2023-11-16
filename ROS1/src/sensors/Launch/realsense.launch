@@ -1,0 +1,31 @@
+<launch>
+
+    <include 
+        file="$(find sensors)/Launch/realsense_start.launch">
+    </include>
+
+    <group ns="/camera1/depth">
+        <param 
+            name="topic" 
+            type="str" 
+            value="/camera/depth/image_rect_raw" />
+        <param 
+            name="path" 
+            type="str" 
+            value="/home/spadmin/catkin_ws_ngp/data/camera1/depth" />
+        <param 
+            name="print_elapse_time" 
+            type="bool" 
+            value="False" />
+        <param 
+            name="publish_pointcloud" 
+            type="bool" 
+            value="True" />
+        <node 
+            pkg="sensors" 
+            type="log_realsense.py" 
+            name="log_realsense" 
+            output="screen" />
+    </group>
+
+</launch>
