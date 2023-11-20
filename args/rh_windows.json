@@ -14,6 +14,7 @@
         "ckpt_path": false, 
         "scale": 0.5,
         "encoder_type": "hash",
+        "hash_max_res": 1024,
         "debug_mode": true
     },
     "training":
@@ -22,7 +23,7 @@
         "batch_size": 8192,
         "sampling_strategy": {"imgs": "all", "rays": "closest"},
         "sensors": ["USS", "ToF"],
-        "max_steps": 6,
+        "max_steps": 2,
         "lr": 1e-2,
         "depth_loss_w": 100.0,
         "random_bg": false
@@ -32,22 +33,28 @@
         "batch_size": 16384,
         "res_map": 256,
         "res_angular": 256,
-        "eval_every_n_steps": 2,
-        "num_color_pts": 2,
+        "eval_every_n_steps": 1,
+        "num_color_pts": 0,
         "num_depth_pts": 4,
         "num_plot_pts": 3,
-        "num_avg_heights": 3,
+        "num_avg_heights": 2,
         "height_tolerance": 0.005,
         "density_map_thr": 10
     },
     "occ_grid":
     {
         "grid_type": "occ",
-        "batch_size": 64,
-        "sampling_strategy": {"imgs": "all", "rays": "uss_tof"},
         "warmup_steps": 256,
+        "batch_size": 64,
+        "sampling_strategy": {"imgs": "all", "rays": "uss_tof"},  
         "update_interval": 2,
-        "max_res": 1024
+        "decay_warmup_steps": 10,
+        "batch_ratio_ray_update": 0.5,
+        "false_detection_prob_every_m": 0.3,
+        "std_every_m": 0.2,
+        "nerf_threshold_max": 5.91,
+        "nerf_threshold_slope": 0.01
+
     },
     "robot_at_home":
     {
@@ -68,7 +75,8 @@
     "ToF":
     {
         "angle_of_view": [42.4, 42.4],
-        "matrix": [8, 8]
+        "matrix": [8, 8],
+        "sensor_calibration_error": 3.0
     }
     
 }

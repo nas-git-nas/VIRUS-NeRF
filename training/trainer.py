@@ -344,6 +344,12 @@ class Trainer(TrainerPlot):
         W, H = self.test_dataset.img_wh
         N = img_idxs.shape[0]
 
+        if N == 0:
+            return {
+                'psnr': -1.0,
+                'ssim': -1.0,
+            }
+
         # repeat image indices and pixel indices
         img_idxs = img_idxs.repeat(W*H) # (N*W*H,)
         pix_idxs = np.tile(np.arange(W*H), N) # (N*W*H,)

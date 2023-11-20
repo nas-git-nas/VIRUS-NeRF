@@ -249,6 +249,9 @@ class Metrics():
             self.args.logger.error(f"rgb.shape[0] = {rgb.shape[0]} must be divisible by W*H = {W*H}")
         num_imgs = rgb.shape[0] // (W*H)
 
+        if num_imgs == 0:
+            return 0.0
+
         test_psnrs = []
         for i in range(num_imgs):
             rgb_img = rearrange(rgb[i*H*W:(i+1)*W*H], '(h w) c -> 1 c h w', h=H) # TODO: optimize
@@ -277,6 +280,9 @@ class Metrics():
         if rgb.shape[0] % (W*H) != 0:
             self.args.logger.error(f"rgb.shape[0] = {rgb.shape[0]} must be divisible by W*H = {W*H}")
         num_imgs = rgb.shape[0] // (W*H)
+
+        if num_imgs == 0:
+            return 0.0
 
         test_ssims = []
         for i in range(num_imgs):

@@ -62,7 +62,7 @@ class TrainerBase():
         model_config = {
             'scale': self.args.model.scale,
             'pos_encoder_type': self.args.model.encoder_type,
-            'max_res': self.args.occ_grid.max_res, 
+            'max_res': self.args.model.hash_max_res, 
             'half_opt': False, # TODO: args
             'scene': self.train_dataset.scene,
             'args': self.args,

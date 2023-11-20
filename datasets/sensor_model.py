@@ -114,8 +114,31 @@ class ToFModel(SensorModel):
         """
         depths = np.copy(depths) # (N, H*W)
 
+        mask = self.mask
+        if self.args.tof.sensor_calibration_error != 0.0:
+            # determine error in degrees
+            direction = 2 * np.pi * np.random.rand(1)
+            error = self.args.tof.sensor_calibration_error * np.array([np.cos(direction), np.sin(direction)]).flatten()
+
+            # convert error to pixels
+            error[0] = self.W * error[0] / self.args.rgbd.angle_of_view[0]
+            error[1] = self.H * error[1] / self.args.rgbd.angle_of_view[1]
+            error = np.round(error).astype(int)
+
+            # convert error to mask indices
+            mask = mask.reshape(self.H, self.W)
+            idxs = np.argwhere(mask)
+            idxs[:,0] = np.clip(idxs[:,0] + error[0], 0, self.H-1)
+            idxs[:,1] = np.clip(idxs[:,1] + error[1], 0, self.W-1)
+
+            # apply error to mask
+            mask = np.zeros((self.H, self.W), dtype=bool)
+            mask[idxs[:,0], idxs[:,1]] = True
+            mask = mask.flatten() # (H*W,)
+
+
         depths_out = np.full_like(depths, np.nan) # (N, H*W)
-        depths_out[:, self.mask] = depths[:,self.mask]  
+        depths_out[:, mask] = depths[:,mask]  
 
         return depths_out
 

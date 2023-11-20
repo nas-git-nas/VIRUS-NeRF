@@ -43,52 +43,33 @@ class OccupancyGrid(Grid):
             morton_structure=False,
         )
 
+        self.update_step = 0 # update counter
 
+        # initialize occupancy grid
         occ_threshold = 0.5
-        max_init_val = 0.51     
-
+        occ_init_max = 0.51     
         grid = torch.rand(size=(self.grid_size**3,), device=self.args.device, dtype=torch.float32)
-        grid = occ_threshold + (max_init_val-occ_threshold) * grid
+        grid = occ_threshold + (occ_init_max-occ_threshold) * grid
         self.occ_3d_grid = grid.reshape(self.grid_size, self.grid_size, self.grid_size)
-
-        # self.occ_3d_grid = 0.505 * torch.ones(grid_size, grid_size, grid_size, device=args.device, dtype=torch.float32)
-
-        self.cell_size = 2*self.args.model.scale / grid_size
-
+        
+        # fixed parameters
         self.I = 32 # number of samples for integral
         self.M = 32 # number of samples for ray measurement
-
-        
-        self.decay_warmup = 10
-        self.false_detection_prob_every_m = 0.3 # probability of false detection every meter
-        # max_sensor_range = 25.0 # in meters
-        # self.std_min = 0.1 # minimum standard deviation of sensor model
-        # self.std_every_m = 1.0 # standard deviation added every m
-        self.std_every_m = 0.2 # standard deviation added every m
-        # self.attenuation_min = 1.0 # minimum attenuation of sensor model
-
-        # self.pos_noise_every_m = 0.025 # noise added every m
-        # self.nerf_prob_max = 0.6 # maximum probability of nerf interference
-        self.nerf_threshold_max = 0.01 * MAX_SAMPLES / 3**0.5
-        self.nerf_threshold_slope = 0.01
-        self.ray_update_batch_ratio = 0.5
-
-        
-
-        
         self.prob_min = 0.03 # minimum probability of false detection
-        # self.attenuation_every_m = 1 / max_sensor_range # attenuation added every m
-        grid_decay = (0.5/0.51)**(1/self.decay_warmup) # decay of grid probabilities
+
+        # variable parameters
+        grid_decay = (occ_threshold/occ_init_max)**(1/self.args.occ_grid.decay_warmup_steps) # decay of grid probabilities
         self.grid_decay = ((grid_decay*1000) // 1) / 1000 # floor to 3 decimals
+        self.cell_size = 2*self.args.model.scale / grid_size
 
-        if scene is not None:
-            self.false_detection_prob_every_m = self.false_detection_prob_every_m / scene.w2c(pos=1, only_scale=True, copy=False)
-            # self.std_min = scene.w2c(pos=self.std_min, only_scale=True, copy=False)
-            # self.std_every_m = self.std_every_m / scene.w2c(pos=1, only_scale=True, copy=False)
-            self.std_every_m = scene.w2c(pos=self.std_every_m, only_scale=True, copy=False)
-            # self.attenuation_every_m = self.attenuation_every_m / scene.w2c(pos=1, only_scale=True, copy=False)
+        if scene is not None: # TODO: remove this
+            self.false_detection_prob_every_m = self.args.occ_grid.false_detection_prob_every_m / scene.w2c(pos=1, only_scale=True, copy=False)
+            self.std_every_m = scene.w2c(pos=self.args.occ_grid.std_every_m, only_scale=True, copy=False)
+        else:
+            self.false_detection_prob_every_m = self.args.occ_grid.false_detection_prob_every_m
+            self.std_every_m = self.args.occ_grid.std_every_m
 
-        self.update_step = 0
+        
 
  
     @torch.no_grad()
@@ -99,7 +80,7 @@ class OccupancyGrid(Grid):
         """
         Update grid with image.
         Args:
-            threshold: threshold for occupancy grid; float
+            threshold: threshold for occupancy grid; float # TODO: remove this
         Returns:
             grid: occupancy grid; tensor (grid_size, grid_size, grid_size)
         """
@@ -118,12 +99,11 @@ class OccupancyGrid(Grid):
                 rays_o=nerf_update["rays_o"],
                 rays_d=nerf_update["rays_d"],
                 meas=nerf_update["depth_meas"],
-                threshold_occ=threshold,
             )
 
         # warmup decay
         self.update_step += 1
-        if self.update_step <= self.decay_warmup:
+        if self.update_step <= self.args.occ_grid.decay_warmup_steps:
             self.occ_3d_grid *= self.grid_decay
         
         # update binary bitfield
@@ -145,7 +125,7 @@ class OccupancyGrid(Grid):
             nerf_update: data for nerf update; dict
         """
         B = self.args.occ_grid.batch_size
-        B_ray = int(B * self.ray_update_batch_ratio)
+        B_ray = int(B * self.args.occ_grid.batch_ratio_ray_update)
         B_nerf = B - B_ray  
         
         # sample data for ray and nerf updates 
@@ -252,7 +232,6 @@ class OccupancyGrid(Grid):
         rays_o:torch.Tensor,
         rays_d:torch.Tensor,
         meas:torch.Tensor,
-        threshold_occ:float,
     ):
         """
         Update grid by interfering nerf.
@@ -260,7 +239,6 @@ class OccupancyGrid(Grid):
             rays_o: rays origins; tensor (N, 3)
             rays_d: rays directions; tensor (N, 3)
             meas: measured distance in cube coordinates; tensor (N,)
-            threshold_occ: threshold for occupancy grid; float
         """
         # calculate cell positions and indices
         _, cell_pos, cell_idxs = self._calcPos(
@@ -272,7 +250,6 @@ class OccupancyGrid(Grid):
 
         probs_occ, probs_emp = self._nerfProb(
             cell_pos=cell_pos,
-            threshold_occ=threshold_occ,
         )
 
         # update grid
@@ -394,7 +371,6 @@ class OccupancyGrid(Grid):
     def _nerfProb(
         self,
         cell_pos:torch.Tensor,
-        threshold_occ:float, # TODO: remove this
     ):
         # interfere NeRF
         cell_density = self.fct_density(
@@ -402,10 +378,10 @@ class OccupancyGrid(Grid):
         ) # (N*M,)
 
         # convert density to probability
-        threshold_nerf = min(self.nerf_threshold_max, torch.mean(cell_density).item())
+        threshold_nerf = min(self.args.occ_grid.nerf_threshold_max, torch.mean(cell_density).item())
         h_thr = - np.log(threshold_nerf)
         h = torch.log(cell_density)
-        probs_occ = 1 / (1 + torch.exp(- self.nerf_threshold_slope * (h - h_thr)))
+        probs_occ = 1 / (1 + torch.exp(- self.args.occ_grid.nerf_threshold_slope * (h - h_thr))) # TODO: optimize
         probs_emp = 1 - probs_occ
 
         print(f"_nerfProb: threshold_nerf={threshold_nerf:.3f}; probs occ mean={torch.mean(probs_occ):.3f}," \
@@ -428,6 +404,10 @@ class OccupancyGrid(Grid):
             probs_occ: probabilities of measurements given cell is occupied; tensor (N*M,)
             probs_emp: probabilities of measurements given cell is empty; tensor (N*M,)
         """
+        if self.args.model.debug_mode:
+            if torch.any(torch.isnan(probs_occ)) or torch.any(torch.isnan(probs_emp)):
+                self.args.logger.warning("NaN values in probabilities")
+
         probs = self.occ_3d_grid[cell_idxs[:, 0], cell_idxs[:, 1], cell_idxs[:, 2]] # (N*M,)
         probs = (probs * probs_occ) / (probs * probs_occ + (1 - probs) * probs_emp) # (N*M,)
         self.occ_3d_grid[cell_idxs[:, 0], cell_idxs[:, 1], cell_idxs[:, 2]] = probs
@@ -464,46 +444,8 @@ class OccupancyGrid(Grid):
         Returns:
             probs: probabilities of measurements given cell is occupied; tensor (same shape as meas)
         """
-        stds = self.std_every_m * dists
+        stds = self.std_every_m * dists + 0.00001 # avoid division by zero
         return torch.exp(-0.5 * (meas - dists)**2 / stds**2)
-    
-    #     attenuations = self._calcAttenuation(
-    #         dists=dists,
-    #     )
-    #     stds = self._calcStd(
-    #         dists=dists,
-    #     )
-    #     return attenuations * torch.exp(-0.5 * (meas - dists)**2 / stds**2)
-    
-    # @torch.no_grad()
-    # def _calcStd(
-    #     self,
-    #     dists:torch.Tensor,
-    # ):
-    #     """
-    #     Calculate standard deviation of sensor model.
-    #     Args:
-    #         dists: distances to evaluate; tensor (any shape)
-    #     Returns:
-    #         stds: standard deviation of sensor model; tensor (same shape as dists)
-    #     """
-    #     # return self.std_min * ( 1 + self.std_every_m*dists)
-    #     return self.std_every_m * dists
-    
-    # @torch.no_grad()
-    # def _calcAttenuation(
-    #     self,
-    #     dists:torch.Tensor,
-    # ):
-    #     """
-    #     Calculate attenuation of sensor model.
-    #     Args:
-    #         dists: distances to evaluate; tensor (any shape)
-    #     Returns:
-    #         attenuations: attenuation of sensor model; tensor (same shape as dists)
-    #     """
-    #     attenuation = self.attenuation_min * (1 - self.attenuation_every_m * dists)
-        # return torch.clamp(attenuation, 0, 1)
 
     @torch.no_grad()
     def _c2idx(
@@ -616,6 +558,61 @@ class OccupancyGrid(Grid):
     #     # h = torch.log(cell_density + 1)
     #     # probs_emp = torch.exp(- h / h_thr)
     #     # probs_occ = 1 - probs_emp
+
+
+    #     @torch.no_grad()
+    # def _sensorOccupiedPDF(
+    #     self,
+    #     meas:torch.Tensor,
+    #     dists:torch.Tensor,
+    # ):
+    #     """
+    #     Calculate occupied probability density function of sensor model:
+    #     Probabilty that measurement equals to distance given
+    #     that the cell is occupied: P[meas=dist | cell=occ].
+    #     Args:
+    #         meas: measured distance in cube coordinates; tensor (any shape)
+    #         dists: distances to evaluate; tensor (same shape as meas)
+    #     Returns:
+    #         probs: probabilities of measurements given cell is occupied; tensor (same shape as meas)
+    #     """
+    #     attenuations = self._calcAttenuation(
+    #         dists=dists,
+    #     )
+    #     stds = self._calcStd(
+    #         dists=dists,
+    #     )
+    #     return attenuations * torch.exp(-0.5 * (meas - dists)**2 / stds**2)
+    
+    # @torch.no_grad()
+    # def _calcStd(
+    #     self,
+    #     dists:torch.Tensor,
+    # ):
+    #     """
+    #     Calculate standard deviation of sensor model.
+    #     Args:
+    #         dists: distances to evaluate; tensor (any shape)
+    #     Returns:
+    #         stds: standard deviation of sensor model; tensor (same shape as dists)
+    #     """
+    #     # return self.std_min * ( 1 + self.std_every_m*dists)
+    #     return self.std_every_m * dists
+    
+    # @torch.no_grad()
+    # def _calcAttenuation(
+    #     self,
+    #     dists:torch.Tensor,
+    # ):
+    #     """
+    #     Calculate attenuation of sensor model.
+    #     Args:
+    #         dists: distances to evaluate; tensor (any shape)
+    #     Returns:
+    #         attenuations: attenuation of sensor model; tensor (same shape as dists)
+    #     """
+    #     attenuation = self.attenuation_min * (1 - self.attenuation_every_m * dists)
+        # return torch.clamp(attenuation, 0, 1)
 
 
 

@@ -318,23 +318,31 @@ class TrainerPlot(TrainerBase):
 
             idx1 = dataConverged(
                 arr=np.array(logs['mnn'])[not_nan],
-                threshold=1.25 * metrics_dict['mnn'],
+                threshold=1.5 * metrics_dict['mnn'],
                 data_increasing=False,
             )
             if idx1 != -1:
-                vln1 = ax.axvline(np.array(logs['step'])[not_nan][idx1], linestyle=(0, (1, 5)), c="black", label='converged 25%')
-                metrics_dict['mnn_converged_25'] = np.array(logs['time'])[not_nan][idx1]
+                vln1 = ax.axvline(np.array(logs['step'])[not_nan][idx1], linestyle=(0, (1, 10)), c="black", label='converged 50%')
+                metrics_dict['mnn_converged_50'] = np.array(logs['time'])[not_nan][idx1]
                 # print(f"mnn converged 25% at step {logs['step'][idx1]}, idx1={idx1}, threshold={1.25 * metrics_dict['mnn']}")
 
             idx2 = dataConverged(
                 arr=np.array(logs['mnn'])[not_nan],
-                threshold=1.1 * metrics_dict['mnn'],
+                threshold=1.25 * metrics_dict['mnn'],
                 data_increasing=False,
             )
             if idx2 != -1:
-                vln2 = ax.axvline(np.array(logs['step'])[not_nan][idx2], linestyle=(0, (1, 1)), c="black", label='converged 10%')
-                metrics_dict['mnn_converged_10'] = np.array(logs['time'])[not_nan][idx2]
-                # print(f"mnn converged 10% at step {logs['step'][idx2]}, idx1={idx2}, threshold={1.1 * metrics_dict['mnn']}")
+                vln2 = ax.axvline(np.array(logs['step'])[not_nan][idx2], linestyle=(0, (1, 5)), c="black", label='converged 25%')
+                metrics_dict['mnn_converged_25'] = np.array(logs['time'])[not_nan][idx2]
+
+            idx3 = dataConverged(
+                arr=np.array(logs['mnn'])[not_nan],
+                threshold=1.1 * metrics_dict['mnn'],
+                data_increasing=False,
+            )
+            if idx3 != -1:
+                vln3 = ax.axvline(np.array(logs['step'])[not_nan][idx3], linestyle=(0, (1, 2)), c="black", label='converged 10%')
+                metrics_dict['mnn_converged_10'] = np.array(logs['time'])[not_nan][idx3]
 
             ax2 = ax.twinx()
             color = 'tab:green'
@@ -356,6 +364,8 @@ class TrainerPlot(TrainerBase):
                 lns += [vln1]
             if idx2 != -1:
                 lns += [vln2]
+            if idx3 != -1:
+                lns += [vln3]
             labs = [l.get_label() for l in lns]
             ax.legend(lns, labs)
             ax.set_title('Metrics')
