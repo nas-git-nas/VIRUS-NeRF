@@ -384,9 +384,9 @@ class OccupancyGrid(Grid):
         probs_occ = 1 / (1 + torch.exp(- self.args.occ_grid.nerf_threshold_slope * (h - h_thr))) # TODO: optimize
         probs_emp = 1 - probs_occ
 
-        print(f"_nerfProb: threshold_nerf={threshold_nerf:.3f}; probs occ mean={torch.mean(probs_occ):.3f}," \
-              f"min={torch.min(probs_occ):.3f}, max={torch.max(probs_occ):.3f}, " \
-              f"mean_above={torch.mean(probs_occ[probs_occ>0.5]):.3f}, mean_below={torch.mean(probs_occ[probs_occ<0.5]):.3f}")
+        # print(f"_nerfProb: threshold_nerf={threshold_nerf:.3f}; probs occ mean={torch.mean(probs_occ):.3f}," \
+        #       f"min={torch.min(probs_occ):.3f}, max={torch.max(probs_occ):.3f}, " \
+        #       f"mean_above={torch.mean(probs_occ[probs_occ>0.5]):.3f}, mean_below={torch.mean(probs_occ[probs_occ<0.5]):.3f}")
         
         return probs_occ, probs_emp
     

@@ -53,11 +53,9 @@ class Args():
 
         # random seed
         self.seed = 23
-        random.seed(self.seed)
-        np.random.seed(self.seed)
-        torch.manual_seed(self.seed)
-        torch.cuda.manual_seed(self.seed)
-        torch.backends.cudnn.deterministic=True
+        self.setRandomSeed(
+            seed=self.seed,
+        )
 
         # create saving directory
         self.createSaveDir()
@@ -67,6 +65,22 @@ class Args():
 
         # rendering configuration
         self.exp_step_factor = 1 / 256 if self.model.scale > 0.5 else 0. 
+
+    def setRandomSeed(
+        self,
+        seed:int,
+    ):
+        """
+        Set random seed
+        Args:
+            seed: random seed; int
+        """
+        self.seed = seed
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+        torch.backends.cudnn.deterministic=True
 
     def createSaveDir(
         self,

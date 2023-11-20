@@ -3,6 +3,7 @@ import torch
 import matplotlib.pyplot as plt
 import os
 
+from args.args import Args
 from modules.networks import NGP
 from modules.distortion import distortion_loss
 from modules.rendering import MAX_SAMPLES, render
@@ -14,16 +15,23 @@ from training.metrics_rh import MetricsRH
 from modules.occupancy_grid import OccupancyGrid
 
 from training.trainer_base import TrainerBase
+from datasets.dataset_base import DatasetBase
 
 
 class TrainerPlot(TrainerBase):
     def __init__(
         self, 
-        hparams_file:str,
+        hparams_file=None,
+        args:Args=None,
+        train_dataset:DatasetBase=None,
+        test_dataset:DatasetBase=None,
     ):
         TrainerBase.__init__(
             self,
+            args=args,
             hparams_file=hparams_file,
+            train_dataset=train_dataset,
+            test_dataset=test_dataset,
         )
 
     def _plotOccGrid(

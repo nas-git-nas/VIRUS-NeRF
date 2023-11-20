@@ -1,7 +1,9 @@
 import numpy as np
 
+from args.args import Args
 from training.trainer import Trainer
 from modules.occupancy_grid import OccupancyGrid
+from datasets.dataset_rh import DatasetRH
 
 
 def loopOccgrid(
@@ -41,43 +43,58 @@ def searchOccgrid():
         "update_interval": [8],
         "decay_warmup_steps": [10],
         "batch_ratio_ray_update": [0.5],
-        "false_detection_prob_every_m": [0.2, 0.3, 0.4],
+        "false_detection_prob_every_m": [0.3],
         "std_every_m": [0.1, 0.2, 0.3],
         "nerf_threshold_max": [1, 5.91, 10],
         "nerf_threshold_slope": [0.1, 0.01, 0.001],
     }
-
-    # load trainer
+    seeds = [23, 42, 69]
     hparams_file = "rh_windows.json"
-    trainer = Trainer(
-        hparams_file=hparams_file
+
+    # get hyper-parameters and other variables
+    args = Args(
+        file_name=hparams_file
     )
+
+    # datasets   
+    if args.dataset.name == 'robot_at_home':
+        dataset = DatasetRH    
+    train_dataset = dataset(
+        args = args,
+        split="train",
+    ).to(args.device)
+    test_dataset = dataset(
+        args = args,
+        split='test',
+        scene=train_dataset.scene,
+    ).to(args.device)
     
     # evaluate all parameter combinations
     for i, param in enumerate(loopOccgrid(params)):
         print("\n\n----- NEW PARAMETERS -----")
         print(f"iteration: {i}, param: {param}")
 
-        # set param
-        for key, value in param.items():
-            setattr(trainer.args.occ_grid, key, value)
+        for seed in seeds:
 
-        # create saving directory
-        if i != 0:
-            trainer.args.createSaveDir()
+            # set param
+            args.setRandomSeed(
+                seed=seed,
+            )
+            for key, value in param.items():
+                setattr(args.occ_grid, key, value)
+            if i != 0:
+                trainer.args.createSaveDir()
 
-        # recreate occupancy grid
-        trainer.model.occupancy_grid = OccupancyGrid(
-            args=trainer.args,
-            grid_size=trainer.model.grid_size,
-            scene=trainer.train_dataset.scene,
-            dataset=trainer.train_dataset,
-            fct_density=trainer.model.density,
-        )
+            # load trainer
+            trainer = Trainer(
+                args=args,
+                train_dataset=train_dataset,
+                test_dataset=test_dataset,
+            )
 
-        # train and evaluate
-        trainer.train()
-        trainer.evaluate()
+            # train and evaluate
+            trainer.train()
+            trainer.evaluate()
 
 def evaluateSearch():
     """

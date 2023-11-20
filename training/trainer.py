@@ -21,7 +21,7 @@ from contextlib import nullcontext
 # from opt import get_opts
 from args.args import Args
 from datasets.ray_utils import get_rays
-from datasets.dataset_rh import DatasetRH
+from datasets.dataset_base import DatasetBase
 
 from modules.networks import NGP
 from modules.distortion import distortion_loss
@@ -52,13 +52,19 @@ warnings.filterwarnings("ignore")
 class Trainer(TrainerPlot):
     def __init__(
         self, 
-        hparams_file,
+        hparams_file=None,
+        args:Args=None,
+        train_dataset:DatasetBase=None,
+        test_dataset:DatasetBase=None,
     ) -> None:
         print(f"\n----- START INITIALIZING -----")
 
         TrainerPlot.__init__(
             self,
+            args=args,
             hparams_file=hparams_file,
+            train_dataset=train_dataset,
+            test_dataset=test_dataset,
         )
         
 
