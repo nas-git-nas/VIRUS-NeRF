@@ -1,0 +1,19 @@
+<launch>
+
+    <include 
+        file="$(find realsense2_camera)/launch/rs_camera.launch">
+        <arg 
+            name="initial_reset" 
+            value="True" />
+        <!-- <arg 
+            name="align_depth" 
+            value="true" /> -->
+        <!-- <arg
+            name="enable_infra1" 
+            value="true" /> -->
+        <!-- <arg
+            name="infra_rgb" 
+            value="true" /> -->
+    </include>
+
+</launch>

@@ -51,6 +51,7 @@ find_package(catkin REQUIRED COMPONENTS
 add_message_files(
   FILES
   USS.msg
+  TOF.msg
 )
 
 ## Generate services in the 'srv' folder
@@ -187,7 +188,7 @@ include_directories(
 
 
 catkin_install_python(PROGRAMS scripts/talker.py scripts/listener.py scripts/log_realsense.py
-  scripts/log_uss.py scripts/uss_msg_publisher.py
+  scripts/log_uss.py scripts/log_tof.py scripts/uss_msg_publisher.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

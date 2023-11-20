@@ -1,0 +1,44 @@
+<launch>
+
+    <param 
+        name="port" 
+        type="str"
+        value="/dev/ttyACM0" />
+    <param 
+        name="baud" 
+        type="int"
+        value="115200" />
+    <node 
+        pkg="rosserial_python" 
+        type="serial_node.py" 
+        name="serial_node" 
+        output="screen" >
+    </node>
+
+           
+
+    <group ns="/tof1">
+        <param 
+            name="topic" 
+            type="str" 
+            value="/TOF1" />
+        <param 
+            name="path" 
+            type="str" 
+            value="/home/spadmin/catkin_ws_ngp/data/tof1" />
+        <param 
+            name="print_elapse_time" 
+            type="bool" 
+            value="True" />
+        <param 
+            name="publish_pointcloud" 
+            type="bool" 
+            value="True" />
+        <node 
+            pkg="sensors" 
+            type="log_tof.py" 
+            name="log_tof_node" 
+            output="screen" />
+    </group>
+
+</launch>
