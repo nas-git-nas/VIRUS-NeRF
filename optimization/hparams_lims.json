@@ -1,0 +1,23 @@
+{
+    "model":
+    {
+        "hash_max_res": 1024
+    },
+    "training":
+    {
+        "batch_size": 8192,
+        "lr": 1e-2,
+        "depth_loss_w": 100.0
+    },
+    "occ_grid":
+    {
+        "update_interval": 2,
+        "decay_warmup_steps": 10,
+        "batch_ratio_ray_update": 0.5,
+        "false_detection_prob_every_m": 0.3,
+        "std_every_m": 0.2,
+        "nerf_threshold_max": 5.91,
+        "nerf_threshold_slope": 0.01
+
+    }
+}

@@ -58,7 +58,8 @@ class OccupancyGrid(Grid):
         self.prob_min = 0.03 # minimum probability of false detection
 
         # variable parameters
-        grid_decay = (occ_threshold/occ_init_max)**(1/self.args.occ_grid.decay_warmup_steps) # decay of grid probabilities
+        decay_num_steps = self.args.occ_grid.decay_warmup_steps / self.args.occ_grid.update_interval
+        grid_decay = (occ_threshold/occ_init_max)**(1/decay_num_steps) # decay of grid probabilities
         self.grid_decay = ((grid_decay*1000) // 1) / 1000 # floor to 3 decimals
         self.cell_size = 2*self.args.model.scale / grid_size
 

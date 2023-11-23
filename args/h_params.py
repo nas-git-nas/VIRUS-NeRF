@@ -133,5 +133,6 @@ class HParamsToF(HParams):
         self.angle_of_view = None
         self.matrix = None
         self.sensor_calibration_error = None
+        self.sensor_random_error = None
 
         HParams.__init__(self, name="ToF")

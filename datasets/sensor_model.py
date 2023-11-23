@@ -99,6 +99,15 @@ class ToFModel(SensorModel):
 
         depths_out = np.full_like(depths, np.nan) # (N, H*W)
         depths_out[:, self.mask] = depths[:,self.error_mask]  
+
+        if (self.args.tof.sensor_random_error == 0.0) or (self.args.tof.sensor_random_error is None):
+            return depths_out
+        
+        # add random error to depths
+        self.args.logger.info(f"Add random error to ToF depths: {self.args.tof.sensor_random_error}°")
+        valid_depths = ~np.isnan(depths_out) # (N, H*W)
+        rand_error = np.random.normal(loc=0.0, scale=self.args.tof.sensor_random_error, size=depths_out.shape) # (N, H*W)
+        depths_out[valid_depths] += rand_error[valid_depths]
         return depths_out
     
     def _createMask(
@@ -148,7 +157,6 @@ class ToFModel(SensorModel):
             return mask
 
         # determine error in degrees
-        # direction = 2 * np.pi * np.random.rand(1)
         direction = 0.0
         error = self.args.tof.sensor_calibration_error * np.array([np.cos(direction), np.sin(direction)]).flatten()
 

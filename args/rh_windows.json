@@ -76,7 +76,8 @@
     {
         "angle_of_view": [42.4, 42.4],
         "matrix": [8, 8],
-        "sensor_calibration_error": 7.0
+        "sensor_calibration_error": 0.0,
+        "sensor_random_error": 0.0
     }
     
 }
