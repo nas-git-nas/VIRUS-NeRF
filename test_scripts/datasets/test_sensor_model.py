@@ -6,46 +6,69 @@ import sys
  
 sys.path.insert(0, os.getcwd())
 from datasets.sensor_model import ToFModel, USSModel
-from datasets.robot_at_home import RobotAtHomeDataset
+from datasets.dataset_rh import DatasetRH
 from args.args import Args
 
 
 def test_ToFModel():
+    # hyperparameters
     num_imgs = 3
 
-    args = Args(file_name="rh_windows.json")
+    # create dataset
+    args = Args(
+        file_name="rh_windows.json"
+    )
     args.dataset.keep_N_observations = num_imgs
     args.training.sampling_strategy = {
         "imgs": "same",
         "rays": "entire_img",
     } 
     args.training.sensors = ["ToF", "RGBD"]
- 
-    dataset = RobotAtHomeDataset(
+    dataset = DatasetRH(
         args = args,
         split="train",
     )
-    img_wh = dataset.img_wh
+    W, H = dataset.img_wh
 
-    depths_rgbd = np.zeros((num_imgs, img_wh[0]*img_wh[1]))
-    depths_tof = np.zeros((num_imgs, img_wh[0]*img_wh[1]))
+    # get depths
+    depths_rgbd = np.zeros((num_imgs, W*H))
+    depths_tof = np.zeros((num_imgs, W*H))
     for i, j in enumerate(np.linspace(0, len(dataset)-1, num_imgs, dtype=int)):
         data = dataset(
             batch_size=1,
             sampling_strategy=args.training.sampling_strategy,
             origin="nerf",
         )
-        depths_tof[i] = data['depth']['ToF'].detach().cpu().numpy()
         depths_rgbd[i] = data['depth']['RGBD'].detach().cpu().numpy()
+        depths_tof[i] = data['depth']['ToF'].detach().cpu().numpy()
 
+    # verify if ToF and RGBD depths are different
+    valid_depth = ~np.isnan(depths_tof)
+    same_depths = np.sum(np.abs(depths_rgbd[valid_depth] - depths_tof[valid_depth]) < 1e-2)
+    print(f"ToF-RGBD Depths are at most 1cm apart per image: {(same_depths/num_imgs):.3} / {(np.sum(valid_depth)/num_imgs):.3}")
+
+    # get masks for visualization
+    mask = dataset.sensors_dict['ToF'].mask.astype(int)
+    error_mask = dataset.sensors_dict['ToF'].error_mask.astype(int)
+    mask_comb = np.zeros_like(mask, dtype=int)
+    mask_comb[mask == 1] = 1
+    mask_comb[error_mask == 1] = 2
+    mask[mask == 1] = 1
+    error_mask[error_mask == 1] = 2
 
     # plot
-    fig, axes = plt.subplots(ncols=num_imgs, nrows=2, figsize=(12,8))
-    depths_rgbd = depths_rgbd.reshape(num_imgs, img_wh[1], img_wh[0])
-    depths_tof = depths_tof.reshape(num_imgs, img_wh[1], img_wh[0])
+    fig, axes = plt.subplots(ncols=num_imgs, nrows=3, figsize=(12,8))
+    depths_rgbd = depths_rgbd.reshape(num_imgs, H, W)
+    depths_tof = depths_tof.reshape(num_imgs, H, W)
+    mask = mask.reshape(H, W)
+    error_mask = error_mask.reshape(H, W)
+    mask_comb = mask_comb.reshape(H, W)
 
     # make single pixels visible
-    depths_tof = skimage.measure.block_reduce(depths_tof, (1,8,8), np.nanmax) # (N, h, w)
+    depths_tof = skimage.measure.block_reduce(depths_tof, (1,8,8), np.nanmax) # (N, H, W)
+    mask = skimage.measure.block_reduce(mask, (8,8), np.nanmax) # (H, W)
+    error_mask = skimage.measure.block_reduce(error_mask, (8,8), np.nanmax) # (H, W)
+    mask_comb = skimage.measure.block_reduce(mask_comb, (8,8), np.nanmax) # (H, W)
 
     for i in range(num_imgs):
         ax = axes[0,i]
@@ -55,6 +78,19 @@ def test_ToFModel():
         ax = axes[1,i]
         ax.imshow(depths_tof[i])
         ax.set_title(f'Depth Map ToF: {i}')
+
+        if i == 0:
+            ax = axes[2,i]
+            ax.imshow(mask, vmin=0, vmax=2)
+            ax.set_title(f'Mask (shift=0°)')
+        if i == 1:
+            ax = axes[2,i]
+            ax.imshow(error_mask, vmin=0, vmax=2)
+            ax.set_title(f'Error Mask (shift={args.tof.sensor_calibration_error}°)')
+        if i == 2:
+            ax = axes[2,i]
+            ax.imshow(mask_comb, vmin=0, vmax=2)
+            ax.set_title(f'Both Masks')
     
     plt.tight_layout()
     plt.show()
@@ -69,7 +105,7 @@ def test_USSModel():
     args = Args(file_name="rh_windows.json")
     args.rh.sensor_model = False
   
-    dataset = RobotAtHomeDataset(
+    dataset = DatasetRH(
         args = args,
         split="test",
     )
