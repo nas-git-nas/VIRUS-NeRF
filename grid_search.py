@@ -40,21 +40,24 @@ def searchOccgrid():
     """
     # define parameters
     params = {
-        "update_interval": [8],
-        "decay_warmup_steps": [10],
-        "batch_ratio_ray_update": [0.5],
-        "false_detection_prob_every_m": [0.3],
-        "std_every_m": [0.1, 0.2, 0.3],
-        "nerf_threshold_max": [1, 5.91, 10],
-        "nerf_threshold_slope": [0.1, 0.01, 0.001],
+        "update_interval": [4, 32],
+        "decay_warmup_steps": [16, 128],
+        "batch_ratio_ray_update": [0.2, 0.8],
+        "false_detection_prob_every_m": [0.2, 0.4],
+        "std_every_m": [0.1, 0.3],
+        "nerf_threshold_max": [1, 20],
+        "nerf_threshold_slope": [0.001, 0.1],
     }
-    seeds = [23, 42, 69]
+    seeds = [23]
     hparams_file = "rh_windows.json"
 
     # get hyper-parameters and other variables
     args = Args(
         file_name=hparams_file
     )
+    args.eval.eval_every_n_steps = args.training.max_steps + 1
+    args.eval.plot_results = False
+    args.model.save = False
 
     # datasets   
     if args.dataset.name == 'robot_at_home':

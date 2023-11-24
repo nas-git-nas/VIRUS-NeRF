@@ -155,6 +155,9 @@ class TrainerBase():
         """
         Save model, args and logs
         """
+        if not self.args.model.save:
+            return
+        
         print(f"Saving model to {self.args.save_dir}")
         torch.save(
             self.model.state_dict(),

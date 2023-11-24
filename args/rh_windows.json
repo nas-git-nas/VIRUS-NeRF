@@ -15,7 +15,8 @@
         "scale": 0.5,
         "encoder_type": "hash",
         "hash_max_res": 1024,
-        "debug_mode": true
+        "debug_mode": true,
+        "save": true
     },
     "training":
     {
@@ -39,7 +40,8 @@
         "num_plot_pts": 3,
         "num_avg_heights": 2,
         "height_tolerance": 0.005,
-        "density_map_thr": 10
+        "density_map_thr": 10,
+        "plot_results": true
     },
     "occ_grid":
     {

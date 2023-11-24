@@ -38,6 +38,9 @@ class TrainerPlot(TrainerBase):
             self,
             step,
     ):
+        if not self.args.eval.plot_results:
+            return
+
         if step % self.args.occ_grid.update_interval != 0:
             return
 
@@ -146,6 +149,9 @@ class TrainerPlot(TrainerBase):
             data_w: data dictionary in world coordinates
             metrics_dict: metrics dictionary
         """
+        if not self.args.eval.plot_results:
+            return
+        
         M = self.args.eval.res_angular
         N = data_w['depth'].shape[0] // M
         if data_w['depth'].shape[0] % M != 0:
@@ -285,6 +291,9 @@ class TrainerPlot(TrainerBase):
         Returns:
             metrics_dict: dict of metrics
         """
+        if not self.args.eval.plot_results:
+            return metrics_dict
+        
         fig, axes = plt.subplots(ncols=2, nrows=1, figsize=(12,8))
 
         # plot losses

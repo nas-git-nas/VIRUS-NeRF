@@ -40,6 +40,7 @@ class HParamsModel(HParams):
         self.encoder_type = None
         self.hash_max_res = None
         self.debug_mode = None
+        self.save = None
 
         HParams.__init__(self, name="model")
      
@@ -77,6 +78,7 @@ class HParamsEvaluation(HParams):
         self.num_avg_heights = None
         self.height_tolerance = None
         self.density_map_thr = None
+        self.plot_results = None
 
         HParams.__init__(self, name="evaluation")
 

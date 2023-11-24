@@ -1,79 +1,109 @@
 import numpy as np
 import os
 import sys
+import matplotlib.pyplot as plt
+import matplotlib
+from abc import ABC, abstractmethod
  
 sys.path.insert(0, os.getcwd())
 from optimization.particle_swarm_optimization import ParticleSwarmOptimization
+from optimization.metric import Metric
+from optimization.plotter import Plotter
 
 
-def metricGauss(
-    hparams:dict,
-    hparams_order:dict,
-    centre:np.ndarray,
-    std:np.ndarray,
+def optimize(
+    pso:ParticleSwarmOptimization,
+    metric:Metric,
 ):
     """
-    Evaluate metric.
+    Run optimization.
+        N: number of particles; int
+        M: number of hparams; int
+        T: number of iterations; int
     Args:
-        hparams: hyper parameters; dict (key: str, value: float)
-        hparams_order: order of hparams; dict (key: str, value: int)
-        center: center of gaussian; np.array (M,)
-        std: standard deviation of gaussian; np.array (M,)
+        pso: particle swarm optimization; ParticleSwarmOptimization
+        metric: metric to optimize; Metric
     Returns:
-        score: score of input; float
-        X: position in hparams space; np.array (M,)
+        X_list: list of hparams; np.array (N, T, M)
+        score_list: list of scores; np.array (N, T)
     """
-    # convert hparams to position in hparams space
-    X = np.zeros((len(hparams.keys()),))
-    for key, i in hparams_order.items():
-        X[i] = hparams[key]
-
-    # evaluate score
-    score_inv = np.exp(- (X-centre)@np.diag(1/std**2)@(X-centre))
-    score = 1 - score_inv
-    return score, X
-
-def test_psoGauss():
-    # define optimization algorithm
-    seed = 29
-    pso = ParticleSwarmOptimization(
-        N=2,
-        hparams_lims_file="test_scripts/optimization/hparams_lims.json",
-        T_iter=10,
-        T_time=None,
-        seed=seed,
-    )
-
-    # define metric
-    centre = np.zeros((pso.M,))
-    for key, i in pso.hparams_order.items():
-        centre[i] = np.random.uniform(pso.hparams_lims[key][0], pso.hparams_lims[key][1], seed=seed)
-    std = np.random.uniform(0, 1, size=(pso.M,))
-
-    # run optimization
     terminate = False
-    X_list = []
-    score_list = []
+    X_list = [ [] for _ in range(pso.N)] # (N, T, M)
+    score_list = [ [] for _ in range(pso.N)] # (N, T)
     while not terminate:
         # get hparams to evaluate
-        hparams = pso.getHparams()
+        X = pso.getHparams(
+            group_dict_layout=False,
+        ) # np.array (M,)
 
         # evaluate metric
-        score, X = metricGauss(
-            hparams=hparams,
-            hparams_order=pso.hparams_order,
-            centre=centre,
-            std=std,
+        score = metric(
+            X=X,
+        ) # float
+
+        # save state
+        pso.saveState(
+            score=score,
         )
-        X_list.append(X)
-        score_list.append(score)
+        X_list[pso.n].append(X)
+        score_list[pso.n].append(score)
 
         # update particle swarm
         terminate = pso.update(
             score=score,
+        ) # bool
+
+    return np.array(X_list), np.array(score_list)
+
+
+def test_pso():
+    # define optimization algorithm
+    seeds = np.random.randint(0, 1000, size=9)
+    T_iter = None
+    T_time = 2
+    hparams_lims_file = "test_scripts/optimization/hparams_lims.json"
+    save_dir = "results/pso/test"
+    metric_name = "rand"
+
+    # plotter
+    plotter = Plotter(
+        num_axes=len(seeds),
+    )
+
+    for i, seed in enumerate(seeds):
+        print(f"optimization {i+1}/{len(seeds)}")
+        rng = np.random.default_rng(seed)
+
+        # define particle swarm and metric
+        pso = ParticleSwarmOptimization(
+            hparams_lims_file=hparams_lims_file,
+            save_dir=save_dir,
+            T_iter=T_iter,
+            T_time=T_time,
+            rng=rng,
+        )
+        metric = Metric(
+            metric_name=metric_name,
+            hparams_lims=pso.hparams_lims,
+            rng=rng,
         )
 
+        # run optimization
+        X_list, score_list = optimize(
+            pso=pso,
+            metric=metric,
+        ) # (N, T, M), (N, T)
 
+        # plot results
+        plotter.plot2D(
+            pso=pso,
+            metric=metric,
+            X_list=X_list,
+            score_list=score_list,
+            ax_idx=i,
+        )
+
+    plotter.show()
 
 if __name__ == "__main__":
-    test_psoGauss()
+    test_pso()
