@@ -43,7 +43,7 @@ class ParticleSwarmOptimization():
         self.M = self.hparams_lims.shape[0]
 
         # PSO parameters
-        self.N = 10 # number of particles
+        self.N = 12 # number of particles
         self.num_neighbours = 3 # number of neighbours to consider for social component
         self.alpha_momentum = 0.6
         self.alpha_propre = 0.2 * np.sqrt(self.M)
