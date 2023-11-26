@@ -50,7 +50,7 @@
         "batch_size": 64,
         "sampling_strategy": {"imgs": "all", "rays": "uss_tof"},  
         "update_interval": 2,
-        "decay_warmup_steps": 10,
+        "decay_warmup_steps": 80,
         "batch_ratio_ray_update": 0.5,
         "false_detection_prob_every_m": 0.3,
         "std_every_m": 0.2,

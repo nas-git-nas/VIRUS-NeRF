@@ -6,12 +6,13 @@ from optimization.particle_swarm_optimization import ParticleSwarmOptimization
 from args.args import Args
 from datasets.dataset_rh import DatasetRH
 from training.trainer import Trainer
+from helpers.system_fcts import get_size
 
 
 def main():
     # define paraeters
     T_time = 36000 # seconds
-    hparams_file = "rh_gpu.json"
+    hparams_file = "rh_windows.json" # "rh_gpu.json"
     hparams_lims_file = "optimization/hparams_lims.json"
     save_dir = "results/pso/opt3"
 
@@ -61,8 +62,8 @@ def main():
         args.setRandomSeed(
             seed=args.seed+1,
         )
-        for key, value in hparams_dict["occ_grid"].items():
-            setattr(args.occ_grid, key, value)
+        # for key, value in hparams_dict["occ_grid"].items():
+        #     setattr(args.occ_grid, key, value)
 
         # load trainer
         trainer = Trainer(
@@ -85,7 +86,12 @@ def main():
             score=metrics_dict["mnn"],
         ) # bool
 
-        print(f"References to trainer: {sys.getrefcount(trainer)}")
+        print(f"References to trainer: {get_size(trainer)}")
+        print(f"Size of trainer: {get_size(trainer)}")
+        print(f"Size of args: {get_size(args)}")
+        print(f"Size of train_dataset: {get_size(train_dataset)}")
+        print(f"Size of test_dataset: {get_size(test_dataset)}")
+        print(f"Size of PSO: {get_size(pso)}")
         del trainer
 
 
