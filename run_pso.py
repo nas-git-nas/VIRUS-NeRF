@@ -1,5 +1,6 @@
 import numpy as np
 import time
+import sys
 
 from optimization.particle_swarm_optimization import ParticleSwarmOptimization
 from args.args import Args
@@ -8,11 +9,11 @@ from training.trainer import Trainer
 
 
 def main():
-    # define parameters
-    T_time = 300 # seconds
-    hparams_file = "rh_windows.json"
+    # define paraeters
+    T_time = 36000 # seconds
+    hparams_file = "rh_gpu.json"
     hparams_lims_file = "optimization/hparams_lims.json"
-    save_dir = "results/pso/opt1"
+    save_dir = "results/pso/opt3"
 
     # get hyper-parameters and other variables
     args = Args(
@@ -83,6 +84,9 @@ def main():
         terminate = pso.update(
             score=metrics_dict["mnn"],
         ) # bool
+
+        print(f"References to trainer: {sys.getrefcount(trainer)}")
+        del trainer
 
 
 if __name__ == "__main__":
