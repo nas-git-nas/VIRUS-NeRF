@@ -61,8 +61,8 @@ def main():
         args.setRandomSeed(
             seed=args.seed+1,
         )
-        for key, value in hparams_dict["occ_grid"].items():
-            setattr(args.occ_grid, key, value)
+        # for key, value in hparams_dict["occ_grid"].items():
+        #     setattr(args.occ_grid, key, value)
 
         # load trainer
         trainer = Trainer(
@@ -86,6 +86,11 @@ def main():
         ) # bool
 
         print(f"References to trainer: {sys.getrefcount(trainer)}")
+        print(f"Size of trainer: {sys.getsizeof(trainer)}")
+        print(f"Size of args: {sys.getsizeof(args)}")
+        print(f"Size of train_dataset: {sys.getsizeof(train_dataset)}")
+        print(f"Size of test_dataset: {sys.getsizeof(test_dataset)}")
+        print(f"Size of PSO: {sys.getsizeof(pso)}")
         del trainer
 
 
