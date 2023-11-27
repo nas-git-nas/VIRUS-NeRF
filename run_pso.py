@@ -16,34 +16,41 @@ def main():
     hparams_lims_file = "optimization/hparams_lims.json"
     save_dir = "results/pso/opt3"
 
-    # get hyper-parameters and other variables
-    args = Args(
-        file_name=hparams_file
-    )
-    args.eval.eval_every_n_steps = args.training.max_steps + 1
-    args.eval.plot_results = False
-    args.model.save = False
+    # # get hyper-parameters and other variables
+    # args = Args(
+    #     file_name=hparams_file
+    # )
+    # args.eval.eval_every_n_steps = args.training.max_steps + 1
+    # args.eval.plot_results = False
+    # args.model.save = False
 
-    # datasets   
-    if args.dataset.name == 'robot_at_home':
-        dataset = DatasetRH    
-    train_dataset = dataset(
-        args = args,
-        split="train",
-    ).to(args.device)
-    test_dataset = dataset(
-        args = args,
-        split='test',
-        scene=train_dataset.scene,
-    ).to(args.device)
+    # # datasets   
+    # if args.dataset.name == 'robot_at_home':
+    #     dataset = DatasetRH    
+    # train_dataset = dataset(
+    #     args = args,
+    #     split="train",
+    # ).to(args.device)
+    # test_dataset = dataset(
+    #     args = args,
+    #     split='test',
+    #     scene=train_dataset.scene,
+    # ).to(args.device)
 
     # pso
+    # pso = ParticleSwarmOptimization(
+    #     hparams_lims_file=hparams_lims_file,
+    #     save_dir=save_dir,
+    #     T_iter=None,
+    #     T_time=T_time,
+    #     rng=np.random.default_rng(args.seed),
+    # )
     pso = ParticleSwarmOptimization(
         hparams_lims_file=hparams_lims_file,
         save_dir=save_dir,
         T_iter=None,
         T_time=T_time,
-        rng=np.random.default_rng(args.seed),
+        rng=np.random.default_rng(29),
     )
 
     # run optimization
@@ -58,18 +65,21 @@ def main():
         print(f"Time: {time.time()-pso.start_time:.1f}/{T_time}, param: {hparams_dict}")
         print(f"Current best mnn: {np.min(pso.best_score):.3f}")
 
-        # set hparams
-        args.setRandomSeed(
-            seed=args.seed+1,
-        )
+        # # set hparams
+        # args.setRandomSeed(
+        #     seed=args.seed+1,
+        # )
         # for key, value in hparams_dict["occ_grid"].items():
         #     setattr(args.occ_grid, key, value)
 
         # load trainer
+        # trainer = Trainer(
+        #     args=args,
+        #     train_dataset=train_dataset,
+        #     test_dataset=test_dataset,
+        # )
         trainer = Trainer(
-            args=args,
-            train_dataset=train_dataset,
-            test_dataset=test_dataset,
+            hparams_file=hparams_file,
         )
 
         # train and evaluate model
@@ -88,9 +98,9 @@ def main():
 
         print(f"References to trainer: {get_size(trainer)}")
         print(f"Size of trainer: {get_size(trainer)}")
-        print(f"Size of args: {get_size(args)}")
-        print(f"Size of train_dataset: {get_size(train_dataset)}")
-        print(f"Size of test_dataset: {get_size(test_dataset)}")
+        # print(f"Size of args: {get_size(args)}")
+        # print(f"Size of train_dataset: {get_size(train_dataset)}")
+        # print(f"Size of test_dataset: {get_size(test_dataset)}")
         print(f"Size of PSO: {get_size(pso)}")
         del trainer
 
