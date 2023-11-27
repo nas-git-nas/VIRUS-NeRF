@@ -6,13 +6,44 @@ from optimization.particle_swarm_optimization import ParticleSwarmOptimization
 from args.args import Args
 from datasets.dataset_rh import DatasetRH
 from training.trainer import Trainer
-from helpers.system_fcts import get_size
+# from helpers.system_fcts import get_size
 
+def get_size(
+    obj, 
+    seen=None
+):
+    """
+    Recursively finds size of objects.
+    Source: https://goshippo.com/blog/measure-real-size-any-python-object/
+    Args:
+        obj: object to find size of
+        seen: helper object to keep track of seen objects
+    Returns:
+        size of object in bytes
+    """
+    size = sys.getsizeof(obj)
+    if seen is None:
+        seen = set()
+    obj_id = id(obj)
+    if obj_id in seen:
+        return 0
+    
+    # Important mark as seen *before* entering recursion to gracefully handle
+    # self-referential objects
+    seen.add(obj_id)
+    if isinstance(obj, dict):
+        size += sum([get_size(v, seen) for v in obj.values()])
+        size += sum([get_size(k, seen) for k in obj.keys()])
+    elif hasattr(obj, '__dict__'):
+        size += get_size(obj.__dict__, seen)
+    elif hasattr(obj, '__iter__') and not isinstance(obj, (str, bytes, bytearray)):
+        size += sum([get_size(i, seen) for i in obj])
+    return size
 
 def main():
     # define paraeters
     T_time = 36000 # seconds
-    hparams_file = "rh_windows.json" # "rh_gpu.json"
+    hparams_file = "rh_gpu.json" # "rh_gpu.json"
     hparams_lims_file = "optimization/hparams_lims.json"
     save_dir = "results/pso/opt3"
 
