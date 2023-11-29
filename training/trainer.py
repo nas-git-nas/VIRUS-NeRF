@@ -21,7 +21,7 @@ from contextlib import nullcontext
 # from opt import get_opts
 from args.args import Args
 from datasets.ray_utils import get_rays
-from datasets.dataset_rh import DatasetRH
+from datasets.dataset_base import DatasetBase
 
 from modules.networks import NGP
 from modules.distortion import distortion_loss
@@ -52,13 +52,19 @@ warnings.filterwarnings("ignore")
 class Trainer(TrainerPlot):
     def __init__(
         self, 
-        hparams_file,
+        hparams_file=None,
+        args:Args=None,
+        train_dataset:DatasetBase=None,
+        test_dataset:DatasetBase=None,
     ) -> None:
         print(f"\n----- START INITIALIZING -----")
 
         TrainerPlot.__init__(
             self,
+            args=args,
             hparams_file=hparams_file,
+            train_dataset=train_dataset,
+            test_dataset=test_dataset,
         )
         
 
@@ -211,6 +217,8 @@ class Trainer(TrainerPlot):
     def evaluate(self):
         """
         Evaluate NeRF on test set.
+        Returns:
+            metrics_dict: dict of metrics; dict
         """
         print(f"\n----- START EVALUATING -----")
         self.model.eval()
@@ -257,6 +265,8 @@ class Trainer(TrainerPlot):
         del metrics_df['nn_dists']
         metrics_df = pd.DataFrame(metrics_df, index=[0])
         metrics_df.to_csv(os.path.join(self.args.save_dir, "metrics.csv"), index=False)
+
+        return metrics_dict
 
     @torch.no_grad()
     def _evaluateStep(
@@ -343,6 +353,12 @@ class Trainer(TrainerPlot):
         """
         W, H = self.test_dataset.img_wh
         N = img_idxs.shape[0]
+
+        if N == 0:
+            return {
+                'psnr': -1.0,
+                'ssim': -1.0,
+            }
 
         # repeat image indices and pixel indices
         img_idxs = img_idxs.repeat(W*H) # (N*W*H,)

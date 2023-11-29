@@ -53,15 +53,43 @@ class Args():
 
         # random seed
         self.seed = 23
-        random.seed(self.seed)
-        np.random.seed(self.seed)
-        torch.manual_seed(self.seed)
-        torch.cuda.manual_seed(self.seed)
-        torch.backends.cudnn.deterministic=True
+        self.setRandomSeed(
+            seed=self.seed,
+        )
 
         # create saving directory
+        self.createSaveDir()
+
+        # initialize logging
+        self._initLogging()
+
+        # rendering configuration
+        self.exp_step_factor = 1 / 256 if self.model.scale > 0.5 else 0. 
+
+    def setRandomSeed(
+        self,
+        seed:int,
+    ):
+        """
+        Set random seed
+        Args:
+            seed: random seed; int
+        """
+        self.seed = seed
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+        torch.backends.cudnn.deterministic=True
+
+    def createSaveDir(
+        self,
+    ):
+        """
+        Create saving directory
+        """
         t = datetime.now()
-        time_name = t.strftime("%Y%m%d") + "_" + t.strftime("%H%M")
+        time_name = t.strftime("%Y%m%d") + "_" + t.strftime("%H%M%S")
         self.save_dir = os.path.join('results/', self.dataset.name, time_name)
         if not os.path.exists('results/'):
             os.mkdir('results/')
@@ -71,14 +99,10 @@ class Args():
             shutil.rmtree(self.save_dir)
         os.mkdir(self.save_dir)
 
-        # initialize logging
-        self._initLogging()
-
-        # rendering configuration
-        self.exp_step_factor = 1 / 256 if self.model.scale > 0.5 else 0. 
-
-
-    def readJson(self, file_name):
+    def readJson(
+        self, 
+        file_name,
+    ):
         """
         Read hyper parameters from json file
         Args:
@@ -92,7 +116,9 @@ class Args():
 
         return hparams
     
-    def saveJson(self):
+    def saveJson(
+        self,
+    ):
         """
         Save arguments in json file
         """

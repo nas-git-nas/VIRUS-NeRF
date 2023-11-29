@@ -54,15 +54,15 @@ class DatasetBase(Dataset):
         samples = {
             'img_idxs': img_idxs,
             'pix_idxs': pix_idxs,
-            'sample_count': count,
-            'pose': self.poses[img_idxs],
-            'direction': self.directions[pix_idxs],
-            'rgb': rays[:, :3],
+            'sample_count': count.detach().clone(),
+            'pose': self.poses[img_idxs].detach().clone().requires_grad_(True),
+            'direction': self.directions[pix_idxs].detach().clone().requires_grad_(True),
+            'rgb': rays[:, :3].detach().clone().requires_grad_(True),
         }
         if hasattr(self, 'depths_dict'):
             samples['depth'] = {}
             for sensor, sensor_depths in self.depths_dict.items():
-                samples['depth'][sensor] = sensor_depths[img_idxs, pix_idxs]
+                samples['depth'][sensor] = sensor_depths[img_idxs, pix_idxs].detach().clone().requires_grad_(True)
 
         return samples
     

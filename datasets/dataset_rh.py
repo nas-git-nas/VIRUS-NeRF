@@ -152,7 +152,7 @@ class DatasetRH(DatasetBase):
         # print(f"opening angle height = {np.rad2deg(alpha_H)}")
         # print(f"opening angle width = {np.rad2deg(alpha_W)}")
 
-        return (w, h), torch.FloatTensor(K), directions
+        return (w, h), torch.FloatTensor(K), directions.requires_grad_(requires_grad=False)
 
     def read_meta(
         self, 
@@ -176,7 +176,7 @@ class DatasetRH(DatasetBase):
         rays = np.empty(())
         ids = df["id"].to_numpy()
         rays = np.empty((ids.shape[0], W*H, 3))
-        depths = np.empty((ids.shape[0], W*H))
+        depths = np.empty((ids.shape[0], W*H), dtype=np.float32)
         for i, id in enumerate(ids):
             [rgb_f, d_f] = self.rh.get_RGBD_files(id)
             rays[i,:,:] = mpimg.imread(rgb_f).reshape(W*H, 3)
@@ -257,7 +257,7 @@ class DatasetRH(DatasetBase):
         # poses[:,:,3] = self.scalePosition(pos=poses[:,:,3])
         poses[:,:,3] = self.scene.w2c(pos=poses[:,:,3], copy=False)
 
-        return torch.tensor(rays, dtype=torch.float32), depths, torch.tensor(poses, dtype=torch.float32)
+        return torch.tensor(rays, dtype=torch.float32, requires_grad=False), depths, torch.tensor(poses, dtype=torch.float32, requires_grad=False)
     
     def createSensorModels(
             self, 
@@ -298,7 +298,8 @@ class DatasetRH(DatasetBase):
         for sensor_name, sensor_model in sensors_dict.items():
             depths_dict[sensor_name] = torch.tensor(
                 data=sensor_model.convertDepth(depths),
-                dtype=torch.float32
+                dtype=torch.float32,
+                requires_grad=False,
             )
 
         return sensors_dict, depths_dict

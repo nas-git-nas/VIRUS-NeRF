@@ -81,10 +81,47 @@ class ToFModel(SensorModel):
         """
         SensorModel.__init__(self, args, img_wh)      
 
+        self.mask = self._createMask() # (H*W,)
+        self.error_mask = self.createErrorMask(
+            mask=self.mask
+        ) # (H*W,)
+        
+
+    def convertDepth(self, depths):
+        """
+        Convert depth img using ToF sensor model. Set all unknown depths to nan.
+        Args:
+            depths: depth img; array of shape (N, H*W)
+        Returns:
+            depths: depth img converted to ToF sensor array; array of shape (N, H*W)
+        """
+        depths = np.copy(depths) # (N, H*W)
+
+        depths_out = np.full_like(depths, np.nan) # (N, H*W)
+        depths_out[:, self.mask] = depths[:,self.error_mask]  
+
+        if (self.args.tof.sensor_random_error == 0.0) or (self.args.tof.sensor_random_error is None):
+            return depths_out
+        
+        # add random error to depths
+        self.args.logger.info(f"Add random error to ToF depths: {self.args.tof.sensor_random_error}°")
+        valid_depths = ~np.isnan(depths_out) # (N, H*W)
+        rand_error = np.random.normal(loc=0.0, scale=self.args.tof.sensor_random_error, size=depths_out.shape) # (N, H*W)
+        depths_out[valid_depths] += rand_error[valid_depths]
+        return depths_out
+    
+    def _createMask(
+        self,
+    ):
+        """
+        Create mask for ToF sensor.
+        Returns:
+            mask: mask for ToF sensor; array of shape (H*W,)
+        """
         # calculate indices of ToF sensor array
-        width = self.AoV2pixel(aov_sensor=args.tof.angle_of_view)
-        idxs_w = np.linspace(0, width, args.tof.matrix[0], dtype=float)
-        idxs_h = np.linspace(0, width, args.tof.matrix[1], dtype=float)
+        width = self.AoV2pixel(aov_sensor=self.args.tof.angle_of_view)
+        idxs_w = np.linspace(0, width, self.args.tof.matrix[0], dtype=float)
+        idxs_h = np.linspace(0, width, self.args.tof.matrix[1], dtype=float)
 
         # ajust indices to quadratic shape
         idxs_w = idxs_w + (self.W - width)/2
@@ -101,24 +138,43 @@ class ToFModel(SensorModel):
         # create mask
         mask = np.zeros((self.H, self.W), dtype=bool) # (H, W)
         mask[idxs_h, idxs_w] = True
-        self.mask = mask.flatten() # (H*W,)
- 
-
-    def convertDepth(self, depths):
+        return mask.flatten() # (H*W,)
+    
+    def createErrorMask(
+        self,
+        mask:np.array,
+    ):
         """
-        Convert depth img using ToF sensor model. Set all unknown depths to nan.
+        Create error mask for ToF sensor. If the calibration error is equal to 0.0, 
+        the error mask is equal to the mask. Otherwise, the error mask is a shifted
+        in a random direction by the calibration error. In this case, the ToF-depth is
+        evaluated by using the error mask and assigned to the pixel in the mask.
         Args:
-            depths: depth img; array of shape (N, H*W)
-        Returns:
-            depths: depth img converted to ToF sensor array; array of shape (N, H*W)
+            error_mask: error mask for ToF sensor; array of shape (H*W,)
         """
-        depths = np.copy(depths) # (N, H*W)
+        mask = np.copy(mask) # (H*W,)
+        if self.args.tof.sensor_calibration_error == 0.0:
+            return mask
 
-        depths_out = np.full_like(depths, np.nan) # (N, H*W)
-        depths_out[:, self.mask] = depths[:,self.mask]  
+        # determine error in degrees
+        direction = 0.0
+        error = self.args.tof.sensor_calibration_error * np.array([np.cos(direction), np.sin(direction)]).flatten()
 
-        return depths_out
+        # convert error to pixels
+        error[0] = self.H * error[0] / self.args.rgbd.angle_of_view[0]
+        error[1] = self.W * error[1] / self.args.rgbd.angle_of_view[1]
+        error = np.round(error).astype(int)
 
+        # convert error to mask indices
+        mask = mask.reshape(self.H, self.W)
+        idxs = np.argwhere(mask)
+        idxs[:,0] = np.clip(idxs[:,0] + error[0], 0, self.H-1)
+        idxs[:,1] = np.clip(idxs[:,1] + error[1], 0, self.W-1)
+
+        # apply error to mask
+        error_mask = np.zeros((self.H, self.W), dtype=bool)
+        error_mask[idxs[:,0], idxs[:,1]] = True
+        return error_mask.flatten() # (H*W,)
 
 class USSModel(SensorModel):
     def __init__(self, args, img_wh, num_imgs) -> None:

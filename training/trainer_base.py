@@ -24,20 +24,26 @@ from datasets.dataset_rh import DatasetRH
 from modules.networks import NGP
 from modules.rendering import render
 from helpers.geometric_fcts import createScanPos
-
+from datasets.dataset_base import DatasetBase
 
 
 
 class TrainerBase():
     def __init__(
         self,
-        hparams_file:str
+        hparams_file=None,
+        args:Args=None,
+        train_dataset:DatasetBase=None,
+        test_dataset:DatasetBase=None,
     ) -> None:
 
         # get hyper-parameters and other variables
-        self.args = Args(
-            file_name=hparams_file
-        )
+        if args is None:
+            self.args = Args(
+                file_name=hparams_file
+            )
+        else:
+            self.args = args
 
         # initialize taichi
         taichi_init_args = {"arch": ti.cuda,}
@@ -47,22 +53,28 @@ class TrainerBase():
         if self.args.dataset.name == 'robot_at_home':
             dataset = DatasetRH    
         
-        self.train_dataset = dataset(
-            args = self.args,
-            split="train",
-        ).to(self.args.device)
+        if train_dataset is None:
+            self.train_dataset = dataset(
+                args = self.args,
+                split="train",
+            ).to(self.args.device)
+        else:
+            self.train_dataset = train_dataset
 
-        self.test_dataset = dataset(
-            args = self.args,
-            split='test',
-            scene=self.train_dataset.scene,
-        ).to(self.args.device)
+        if test_dataset is None:
+            self.test_dataset = dataset(
+                args = self.args,
+                split='test',
+                scene=self.train_dataset.scene,
+            ).to(self.args.device)
+        else:
+            self.test_dataset = test_dataset
 
         # model
         model_config = {
             'scale': self.args.model.scale,
             'pos_encoder_type': self.args.model.encoder_type,
-            'max_res': self.args.occ_grid.max_res, 
+            'max_res': self.args.model.hash_max_res, 
             'half_opt': False, # TODO: args
             'scene': self.train_dataset.scene,
             'args': self.args,
@@ -143,6 +155,9 @@ class TrainerBase():
         """
         Save model, args and logs
         """
+        if not self.args.model.save:
+            return
+        
         print(f"Saving model to {self.args.save_dir}")
         torch.save(
             self.model.state_dict(),

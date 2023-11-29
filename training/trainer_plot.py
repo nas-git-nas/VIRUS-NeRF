@@ -3,6 +3,7 @@ import torch
 import matplotlib.pyplot as plt
 import os
 
+from args.args import Args
 from modules.networks import NGP
 from modules.distortion import distortion_loss
 from modules.rendering import MAX_SAMPLES, render
@@ -14,22 +15,32 @@ from training.metrics_rh import MetricsRH
 from modules.occupancy_grid import OccupancyGrid
 
 from training.trainer_base import TrainerBase
+from datasets.dataset_base import DatasetBase
 
 
 class TrainerPlot(TrainerBase):
     def __init__(
         self, 
-        hparams_file:str,
+        hparams_file=None,
+        args:Args=None,
+        train_dataset:DatasetBase=None,
+        test_dataset:DatasetBase=None,
     ):
         TrainerBase.__init__(
             self,
+            args=args,
             hparams_file=hparams_file,
+            train_dataset=train_dataset,
+            test_dataset=test_dataset,
         )
 
     def _plotOccGrid(
             self,
             step,
     ):
+        if not self.args.eval.plot_results:
+            return
+
         if step % self.args.occ_grid.update_interval != 0:
             return
 
@@ -138,6 +149,9 @@ class TrainerPlot(TrainerBase):
             data_w: data dictionary in world coordinates
             metrics_dict: metrics dictionary
         """
+        if not self.args.eval.plot_results:
+            return
+        
         M = self.args.eval.res_angular
         N = data_w['depth'].shape[0] // M
         if data_w['depth'].shape[0] % M != 0:
@@ -277,6 +291,9 @@ class TrainerPlot(TrainerBase):
         Returns:
             metrics_dict: dict of metrics
         """
+        if not self.args.eval.plot_results:
+            return metrics_dict
+        
         fig, axes = plt.subplots(ncols=2, nrows=1, figsize=(12,8))
 
         # plot losses
@@ -318,23 +335,31 @@ class TrainerPlot(TrainerBase):
 
             idx1 = dataConverged(
                 arr=np.array(logs['mnn'])[not_nan],
-                threshold=1.25 * metrics_dict['mnn'],
+                threshold=1.5 * metrics_dict['mnn'],
                 data_increasing=False,
             )
             if idx1 != -1:
-                vln1 = ax.axvline(np.array(logs['step'])[not_nan][idx1], linestyle=(0, (1, 5)), c="black", label='converged 25%')
-                metrics_dict['mnn_converged_25'] = np.array(logs['time'])[not_nan][idx1]
+                vln1 = ax.axvline(np.array(logs['step'])[not_nan][idx1], linestyle=(0, (1, 10)), c="black", label='converged 50%')
+                metrics_dict['mnn_converged_50'] = np.array(logs['time'])[not_nan][idx1]
                 # print(f"mnn converged 25% at step {logs['step'][idx1]}, idx1={idx1}, threshold={1.25 * metrics_dict['mnn']}")
 
             idx2 = dataConverged(
                 arr=np.array(logs['mnn'])[not_nan],
-                threshold=1.1 * metrics_dict['mnn'],
+                threshold=1.25 * metrics_dict['mnn'],
                 data_increasing=False,
             )
             if idx2 != -1:
-                vln2 = ax.axvline(np.array(logs['step'])[not_nan][idx2], linestyle=(0, (1, 1)), c="black", label='converged 10%')
-                metrics_dict['mnn_converged_10'] = np.array(logs['time'])[not_nan][idx2]
-                # print(f"mnn converged 10% at step {logs['step'][idx2]}, idx1={idx2}, threshold={1.1 * metrics_dict['mnn']}")
+                vln2 = ax.axvline(np.array(logs['step'])[not_nan][idx2], linestyle=(0, (1, 5)), c="black", label='converged 25%')
+                metrics_dict['mnn_converged_25'] = np.array(logs['time'])[not_nan][idx2]
+
+            idx3 = dataConverged(
+                arr=np.array(logs['mnn'])[not_nan],
+                threshold=1.1 * metrics_dict['mnn'],
+                data_increasing=False,
+            )
+            if idx3 != -1:
+                vln3 = ax.axvline(np.array(logs['step'])[not_nan][idx3], linestyle=(0, (1, 2)), c="black", label='converged 10%')
+                metrics_dict['mnn_converged_10'] = np.array(logs['time'])[not_nan][idx3]
 
             ax2 = ax.twinx()
             color = 'tab:green'
@@ -356,6 +381,8 @@ class TrainerPlot(TrainerBase):
                 lns += [vln1]
             if idx2 != -1:
                 lns += [vln2]
+            if idx3 != -1:
+                lns += [vln3]
             labs = [l.get_label() for l in lns]
             ax.legend(lns, labs)
             ax.set_title('Metrics')
