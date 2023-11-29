@@ -1,6 +1,14 @@
 <launch>
-  <arg name="serial_no"           default=""/>
-  <arg name="usb_port_id"         default=""/>
+  <rosparam> /CAM1/stereo_module/inter_cam_sync_mode : 1 </rosparam>
+  <rosparam> /CAM1/rgb_camera/enable_auto_exposure : false </rosparam>
+  <rosparam> /CAM1/rgb_camera/enable_auto_white_balance : false </rosparam>
+  <rosparam> /CAM1/rgb_camera/exposure : 100 </rosparam>
+
+  <arg name="serial_no1"          default="151422254198"/> 
+  <arg name="camera1"             default="CAM1"/> 
+  <arg name="usb_port_id1"        default=""/>
+  <arg name="tf_prefix1"          default="$(arg camera1)"/>
+
   <arg name="device_type"         default=""/>
   <arg name="json_file_path"      default=""/>
   <arg name="camera"              default="camera"/>
@@ -8,7 +16,7 @@
   <arg name="external_manager"    default="false"/>
   <arg name="manager"             default="realsense2_camera_manager"/>
   <arg name="output"              default="screen"/>
-  <arg name="respawn"              default="false"/>
+  <arg name="respawn"             default="false"/>
 
   <arg name="fisheye_width"       default="-1"/>
   <arg name="fisheye_height"      default="-1"/>
@@ -24,13 +32,11 @@
   <arg name="confidence_fps"      default="-1"/>
 
   <arg name="infra_width"         default="640" />
-  <!-- "848" -->
   <arg name="infra_height"        default="480" />
-  <!-- "480"/> -->
-  <arg name="enable_infra"        default="true"/>
+  <arg name="enable_infra"        default="false"/>
   <arg name="enable_infra1"       default="false"/>
   <arg name="enable_infra2"       default="false"/>
-  <arg name="infra_rgb"           default="true"/>
+  <arg name="infra_rgb"           default="false"/>
 
   <arg name="color_width"         default="640"/>
   <arg name="color_height"        default="480"/>
@@ -45,14 +51,14 @@
   <arg name="enable_gyro"         default="true"/>
   <arg name="enable_accel"        default="true"/>
 
-  <arg name="enable_pointcloud"         default="true"/>
+  <arg name="enable_pointcloud"         default="false"/>
   <arg name="pointcloud_texture_stream" default="RS2_STREAM_COLOR"/>
   <arg name="pointcloud_texture_index"  default="0"/>
   <arg name="allow_no_texture_points"   default="false"/>
   <arg name="ordered_pc"                default="false"/>
 
   <arg name="enable_sync"               default="true"/>
-  <arg name="align_depth"               default="false"/>
+  <arg name="align_depth"               default="true"/>
 
   <arg name="publish_tf"                default="true"/>
   <arg name="tf_publish_rate"           default="0"/>
@@ -75,15 +81,15 @@
   
   
 
-  <group ns="$(arg camera)">
+  <group ns="$(arg camera1)">
     <include file="$(find realsense2_camera)/launch/includes/nodelet.launch.xml">
-      <arg name="tf_prefix"                value="$(arg tf_prefix)"/>
+      <arg name="tf_prefix"                value="$(arg tf_prefix1)"/>
       <arg name="external_manager"         value="$(arg external_manager)"/>
       <arg name="manager"                  value="$(arg manager)"/>
       <arg name="output"                   value="$(arg output)"/>
       <arg name="respawn"                  value="$(arg respawn)"/>
-      <arg name="serial_no"                value="$(arg serial_no)"/>
-      <arg name="usb_port_id"              value="$(arg usb_port_id)"/>
+      <arg name="serial_no"                value="$(arg serial_no1)"/>
+      <arg name="usb_port_id"              value="$(arg usb_port_id1)"/>
       <arg name="device_type"              value="$(arg device_type)"/>
       <arg name="json_file_path"           value="$(arg json_file_path)"/>
 
@@ -149,4 +155,5 @@
       
     </include>
   </group>
+
 </launch>

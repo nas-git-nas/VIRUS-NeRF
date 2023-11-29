@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 import rospy
-from std_msgs.msg import UInt32
-from sensors.msg import uss
 from sensors.msg import TOF
 from sensor_msgs.msg import PointCloud2, PointField
 from std_msgs.msg import Header
@@ -17,28 +15,28 @@ import time
 class LogToF():
     def __init__(
         self,
-        topic:list,
-        data_path:str,
+        tof_id:list,
+        data_dir:str,
         print_elapse_time:bool=False,
         publish_pointcloud:bool=False,
     ):
         """
         Log data from RealSense Node
         Args:
-            topic: topic name, str
-            data_path: path to save files; str
+            camera_id: either TOF1, TOF2 or TOF3; str
+            data_dir: path where to save data; str
             print_elapse_time: wheter to print ellapse time of callback; bool
             publish_pointcloud: whether to publish pointcloud of tof measurements; bool
         """
-        self.topic = topic
-        self.data_path = data_path
+        self.tof_id = tof_id
+        self.tof_dir = os.path.join(data_dir, tof_id)
         self.print_elapse_time = print_elapse_time
         self.publish_pointcloud = publish_pointcloud
         
         # delete-data of last measurement
-        data_path = os.path.join(self.data_path, "data.csv")
-        if os.path.isfile(data_path):
-            os.remove(data_path)
+        if os.path.exists(self.tof_dir):
+            shutil.rmtree(self.tof_dir)
+        os.mkdir(self.tof_dir)
         
         # data
         self.sequence = []
@@ -48,7 +46,8 @@ class LogToF():
         self.stds = []
         
         # ROS
-        rospy.init_node('log_tof', anonymous=True)
+        self.subscribe_tof = None
+        rospy.init_node('tof_log', anonymous=True)
         
         if self.publish_pointcloud:
             fov = 45 # field of view in degrees
@@ -68,9 +67,9 @@ class LogToF():
         """
         Subscribe to topic and wait for data.
         """
-        rospy.loginfo(f"LogRealSense.subscribe: Subscribe to: {self.topic}")
-        rospy.Subscriber(self.topic, TOF, self._callback)
+        self.subscribe_tof = rospy.Subscriber(self.topic, TOF, self._callback)
         
+        rospy.loginfo(f"LogToF.subscribe: Subscribed to: {self.tof_id}")
         rospy.spin()
         
     def save(
@@ -101,9 +100,9 @@ class LogToF():
        
         # save data
         df.to_csv(
-            os.path.join(self.data_path, "data.csv")
+            os.path.join(self.tof_dir, "data.csv")
         )
-        rospy.loginfo(f"LogToF.save: Save to: {self.data_path}")
+        rospy.loginfo(f"LogToF.save: Save to: {self.tof_dir}")
         
     def _callback(
         self,
@@ -116,23 +115,21 @@ class LogToF():
         """
         if self.print_elapse_time:
             start = time.time()
-            
-        # convert measurement
-        meas = self._convertMeasurments(
-            meas=data.meas,
-        )
-        stds = self._convertMeasurments(
-            meas=data.stds,
-        )
         
         # log data
         self.sequence.append(data.header.seq)
         self.seconds.append(data.header.stamp.secs)
         self.nano_seconds.append(data.header.stamp.nsecs)
-        self.meas.append(meas)
-        self.stds.append(stds)
+        self.meas.append(data.meas)
+        self.stds.append(data.stds)
         
         if self.publish_pointcloud:
+            meas = self._convertMeasurments(
+                meas=data.meas,
+            )
+            meas = self._transformMeasurments(
+                meas=meas,
+            )
             xyz = self._depth2pointcloud(
                 depths=meas,
             )
@@ -149,18 +146,32 @@ class LogToF():
     ):
         """
         Convert measurements from distance in mm to distance in m.
-        Measurements equal to 0 are invalid.
+        Invalid measurements are equal to 0.
         Args:
-            meas: measurements to convert; tuble (64)
+            meas: N measurements as tubles; list of tubles N*(64)
         Returns:
-            meas: measurments in meters, np.array of floats (8, 8)
+            meas: measurments in meters; np.array of floats (N, 8, 8)
         """
-        meas = np.array(meas, dtype=float).reshape(8, 8)
-        meas = meas[:,::-1]
-        meas = meas.T
+        N = len(meas)
+        meas = np.array(meas, dtype=float).reshape(N, 8, 8)
         
         meas[meas == 0] = np.nan
         return meas / 1000
+    
+    def _transformMeasurments(
+        self,
+        meas,
+    ):
+        """
+        Convert measurements from distance in mm to distance in m.
+        Measurements equal to 0 are invalid.
+        Args:
+            meas: measurements not transform; np.array of floats (N, 8, 8)
+        Returns:
+            meas: measurments transformed; np.array of floats (N, 8, 8)
+        """
+        meas = meas[:, :, ::-1]
+        return np.transpose(meas, axes=(0,2,1))
     
     def _depth2pointcloud(
         self,
@@ -219,8 +230,8 @@ class LogToF():
 
 def main():
     log = LogToF(
-        topic=rospy.get_param("topic"),
-        data_path=rospy.get_param("path"),
+        tof_id=rospy.get_param("tof_id"),
+        data_dir=rospy.get_param("data_dir"),
         print_elapse_time=rospy.get_param("print_elapse_time"),
         publish_pointcloud=rospy.get_param("publish_pointcloud"),
     )

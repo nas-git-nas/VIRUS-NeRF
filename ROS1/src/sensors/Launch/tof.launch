@@ -11,33 +11,32 @@
     <node 
         pkg="rosserial_python" 
         type="serial_node.py" 
-        name="serial_node" 
-        output="screen" >
+        name="serial_node" >
     </node>
 
            
 
-    <group ns="/tof1">
+    <group ns="/TOF1">
         <param 
-            name="topic" 
+            name="tof_id" 
             type="str" 
-            value="/TOF1" />
+            value="TOF1" />
         <param 
-            name="path" 
+            name="data_dir" 
             type="str" 
-            value="/home/spadmin/catkin_ws_ngp/data/tof1" />
+            value="/home/spadmin/catkin_ws_ngp/data" />
         <param 
             name="print_elapse_time" 
             type="bool" 
-            value="True" />
+            value="False" />
         <param 
             name="publish_pointcloud" 
             type="bool" 
-            value="True" />
+            value="False" />
         <node 
             pkg="sensors" 
-            type="log_tof.py" 
-            name="log_tof_node" 
+            type="tof_log.py" 
+            name="tof_log_node" 
             output="screen" />
     </group>
 
