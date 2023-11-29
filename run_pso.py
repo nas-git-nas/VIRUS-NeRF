@@ -1,12 +1,15 @@
 import numpy as np
 import time
 import sys
+import os
+import gc
+import torch
 
 from optimization.particle_swarm_optimization import ParticleSwarmOptimization
 from args.args import Args
 from datasets.dataset_rh import DatasetRH
 from training.trainer import Trainer
-# from helpers.system_fcts import get_size
+from helpers.system_fcts import get_size, moveToRecursively
 
 def get_size(
     obj, 
@@ -113,27 +116,34 @@ def main():
             hparams_file=hparams_file,
         )
 
-        # train and evaluate model
-        trainer.train()
-        metrics_dict = trainer.evaluate()
+        # # train and evaluate model
+        # trainer.train()
+        # metrics_dict = trainer.evaluate()
 
-        # save state
-        pso.saveState(
-            score=metrics_dict["mnn"],
-        )
+        # # save state
+        # pso.saveState(
+        #     score=metrics_dict["mnn"],
+        # )
 
-        # update particle swarm
-        terminate = pso.update(
-            score=metrics_dict["mnn"],
-        ) # bool
+        # # update particle swarm
+        # terminate = pso.update(
+        #     score=metrics_dict["mnn"],
+        # ) # bool
 
-        print(f"References to trainer: {get_size(trainer)}")
+        print(f"References to trainer: {sys.getrefcount(trainer)}")
         print(f"Size of trainer: {get_size(trainer)}")
         # print(f"Size of args: {get_size(args)}")
         # print(f"Size of train_dataset: {get_size(train_dataset)}")
         # print(f"Size of test_dataset: {get_size(test_dataset)}")
         print(f"Size of PSO: {get_size(pso)}")
+
+        moveToRecursively(
+            obj=trainer,
+            destination="cpu",
+        )
         del trainer
+        gc.collect()
+        torch.cuda.empty_cache()
 
 
 if __name__ == "__main__":
