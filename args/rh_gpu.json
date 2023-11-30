@@ -24,7 +24,7 @@
         "batch_size": 4096,
         "sampling_strategy": {"imgs": "all", "rays": "closest"},
         "sensors": ["USS", "ToF"],
-        "max_steps": 200,
+        "max_steps": 100,
         "lr": 1e-2,
         "depth_loss_w": 100.0,
         "random_bg": false
