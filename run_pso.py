@@ -4,6 +4,7 @@ import sys
 import os
 import gc
 import torch
+import taichi as ti
 
 from optimization.particle_swarm_optimization import ParticleSwarmOptimization
 from args.args import Args
@@ -46,7 +47,7 @@ def get_size(
 def main():
     # define paraeters
     T_time = 36000 # seconds
-    hparams_file = "rh_gpu.json" # "rh_gpu.json"
+    hparams_file = "rh_windows.json" # "rh_gpu.json"
     hparams_lims_file = "optimization/hparams_lims.json"
     save_dir = "results/pso/opt3"
 
@@ -136,6 +137,8 @@ def main():
         # print(f"Size of train_dataset: {get_size(train_dataset)}")
         # print(f"Size of test_dataset: {get_size(test_dataset)}")
         print(f"Size of PSO: {get_size(pso)}")
+
+        ti.reset()
 
         moveToRecursively(
             obj=trainer,

@@ -59,8 +59,8 @@ def optimize(
 def test_pso():
     # define optimization algorithm
     seeds = np.random.randint(0, 1000, size=9)
-    T_iter = None
-    T_time = 2
+    T_iter = 30
+    T_time = None
     hparams_lims_file = "test_scripts/optimization/hparams_lims.json"
     save_dir = "results/pso/test"
     metric_name = "rand"
