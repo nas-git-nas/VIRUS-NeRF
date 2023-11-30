@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import rospy
 from std_msgs.msg import Header
-from sensor_msgs.msg import Image, CameraInfo
+from sensor_msgs.msg import Image, CameraInfo, PointCloud2, PointField
 from realsense2_camera.msg import Metadata
 from cv_bridge import CvBridge
 import pyrealsense2
@@ -21,17 +21,20 @@ class LogRealSense():
         camera_id:list,
         data_dir:str,
         print_elapse_time:bool=False,
+        publish_pointcloud:bool=False,
     ):
         """
         Log data from RealSense Node
         Args:
-            topic: topic name, str
-            data_path: path to save files; str
+            camera_id: either CAM1, CAM2 or CAM3; str
+            data_dir: path where to save data; str
             print_elapse_time: whether to print ellapse time of callback; bool
+            publish_pointcloud: whether to publish pointcloud of depth measurements; bool
         """
         self.camera_id = camera_id
         self.camera_dir = os.path.join(data_dir, camera_id)
         self.print_elapse_time = print_elapse_time
+        self.publish_pointcloud = publish_pointcloud
         
         # delete last measurement
         if os.path.exists(self.camera_dir):
@@ -79,7 +82,21 @@ class LogRealSense():
         self.subscribe_rgb = None
         self.subscribe_rgb_info = None
         self.subscribe_rgb_meta = None
-        rospy.init_node('log_realsense', anonymous=True)
+        rospy.init_node('rs_log', anonymous=True)
+        
+        # pointcloud
+        if self.publish_pointcloud:
+            self.camera_info = None
+            self.directions = None
+            self.rgb = None
+            self.pub_pointcloud = rospy.Publisher('rgbd_pointcloud', PointCloud2, queue_size=10)
+            
+            self.color_floats = {
+                "w": struct.unpack('!f', bytes.fromhex('00FFFFFF'))[0],
+                "r": struct.unpack('!f', bytes.fromhex('00FF0000'))[0],
+                "g": struct.unpack('!f', bytes.fromhex('0000FF00'))[0],
+                "b": struct.unpack('!f', bytes.fromhex('000000FF'))[0],
+            }
         
     def subscribe(
         self,
@@ -160,9 +177,21 @@ class LogRealSense():
             filename=os.path.join(self.camera_dir, "depth", "imgs", f"img{self.meta_depth['seq'][-1]}.png"), 
             img=img,
         )
-        
         if not status:
             rospy.logwarn(f"LogRealSense._cbDepthImage: img save status: {status}")
+        
+        if self.publish_pointcloud and isinstance(self.directions, np.ndarray):
+            # rospy.loginfo(f"LogRealSense._callback: pup pointcloud ...")
+            depth = self._convertDepth(
+                depth=img,
+            )
+            xyz = self._depth2pointcloud(
+                depth=depth,
+            )
+            self._publishPointcloud(
+                xyz=xyz,
+                mask=np.ones((xyz.shape[0], xyz.shape[1]), dtype=bool),
+            )
         
         if self.print_elapse_time:
             rospy.loginfo(f"LogRealSense._cbDepthImage: elapse time: {(time.time()-start):.3f}s")
@@ -219,6 +248,16 @@ class LogRealSense():
         }
         self.subscribe_rgb_info.unregister()
         
+        if self.publish_pointcloud:
+            self.directions = self._calcDirections(
+                fx=self.camera_info["fx"],
+                fy=self.camera_info["fy"],
+                cx=self.camera_info["cx"],
+                cy=self.camera_info["cy"],
+                W=self.camera_info["W"],
+                H=self.camera_info["H"],
+            )
+        
         if self.print_elapse_time:
             rospy.loginfo(f"LogRealSense._cbRGBInfo: elapse time: {(time.time()-start):.3f}s")
             
@@ -237,6 +276,108 @@ class LogRealSense():
         self.timestamps["hw"].append(metadata["hw_timestamp"])
         self.timestamps["sensor"].append(metadata["sensor_timestamp"])
         
+    def _calcDirections(
+        self,
+        fx:float,
+        fy:float,
+        cx:float,
+        cy:float,
+        W:int,
+        H:int,
+    ):
+        # coordinate system: intrinsic
+        #   dir_x <-> width
+        #   dir_y <-> height
+        #   dir_z <-> viewing direction
+        us, vs = np.meshgrid(np.arange(W), np.arange(H), indexing="xy")
+        dir_x = (us - cx + 0.5) / fx
+        dir_y = (vs - cy + 0.5) / fy
+        dir_z = np.ones_like(us)
+        
+        # coordinate system: ROS
+        #   dir_x <-> viewing direction
+        #   dir_y <-> width
+        #   dir_z <-> height
+        directions = np.stack((dir_z, dir_x, dir_y), axis=2)
+        return directions / np.linalg.norm(directions, axis=2, keepdims=True)
+    
+    def _convertDepth(
+        self,
+        depth:np.array,
+    ):
+        """
+        Convert depth measurement.
+        Args:
+            depth: depth measurement; np.array of uint16 (H, W)
+        Returns:
+            depth: converted dpeths; np.array of float32 (H, W)
+        """
+        depth = 0.001 * depth.astype(dtype=np.float32)
+        return depth # flip depth
+    
+    def _depth2pointcloud(
+        self,
+        depth:np.array,
+    ):
+        """
+        Convert depth measurements to pointcloud.
+        Assuming x points into the viewing direction and z upwards.
+        Define dim1=z-axis and dim2=y-axis going from larger to smaller values.
+        Args:
+            depth: depth image; np.array of float32 (H, W)
+        Returns:
+            xyz: pointcloud; np.array (H, W, 3)
+        """
+        depth[depth>1.0] = 0
+        return depth[:,:,None] * self.directions
+        
+        
+    def _publishPointcloud(
+        self,
+        xyz:np.array,
+        mask:np.array,
+    ):
+        """
+        Publish pointcloud as Pointcloud2 ROS message.
+        Args:
+            xyz: pointcloud; np.array (H, W, 3)
+            mask: mask indicating targets; np.array of bool (H, W)
+        """
+        xyz[xyz==np.NAN] = 0
+        if xyz.dtype != np.float32:
+            xyz = xyz.astype(dtype=np.float32)
+        
+        rgb = self.color_floats["w"] * np.ones((xyz.shape[0], xyz.shape[1]), dtype=np.float32) # (H, W)
+        xyzrgb = np.concatenate((xyz, rgb[:,:,None]), axis=2)
+        # rgb = self.color_floats["w"] * np.ones_like(mask, dtype=np.float32) # (H, W)
+        # rgb[mask] = self.color_floats["r"]
+        # xyzrgb = np.concatenate((xyz, rgb[:,:,None]), axis=2)
+        
+        pointcloud_msg = PointCloud2()
+        pointcloud_msg.header = Header()
+        pointcloud_msg.header.frame_id = "RGBD"
+
+        # Define the point fields (attributes)        
+        pointcloud_msg.fields = [
+            PointField('x', 0, PointField.FLOAT32, 1),
+            PointField('y', 4, PointField.FLOAT32, 1),
+            PointField('z', 8, PointField.FLOAT32, 1),
+            PointField('rgb', 12, PointField.UINT32, 1),
+        ]
+        pointcloud_msg.height = xyz.shape[1]
+        pointcloud_msg.width = xyz.shape[0]
+
+        # Float occupies 4 bytes. Each point then carries 12 bytes.
+        pointcloud_msg.point_step = len(pointcloud_msg.fields) * 4 
+        # pointcloud_msg.row_step = pointcloud_msg.point_step * pointcloud_msg.width * pointcloud_msg.height
+        pointcloud_msg.row_step = pointcloud_msg.point_step * pointcloud_msg.width
+        pointcloud_msg.is_bigendian = False # assumption
+        pointcloud_msg.is_dense = True
+        
+        pointcloud_msg.data = xyzrgb.tobytes()
+        
+        self.pub_pointcloud.publish(pointcloud_msg)
+            
         
 
 def main():
@@ -244,6 +385,7 @@ def main():
         camera_id=rospy.get_param("camera_id"),
         data_dir=rospy.get_param("data_dir"),
         print_elapse_time=rospy.get_param("print_elapse_time"),
+        publish_pointcloud=rospy.get_param("publish_pointcloud"),
     )
     try:
         log.subscribe()

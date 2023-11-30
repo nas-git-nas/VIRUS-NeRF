@@ -97,11 +97,11 @@
 
     <group ns="/USS1">
         <param 
-            name="topic" 
+            name="uss_id" 
             type="str" 
-            value="/USS1" />
+            value="USS1" />
         <param 
-            name="path" 
+            name="data_dir" 
             type="str" 
             value="/home/spadmin/catkin_ws_ngp/data" />
         <param 
@@ -117,11 +117,11 @@
 
     <group ns="/USS2">
         <param 
-            name="topic" 
+            name="uss_id" 
             type="str" 
-            value="/USS2" />
+            value="USS2" />
         <param 
-            name="path" 
+            name="data_dir" 
             type="str" 
             value="/home/spadmin/catkin_ws_ngp/data" />
         <param 
@@ -137,11 +137,11 @@
 
     <group ns="/USS3">
         <param 
-            name="topic" 
+            name="uss_id" 
             type="str" 
-            value="/USS3" />
+            value="USS3" />
         <param 
-            name="path" 
+            name="data_dir" 
             type="str" 
             value="/home/spadmin/catkin_ws_ngp/data" />
         <param 
@@ -157,11 +157,11 @@
 
     <group ns="/TOF1">
         <param 
-            name="topic" 
+            name="tof_id" 
             type="str" 
-            value="/TOF1" />
+            value="TOF1" />
         <param 
-            name="path" 
+            name="data_dir" 
             type="str" 
             value="/home/spadmin/catkin_ws_ngp/data" />
         <param 
@@ -178,5 +178,60 @@
             name="tof_log_node" 
             output="screen" />
     </group>
+
+    <group ns="/TOF2">
+        <param 
+            name="tof_id" 
+            type="str" 
+            value="TOF2" />
+        <param 
+            name="data_dir" 
+            type="str" 
+            value="/home/spadmin/catkin_ws_ngp/data" />
+        <param 
+            name="print_elapse_time" 
+            type="bool" 
+            value="False" />
+        <param 
+            name="publish_pointcloud" 
+            type="bool" 
+            value="False" />
+        <node 
+            pkg="sensors" 
+            type="tof_log.py" 
+            name="tof_log_node" 
+            output="screen" />
+    </group>
+
+    <group ns="/TOF3">
+        <param 
+            name="tof_id" 
+            type="str" 
+            value="TOF3" />
+        <param 
+            name="data_dir" 
+            type="str" 
+            value="/home/spadmin/catkin_ws_ngp/data" />
+        <param 
+            name="print_elapse_time" 
+            type="bool" 
+            value="False" />
+        <param 
+            name="publish_pointcloud" 
+            type="bool" 
+            value="False" />
+        <node 
+            pkg="sensors" 
+            type="tof_log.py" 
+            name="tof_log_node" 
+            output="screen" />
+    </group>
+
+    <include file="$(find timed_roslaunch)/launch/timed_roslaunch.launch">
+        <arg name="time" value="60" />
+        <arg name="pkg" value="sensors" />
+        <arg name="file" value="watchdog.launch" />
+        <arg name="node_name" value="timed_roslaunch4" />
+    </include>
 
 </launch>

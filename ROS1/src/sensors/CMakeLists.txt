@@ -188,6 +188,7 @@ include_directories(
 
 
 catkin_install_python(PROGRAMS scripts/uss_log.py scripts/tof_log.py scripts/rs_log.py
+  scripts/watchdog.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
