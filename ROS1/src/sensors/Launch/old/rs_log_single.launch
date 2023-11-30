@@ -1,7 +1,7 @@
 <launch>
 
     <include 
-        file="$(find sensors)/Launch/realsense_start.launch">
+        file="$(find sensors)/Launch/rs_single.launch">
     </include>
 
     <group ns="/camera1/depth">
@@ -20,7 +20,7 @@
         <param 
             name="publish_pointcloud" 
             type="bool" 
-            value="True" />
+            value="False" />
         <node 
             pkg="sensors" 
             type="log_realsense.py" 

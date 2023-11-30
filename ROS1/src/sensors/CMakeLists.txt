@@ -187,8 +187,8 @@ include_directories(
 # )
 
 
-catkin_install_python(PROGRAMS scripts/talker.py scripts/listener.py scripts/log_realsense.py
-  scripts/log_uss.py scripts/log_tof.py scripts/uss_msg_publisher.py
+catkin_install_python(PROGRAMS scripts/uss_log.py scripts/tof_log.py scripts/rs_log.py
+  scripts/watchdog.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

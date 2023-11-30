@@ -1,0 +1,24 @@
+<launch>
+
+    <include file="$(find timed_roslaunch)/launch/timed_roslaunch.launch">
+        <arg name="time" value="1" />
+        <arg name="pkg" value="sensors" />
+        <arg name="file" value="rs_cam1.launch" />
+        <arg name="node_name" value="timed_roslaunch1" />
+    </include>
+
+    <include file="$(find timed_roslaunch)/launch/timed_roslaunch.launch">
+        <arg name="time" value="7" />
+        <arg name="pkg" value="sensors" />
+        <arg name="file" value="rs_cam2.launch" />
+        <arg name="node_name" value="timed_roslaunch2" />
+    </include>
+
+    <include file="$(find timed_roslaunch)/launch/timed_roslaunch.launch">
+        <arg name="time" value="14" />
+        <arg name="pkg" value="sensors" />
+        <arg name="file" value="rs_cam3.launch" />
+        <arg name="node_name" value="timed_roslaunch3" />
+    </include>
+
+</launch>
