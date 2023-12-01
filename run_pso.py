@@ -47,7 +47,7 @@ from helpers.system_fcts import get_size, moveToRecursively
 def main():
     # define paraeters
     T_time = 36000 # seconds
-    hparams_file = "rh_windows.json" # "rh_gpu.json"
+    hparams_file = "rh_gpu.json" # "rh_windows.json"
     hparams_lims_file = "optimization/hparams_lims.json"
     save_dir = "results/pso/opt3"
 
@@ -107,6 +107,10 @@ def main():
         # for key, value in hparams_dict["occ_grid"].items():
         #     setattr(args.occ_grid, key, value)
 
+        # initialize taichi
+        taichi_init_args = {"arch": ti.cuda,}
+        ti.init(**taichi_init_args)
+
         # load trainer
         # trainer = Trainer(
         #     args=args,
@@ -119,7 +123,7 @@ def main():
 
         # train and evaluate model
         trainer.train()
-        metrics_dict = trainer.evaluate()
+        # metrics_dict = trainer.evaluate()
 
         # # save state
         # pso.saveState(
@@ -147,8 +151,10 @@ def main():
             destination="cpu",
         )
         del trainer
+        ti.reset()
         gc.collect()
         torch.cuda.empty_cache()
+        ti.reset()
 
 
 if __name__ == "__main__":

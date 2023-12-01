@@ -36,10 +36,10 @@ class Sampler():
         weights = np.repeat(weights.reshape(-1, 1), self.img_wh[0], axis=1)
         self.weights = (weights / np.sum(weights)).flatten()
 
-        self.sample_count = {
-            "nerf": torch.zeros(self.dataset_len, img_wh[0]*img_wh[1], dtype=torch.uint8, device=self.args.device),
-            "occ": torch.zeros(self.dataset_len, img_wh[0]*img_wh[1], dtype=torch.uint8, device=self.args.device),
-        }
+        # self.sample_count = {
+        #     "nerf": torch.zeros(self.dataset_len, img_wh[0]*img_wh[1], dtype=torch.uint8, device=self.args.device),
+        #     "occ": torch.zeros(self.dataset_len, img_wh[0]*img_wh[1], dtype=torch.uint8, device=self.args.device),
+        # }
 
     def __call__(
         self,
@@ -76,11 +76,11 @@ class Sampler():
             ray_strategy=sampling_strategy["rays"],
             img_idxs=img_idxs
         )
-        count = self._count(
-            img_idxs=img_idxs,
-            pix_idxs=pix_idxs,
-            origin=origin,
-        )
+        # count = self._count(
+        #     img_idxs=img_idxs,
+        #     pix_idxs=pix_idxs,
+        #     origin=origin,
+        # )
 
         return img_idxs, pix_idxs, count
     
@@ -199,43 +199,43 @@ class Sampler():
         print(f"ERROR: sampler._pixIdxs: pixel sampling strategy must be either 'random', 'ordered', 'closest' or weighted"
               + f" but is {self.args.training.sampling_strategy['rays']}")
         
-    def _count(
-        self,
-        img_idxs:torch.Tensor,
-        pix_idxs:torch.Tensor,
-        origin:str,
-    ):
-        """
-        Count how often a pixel is sampled for each origin.
-        Args:
-            img_idxs: indices of images used for training; tensor of int64 (batch_size,)
-            pix_idxs: indices of pixels used for training; tensor of int64 (batch_size,)
-            origin: sampling origin; str
-                    'nerf': sample for nerf
-                    'occ': sample for occupancy grid
-        Returns:
-            count: number of times a pixel is sampled for origin; tensor of uint8 (batch_size,)
-        """
-        if origin == "nerf":
-            count_is_max = self.sample_count["nerf"][img_idxs, pix_idxs] == 255
-            if torch.any(count_is_max):
-                self.args.logger.warning(f"overflows from 255->0: limit count to 255")
-            self.sample_count["nerf"][img_idxs, pix_idxs] = torch.where(
-                condition=count_is_max,
-                input=self.sample_count["nerf"][img_idxs, pix_idxs],
-                other=self.sample_count["nerf"][img_idxs, pix_idxs] + 1,
-            )
-            return self.sample_count["nerf"][img_idxs, pix_idxs]
+    # def _count(
+    #     self,
+    #     img_idxs:torch.Tensor,
+    #     pix_idxs:torch.Tensor,
+    #     origin:str,
+    # ):
+    #     """
+    #     Count how often a pixel is sampled for each origin.
+    #     Args:
+    #         img_idxs: indices of images used for training; tensor of int64 (batch_size,)
+    #         pix_idxs: indices of pixels used for training; tensor of int64 (batch_size,)
+    #         origin: sampling origin; str
+    #                 'nerf': sample for nerf
+    #                 'occ': sample for occupancy grid
+    #     Returns:
+    #         count: number of times a pixel is sampled for origin; tensor of uint8 (batch_size,)
+    #     """
+    #     if origin == "nerf":
+    #         count_is_max = self.sample_count["nerf"][img_idxs, pix_idxs] == 255
+    #         if torch.any(count_is_max):
+    #             self.args.logger.warning(f"overflows from 255->0: limit count to 255")
+    #         self.sample_count["nerf"][img_idxs, pix_idxs] = torch.where(
+    #             condition=count_is_max,
+    #             input=self.sample_count["nerf"][img_idxs, pix_idxs],
+    #             other=self.sample_count["nerf"][img_idxs, pix_idxs] + 1,
+    #         )
+    #         return self.sample_count["nerf"][img_idxs, pix_idxs]
         
-        if origin == "occ":
-            count_is_max = self.sample_count["occ"][img_idxs, pix_idxs] == 255
-            if torch.any(count_is_max):
-                self.args.logger.warning(f"sampler._count: overflows from 255->0: limit count to 255")
-            self.sample_count["occ"][img_idxs, pix_idxs] = torch.where(
-                condition=count_is_max,
-                input=self.sample_count["occ"][img_idxs, pix_idxs],
-                other=self.sample_count["occ"][img_idxs, pix_idxs] + 1,
-            )
-            return self.sample_count["occ"][img_idxs, pix_idxs]
+    #     if origin == "occ":
+    #         count_is_max = self.sample_count["occ"][img_idxs, pix_idxs] == 255
+    #         if torch.any(count_is_max):
+    #             self.args.logger.warning(f"sampler._count: overflows from 255->0: limit count to 255")
+    #         self.sample_count["occ"][img_idxs, pix_idxs] = torch.where(
+    #             condition=count_is_max,
+    #             input=self.sample_count["occ"][img_idxs, pix_idxs],
+    #             other=self.sample_count["occ"][img_idxs, pix_idxs] + 1,
+    #         )
+    #         return self.sample_count["occ"][img_idxs, pix_idxs]
 
-        self.args.logger.error(f"origin must be either 'nerf' or 'occ'")
+    #     self.args.logger.error(f"origin must be either 'nerf' or 'occ'")
