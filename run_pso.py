@@ -12,6 +12,9 @@ from datasets.dataset_rh import DatasetRH
 from training.trainer import Trainer
 from helpers.system_fcts import get_size, moveToRecursively
 
+if torch.cuda.is_available():
+    import nvidia_smi
+
 # def get_size(
 #     obj, 
 #     seen=None
@@ -47,7 +50,7 @@ from helpers.system_fcts import get_size, moveToRecursively
 def main():
     # define paraeters
     T_time = 36000 # seconds
-    hparams_file = "rh_gpu.json" # "rh_windows.json"
+    hparams_file = "rh_windows.json" # "rh_gpu.json"
     hparams_lims_file = "optimization/hparams_lims.json"
     save_dir = "results/pso/opt3"
 
@@ -144,17 +147,32 @@ def main():
         # print(f"Size of train_dataset: {get_size(train_dataset)}")
         # print(f"Size of test_dataset: {get_size(test_dataset)}")
 
-        ti.reset()
-
-        moveToRecursively(
-            obj=trainer,
-            destination="cpu",
-        )
+        # if args.device == "cuda":
+        if torch.cuda.is_available():
+            moveToRecursively(
+                obj=trainer,
+                destination="cpu",
+            )
+            
         del trainer
-        ti.reset()
         gc.collect()
         torch.cuda.empty_cache()
         ti.reset()
+
+        # if args.device == "cuda":
+        if torch.cuda.is_available():
+            nvidia_smi.nvmlInit()
+
+            handle = nvidia_smi.nvmlDeviceGetHandleByIndex(0)
+            # card id 0 hardcoded here, there is also a call to get all available card ids, so we could iterate
+
+            info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
+
+            print("Total memory:", info.total)
+            print("Free memory:", info.free)
+            print("Used memory:", info.used)
+
+            nvidia_smi.nvmlShutdown()
 
 
 if __name__ == "__main__":
