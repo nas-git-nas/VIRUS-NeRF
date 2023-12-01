@@ -6,13 +6,13 @@ import matplotlib
 from abc import ABC, abstractmethod
  
 sys.path.insert(0, os.getcwd())
-from optimization.particle_swarm_optimization import ParticleSwarmOptimization
+from optimization.particle_swarm_optimization_wrapper import ParticleSwarmOptimizationWrapper
 from optimization.metric import Metric
 from optimization.plotter import Plotter
 
 
 def optimize(
-    pso:ParticleSwarmOptimization,
+    pso:ParticleSwarmOptimizationWrapper,
     metric:Metric,
 ):
     """
@@ -21,20 +21,17 @@ def optimize(
         M: number of hparams; int
         T: number of iterations; int
     Args:
-        pso: particle swarm optimization; ParticleSwarmOptimization
+        pso: particle swarm optimization; ParticleSwarmOptimizationWrapper
         metric: metric to optimize; Metric
-    Returns:
-        X_list: list of hparams; np.array (N, T, M)
-        score_list: list of scores; np.array (N, T)
     """
     terminate = False
-    X_list = [ [] for _ in range(pso.N)] # (N, T, M)
-    score_list = [ [] for _ in range(pso.N)] # (N, T)
     while not terminate:
         # get hparams to evaluate
-        X = pso.getHparams(
+        X = pso.nextHparams(
             group_dict_layout=False,
+            name_dict_layout=False,
         ) # np.array (M,)
+        print(f"Iteration: t: {pso.t}, param: {X}")
 
         # evaluate metric
         score = metric(
@@ -45,24 +42,19 @@ def optimize(
         pso.saveState(
             score=score,
         )
-        X_list[pso.n].append(X)
-        score_list[pso.n].append(score)
 
         # update particle swarm
         terminate = pso.update(
             score=score,
         ) # bool
 
-    return np.array(X_list), np.array(score_list)
-
-
 def test_pso():
     # define optimization algorithm
-    seeds = np.random.randint(0, 1000, size=9)
-    T_iter = 30
-    T_time = None
+    seeds = np.random.randint(0, 1000, size=4)
+    T = 40
+    termination_by_time = False
     hparams_lims_file = "test_scripts/optimization/hparams_lims.json"
-    save_dir = "results/pso/test"
+    save_dirs = ["results/pso/test/opt"+str(i) for i in range(len(seeds))]
     metric_name = "rand"
 
     # plotter
@@ -75,11 +67,11 @@ def test_pso():
         rng = np.random.default_rng(seed)
 
         # define particle swarm and metric
-        pso = ParticleSwarmOptimization(
+        pso = ParticleSwarmOptimizationWrapper(
             hparams_lims_file=hparams_lims_file,
-            save_dir=save_dir,
-            T_iter=T_iter,
-            T_time=T_time,
+            save_dir=save_dirs[i],
+            T=T,
+            termination_by_time=termination_by_time,
             rng=rng,
         )
         metric = Metric(
@@ -89,7 +81,7 @@ def test_pso():
         )
 
         # run optimization
-        X_list, score_list = optimize(
+        optimize(
             pso=pso,
             metric=metric,
         ) # (N, T, M), (N, T)
@@ -98,8 +90,6 @@ def test_pso():
         plotter.plot2D(
             pso=pso,
             metric=metric,
-            X_list=X_list,
-            score_list=score_list,
             ax_idx=i,
         )
 
