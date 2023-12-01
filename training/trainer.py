@@ -128,13 +128,6 @@ class Trainer(TrainerPlot):
             'mnn': [],
         }
 
-        # self.occ_grid_class = OccupancyGrid(
-        #     args=self.args,
-        #     grid_size=self.model.grid_size,
-        #     rh_scene=self.train_dataset.scene,
-        # )
-        
-
     def train(self):
         """
         Training loop.
