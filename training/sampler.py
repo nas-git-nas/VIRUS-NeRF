@@ -81,6 +81,7 @@ class Sampler():
         #     pix_idxs=pix_idxs,
         #     origin=origin,
         # )
+        count = torch.zeros(batch_size, dtype=torch.uint8, device=self.args.device) # TODO: remove
 
         return img_idxs, pix_idxs, count
     

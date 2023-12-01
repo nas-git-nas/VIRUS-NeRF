@@ -156,19 +156,19 @@ class Trainer(TrainerPlot):
             
             with torch.autocast(device_type='cuda', dtype=torch.float16):
                 
-                # if step % self.args.occ_grid.update_interval == 0:
+                if step % self.args.occ_grid.update_interval == 0:
 
-                #     if self.args.occ_grid.grid_type == 'nerf':
-                #         self.model.updateNeRFGrid(
-                #             density_threshold=0.01 * MAX_SAMPLES / 3**0.5,
-                #             warmup=step < self.args.occ_grid.warmup_steps,
-                #         )
-                #     elif self.args.occ_grid.grid_type == 'occ':
-                #         self.model.updateOccGrid(
-                #             density_threshold= 0.5,
-                #         )
-                #     else:
-                #         self.args.logger.error(f"grid_type {self.args.occ_grid.grid_type} not implemented")
+                    if self.args.occ_grid.grid_type == 'nerf':
+                        self.model.updateNeRFGrid(
+                            density_threshold=0.01 * MAX_SAMPLES / 3**0.5,
+                            warmup=step < self.args.occ_grid.warmup_steps,
+                        )
+                    elif self.args.occ_grid.grid_type == 'occ':
+                        self.model.updateOccGrid(
+                            density_threshold= 0.5,
+                        )
+                    else:
+                        self.args.logger.error(f"grid_type {self.args.occ_grid.grid_type} not implemented")
                     
 
                 # get rays and render image
