@@ -126,23 +126,23 @@ def main():
 
         # train and evaluate model
         trainer.train()
-        # metrics_dict = trainer.evaluate()
+        metrics_dict = trainer.evaluate()
 
-        # # save state
-        # pso.saveState(
-        #     score=metrics_dict["mnn"],
-        # )
+        # save state
+        pso.saveState(
+            score=metrics_dict["mnn"],
+        )
 
-        # # update particle swarm
-        # terminate = pso.update(
-        #     score=metrics_dict["mnn"],
-        # ) # bool
+        # update particle swarm
+        terminate = pso.update(
+            score=metrics_dict["mnn"],
+        ) # bool
 
         
-        print(f"References to trainer: {sys.getrefcount(trainer)}")
-        print(f"References to PSO: {sys.getrefcount(pso)}")
-        print(f"Size of trainer: {get_size(trainer)}")
-        print(f"Size of PSO: {get_size(pso)}")
+        # print(f"References to trainer: {sys.getrefcount(trainer)}")
+        # print(f"References to PSO: {sys.getrefcount(pso)}")
+        # print(f"Size of trainer: {get_size(trainer)}")
+        # print(f"Size of PSO: {get_size(pso)}")
         # print(f"Size of args: {get_size(args)}")
         # print(f"Size of train_dataset: {get_size(train_dataset)}")
         # print(f"Size of test_dataset: {get_size(test_dataset)}")
@@ -153,7 +153,7 @@ def main():
                 obj=trainer,
                 destination="cpu",
             )
-            
+
         del trainer
         gc.collect()
         torch.cuda.empty_cache()
