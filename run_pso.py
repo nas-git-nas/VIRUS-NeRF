@@ -50,7 +50,7 @@ if torch.cuda.is_available():
 def main():
     # define paraeters
     T_time = 36000 # seconds
-    hparams_file = "rh_windows.json" # "rh_gpu.json"
+    hparams_file = "rh_gpu.json" 
     hparams_lims_file = "optimization/hparams_lims.json"
     save_dir = "results/pso/opt3"
 
