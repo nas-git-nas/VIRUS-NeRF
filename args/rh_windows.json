@@ -45,7 +45,7 @@
     },
     "occ_grid":
     {
-        "grid_type": "occ",
+        "grid_type": "nerf",
         "warmup_steps": 256,
         "batch_size": 64,
         "sampling_strategy": {"imgs": "all", "rays": "uss_tof"},  

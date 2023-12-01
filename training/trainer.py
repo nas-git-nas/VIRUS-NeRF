@@ -128,13 +128,6 @@ class Trainer(TrainerPlot):
             'mnn': [],
         }
 
-        # self.occ_grid_class = OccupancyGrid(
-        #     args=self.args,
-        #     grid_size=self.model.grid_size,
-        #     rh_scene=self.train_dataset.scene,
-        # )
-        
-
     def train(self):
         """
         Training loop.
@@ -180,39 +173,39 @@ class Trainer(TrainerPlot):
                     exp_step_factor=self.args.exp_step_factor,
                 )
 
-        #         # calculate loss
-        #         loss, loss_dict = self.loss(
-        #             results=results,
-        #             data=data,
-        #             return_loss_dict=True, # TODO: optimize
-        #         )
-        #         # loss, color_loss, depth_loss = self.lossFunc(results=results, data=data, step=step)
-        #         if self.args.training.distortion_loss_w > 0:
-        #             loss += self.args.training.distortion_loss_w * distortion_loss(results).mean()
+                # calculate loss
+                loss, loss_dict = self.loss(
+                    results=results,
+                    data=data,
+                    return_loss_dict=True, # TODO: optimize
+                )
+                # loss, color_loss, depth_loss = self.lossFunc(results=results, data=data, step=step)
+                if self.args.training.distortion_loss_w > 0:
+                    loss += self.args.training.distortion_loss_w * distortion_loss(results).mean()
 
-        #     # backpropagate and update weights
-        #     self.optimizer.zero_grad()
-        #     self.grad_scaler.scale(loss).backward()
-        #     self.grad_scaler.step(self.optimizer)
-        #     self.grad_scaler.update()
-        #     self.scheduler.step()
+            # backpropagate and update weights
+            self.optimizer.zero_grad()
+            self.grad_scaler.scale(loss).backward()
+            self.grad_scaler.step(self.optimizer)
+            self.grad_scaler.update()
+            self.scheduler.step()
 
-        #     # evaluation
-        #     eval_tic = time.time()
-        #     self._evaluateStep(
-        #         results=results, 
-        #         data=data, 
-        #         step=step, 
-        #         loss_dict=loss_dict,
-        #         tic=train_tic
-        #     )
-        #     self._plotOccGrid(
-        #         step=step,
-        #     )
-        #     eval_toc = time.time()
-        #     train_tic += eval_toc - eval_tic # subtract evaluation time from training time
+            # evaluation
+            eval_tic = time.time()
+            self._evaluateStep(
+                results=results, 
+                data=data, 
+                step=step, 
+                loss_dict=loss_dict,
+                tic=train_tic
+            )
+            self._plotOccGrid(
+                step=step,
+            )
+            eval_toc = time.time()
+            train_tic += eval_toc - eval_tic # subtract evaluation time from training time
 
-        # self._saveModel()
+        self._saveModel()
 
     def evaluate(self):
         """

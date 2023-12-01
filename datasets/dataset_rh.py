@@ -71,9 +71,9 @@ class DatasetRH(DatasetBase):
         else:
             self.scene = scene
 
-        img_wh, K, directions = self.read_intrinsics()
-        rays, depths, poses = self.read_meta(
-            split=split,
+        img_wh, K, directions = self.readIntrinsics()
+        rays, depths, poses, times = self.readMeta(
+            df=self.df,
             img_wh=img_wh,
         )
 
@@ -86,7 +86,7 @@ class DatasetRH(DatasetBase):
                 angle_min_max=self.args.dataset.keep_pixels_in_angle_range,
             )
 
-        sensors_dict, depths_dict = self.createSensorModels(
+        sensors_dict, depths_dict = self._createSensorModels(
             depths=depths,
             img_wh=img_wh,
         )
@@ -98,6 +98,7 @@ class DatasetRH(DatasetBase):
         self.directions = directions
         self.sensors_dict = sensors_dict
         self.depths_dict = depths_dict
+        self.times = times
 
         # TODO: move to base class
         self.sampler = Sampler(
@@ -109,7 +110,7 @@ class DatasetRH(DatasetBase):
             fct_getValidDepthMask=self.getValidDepthMask,
         )
 
-    def read_intrinsics(self):
+    def readIntrinsics(self):
         """
         Read camera intrinsics from the dataset.
         Returns:
@@ -154,155 +155,45 @@ class DatasetRH(DatasetBase):
 
         return (w, h), torch.FloatTensor(K), directions.requires_grad_(requires_grad=False)
 
-    def read_meta(
+    def readMeta(
         self, 
-        split:str,
+        df:pd.DataFrame,
         img_wh:tuple,
     ):
         """
         Read meta data from the dataset.
         Args:
-            split: string indicating which split to read from; str
+            df: robot@home2 dataframe, pandas df
             img_wh: image width and height; tuple of ints
         Returns:
             rays: tensor of shape (N_images, H*W, 3) containing RGB images
             depths: tensor of shape (N_images, H*W) containing depth images
             poses: tensor of shape (N_images, 3, 4) containing camera poses
+            times: timestamps in seconds starting at 0; tensor (N_images,)
         """
-        df = self.df[self.df["split"] == split].copy(deep=True)
-        W, H = img_wh
+        df = df.copy(deep=True)
 
-        # get images
-        rays = np.empty(())
-        ids = df["id"].to_numpy()
-        rays = np.empty((ids.shape[0], W*H, 3))
-        depths = np.empty((ids.shape[0], W*H), dtype=np.float32)
-        for i, id in enumerate(ids):
-            [rgb_f, d_f] = self.rh.get_RGBD_files(id)
-            rays[i,:,:] = mpimg.imread(rgb_f).reshape(W*H, 3)
+        # read RGBD images
+        rays, depths = self._readRGBD(
+            df=df,
+            img_wh=img_wh,
+        )
 
-            # depth_or = mpimg.imread(d_f)
-            depth_or = cv.imread(d_f, cv.IMREAD_UNCHANGED)
-            if np.max(depth_or) > 115 or np.min(depth_or) < 0:
-                self.args.logger.error(f"robot_at_home.py: read_meta: depth image has invalid values")
-            # depth = 4.7 * depth_or / 115.0 # convert to meters
-            depth = 5.0 * depth_or / 128.0 # convert to meters
+        # read camera poses
+        poses = self._readPose(
+            df=df,
+        )
 
-            if np.allclose(depth_or[:,:,0], depth_or[:,:,1]) and np.allclose(depth_or[:,:,0], depth_or[:,:,2]):
-                depth = depth[:,:,0]
-            else:
-                self.args.logger.error(f"robot_at_home.py: read_meta: depth image has more than one channel")
-            # depth = self.scalePosition(pos=depth, only_scale=True) # (H, W), convert to cube coordinate system [-0.5, 0.5]
-            depth[depth==0] = np.nan # set invalid depth values to nan
-            depth = self.scene.w2c(depth.flatten(), only_scale=True) # (H*W,), convert to cube coordinate system [-0.5, 0.5]
-            depths[i,:] = depth
+        # get timestamps and convert to seconds starting at 0
+        times = df["timestamp"].to_numpy() / 10000000.0
+        times = times - times[0]
 
-            # if i == 0 or i==50 or i==100 or i==200 or i==300 or i==400:
-            #     fig, axs = plt.subplots(1, 3, figsize=(12, 6))
+        # convert numpy arrays to tensors
+        rays = torch.tensor(rays, dtype=torch.float32, requires_grad=False)
+        poses = torch.tensor(poses, dtype=torch.float32, requires_grad=False)
+        times = torch.tensor(times, dtype=torch.float32, requires_grad=False)
 
-            #     axs[0].imshow(rays[i,:,:].reshape(self.img_wh[1], self.img_wh[0], 3))
-            #     axs[0].set_title('Original Image')
-            #     axs[0].axis('off')
-
-            #     # Display the first image with the specified colormap and colorbar
-            #     im1 = axs[1].imshow(depth_or[:,:,0], cmap='jet_r', aspect='equal')
-            #     axs[1].set_title('Original Density')
-            #     axs[1].axis('off')
-            #     cbar1 = plt.colorbar(im1, ax=axs[1], fraction=0.046, pad=0.04)
-            #     cbar1.set_label('Depth')
-
-            #     # Display the second image with the specified colormap and colorbar
-            #     im2 = axs[2].imshow(depth, cmap='jet_r', aspect='equal', vmin=0.0, vmax=4.7)
-            #     axs[2].set_title('Transformed Density')
-            #     axs[2].axis('off')
-            #     cbar2 = plt.colorbar(im2, ax=axs[2], fraction=0.046, pad=0.04)
-            #     cbar2.set_label('Depth')
-
-            #     plt.tight_layout()
-            #     plt.show()
-
-        # get position
-        sensor_pose_x = df["sensor_pose_x"].to_numpy()
-        sensor_pose_y = df["sensor_pose_y"].to_numpy()
-        sensor_pose_z = df["sensor_pose_z"].to_numpy()
-        p_c2w = np.stack((sensor_pose_x, sensor_pose_y, sensor_pose_z), axis=1)
-
-        # get orientation
-        sensor_pose_yaw = df["sensor_pose_yaw"].to_numpy()
-        sensor_pose_pitch = df["sensor_pose_pitch"].to_numpy()
-        sensor_pose_roll = df["sensor_pose_roll"].to_numpy()
-
-        # sensor_pose_pitch += np.deg2rad(90)
-        # sensor_pose_roll += np.deg2rad(90)
-        sensor_pose_yaw -= np.deg2rad(90)
-        # sensor_pose_yaw = 0.0 * np.ones_like(sensor_pose_yaw)
-        # sensor_pose_pitch = 0.0 * np.ones_like(sensor_pose_pitch)
-        # sensor_pose_roll = - np.deg2rad(90) * np.ones_like(sensor_pose_roll)
-
-        R_yaw_c2w = np.stack((np.cos(sensor_pose_yaw), -np.sin(sensor_pose_yaw), np.zeros_like(sensor_pose_yaw),
-                              np.sin(sensor_pose_yaw), np.cos(sensor_pose_yaw), np.zeros_like(sensor_pose_yaw),
-                              np.zeros_like(sensor_pose_yaw), np.zeros_like(sensor_pose_yaw), np.ones_like(sensor_pose_yaw)), axis=1).reshape(-1, 3, 3)
-        R_pitch_c2w = np.stack((np.cos(sensor_pose_pitch), np.zeros_like(sensor_pose_pitch), np.sin(sensor_pose_pitch),
-                                np.zeros_like(sensor_pose_pitch), np.ones_like(sensor_pose_pitch), np.zeros_like(sensor_pose_pitch),
-                                -np.sin(sensor_pose_pitch), np.zeros_like(sensor_pose_pitch), np.cos(sensor_pose_pitch)), axis=1).reshape(-1, 3, 3)
-        R_roll_c2w = np.stack((np.ones_like(sensor_pose_roll), np.zeros_like(sensor_pose_roll), np.zeros_like(sensor_pose_roll),
-                               np.zeros_like(sensor_pose_roll), np.cos(sensor_pose_roll), -np.sin(sensor_pose_roll),
-                               np.zeros_like(sensor_pose_roll), np.sin(sensor_pose_roll), np.cos(sensor_pose_roll)), axis=1).reshape(-1, 3, 3)
-        R_c2w = np.matmul(R_yaw_c2w, np.matmul(R_pitch_c2w, R_roll_c2w))
-        # R_c2w = np.matmul(R_roll_c2w, np.matmul(R_pitch_c2w, R_yaw_c2w))
-
-        poses = np.concatenate((R_c2w, p_c2w[:, :, np.newaxis]), axis=2) # (N_images, 3, 4)
-
-        # translate and scale position
-        # poses[:,:,3] = self.scalePosition(pos=poses[:,:,3])
-        poses[:,:,3] = self.scene.w2c(pos=poses[:,:,3], copy=False)
-
-        return torch.tensor(rays, dtype=torch.float32, requires_grad=False), depths, torch.tensor(poses, dtype=torch.float32, requires_grad=False)
-    
-    def createSensorModels(
-            self, 
-            depths:torch.tensor,
-            img_wh:tuple,
-    ):
-        """
-        Create sensor models for each sensor and convert depths respectively.
-        Args:
-            depths: depths of all images; tensor of shape (N_images, H*W)
-            img_wh: image width and height; tuple of ints
-        Returns:
-            sensors_dict: dictionary containing sensor models
-            depths_dict: dictionary containing converted depths
-        """
-        sensors_dict = {} 
-        for sensor_name in self.args.training.sensors:
-            if sensor_name == "RGBD":
-                sensors_dict["RGBD"] = RGBDModel(
-                    args=self.args, 
-                    img_wh=img_wh
-                )
-            elif sensor_name == "ToF":
-                sensors_dict["ToF"] = ToFModel(
-                    args=self.args, 
-                    img_wh=img_wh
-                )
-            elif sensor_name == "USS":
-                sensors_dict["USS"] = USSModel(
-                    args=self.args, 
-                    img_wh=img_wh,
-                    num_imgs=self.df.shape[0],
-                )
-            else:
-                print(f"ERROR: robot_at_home.__init__: sensor model {sensor_name} not implemented")
-
-        depths_dict = {}
-        for sensor_name, sensor_model in sensors_dict.items():
-            depths_dict[sensor_name] = torch.tensor(
-                data=sensor_model.convertDepth(depths),
-                dtype=torch.float32,
-                requires_grad=False,
-            )
-
-        return sensors_dict, depths_dict
+        return rays, depths, poses, times
     
     def getIdxFromSensorName(self, df, sensor_name):
         """
@@ -354,6 +245,139 @@ class DatasetRH(DatasetBase):
             df = df.iloc[:self.args.dataset.keep_N_observations,:]
 
         return df
+    
+    def _readRGBD(
+        self, 
+        df:pd.DataFrame, 
+        img_wh:tuple,
+    ):
+        """
+        Read RGBD images from the dataset.
+        Args:
+            df: robot@home dataframe; pandas.DataFrame
+            img_wh: image width and height; tuple of ints
+        Returns:
+            rays: color images; array of shape (N_images, H*W, 3)
+            depths: depth images; array of shape (N_images, H*W)
+        """
+        W, H = img_wh
+
+        # get images
+        ids = df["id"].to_numpy()
+        rays = np.empty((ids.shape[0], W*H, 3))
+        depths = np.empty((ids.shape[0], W*H), dtype=np.float32)
+        for i, id in enumerate(ids):
+            # read color and depth image
+            [rgb_f, d_f] = self.rh.get_RGBD_files(id)
+            rays[i,:,:] = mpimg.imread(rgb_f).reshape(W*H, 3)
+            depth = cv.imread(d_f, cv.IMREAD_UNCHANGED)
+
+            # verify depth image
+            if self.args.model.debug_mode:
+                if np.max(depth) > 115 or np.min(depth) < 0:
+                    self.args.logger.error(f"robot_at_home.py: read_meta: depth image has invalid values")
+                if not (np.allclose(depth[:,:,0], depth[:,:,1]) and np.allclose(depth[:,:,0], depth[:,:,2])):
+                    self.args.logger.error(f"robot_at_home.py: read_meta: depth image has more than one channel")
+
+            # convert depth
+            depth = depth[:,:,0] # (H, W), keep only one color channel
+            depth = 5.0 * depth / 128.0 # (H, W), convert to meters
+            depth[depth==0] = np.nan # (H, W), set invalid depth values to nan
+            depth = self.scene.w2c(depth.flatten(), only_scale=True) # (H*W,), convert to cube coordinate system [-0.5, 0.5]
+            depths[i,:] = depth
+
+        return rays, depths
+    
+    def _readPose(
+        self,
+        df:pd.DataFrame,
+    ):
+        """
+        Read camera poses from the dataset.
+        Args:
+            df: robot@home dataframe; pandas.DataFrame
+        Returns:
+            poses: camera poses; array of shape (N_images, 3, 4)
+        """
+        # get positions
+        sensor_pose_x = df["sensor_pose_x"].to_numpy()
+        sensor_pose_y = df["sensor_pose_y"].to_numpy()
+        sensor_pose_z = df["sensor_pose_z"].to_numpy()
+        p_cam2w = np.stack((sensor_pose_x, sensor_pose_y, sensor_pose_z), axis=1)
+
+        # convert positions from world to cube coordinate system
+        p_cam2w = self.scene.w2c(pos=p_cam2w, copy=False)
+
+        # get orientations
+        sensor_pose_yaw = df["sensor_pose_yaw"].to_numpy()
+        sensor_pose_yaw -= np.deg2rad(90)
+        sensor_pose_pitch = df["sensor_pose_pitch"].to_numpy()
+        sensor_pose_roll = df["sensor_pose_roll"].to_numpy()
+
+        # create rotation matrix
+        R_yaw = np.stack((np.cos(sensor_pose_yaw), -np.sin(sensor_pose_yaw), np.zeros_like(sensor_pose_yaw),
+                              np.sin(sensor_pose_yaw), np.cos(sensor_pose_yaw), np.zeros_like(sensor_pose_yaw),
+                              np.zeros_like(sensor_pose_yaw), np.zeros_like(sensor_pose_yaw), np.ones_like(sensor_pose_yaw)), axis=1).reshape(-1, 3, 3)
+        R_pitch = np.stack((np.cos(sensor_pose_pitch), np.zeros_like(sensor_pose_pitch), np.sin(sensor_pose_pitch),
+                                np.zeros_like(sensor_pose_pitch), np.ones_like(sensor_pose_pitch), np.zeros_like(sensor_pose_pitch),
+                                -np.sin(sensor_pose_pitch), np.zeros_like(sensor_pose_pitch), np.cos(sensor_pose_pitch)), axis=1).reshape(-1, 3, 3)
+        R_roll = np.stack((np.ones_like(sensor_pose_roll), np.zeros_like(sensor_pose_roll), np.zeros_like(sensor_pose_roll),
+                               np.zeros_like(sensor_pose_roll), np.cos(sensor_pose_roll), -np.sin(sensor_pose_roll),
+                               np.zeros_like(sensor_pose_roll), np.sin(sensor_pose_roll), np.cos(sensor_pose_roll)), axis=1).reshape(-1, 3, 3)
+        R_cam2w = np.matmul(R_yaw, np.matmul(R_pitch, R_roll))
+
+        # create pose matrix
+        poses = np.concatenate((R_cam2w, p_cam2w[:, :, np.newaxis]), axis=2) # (N_images, 3, 4)
+        return poses
+        
+    def _createSensorModels(
+            self, 
+            depths:torch.tensor,
+            img_wh:tuple,
+    ):
+        """
+        Create sensor models for each sensor and convert depths respectively.
+        Args:
+            depths: depths of all images; tensor of shape (N_images, H*W)
+            img_wh: image width and height; tuple of ints
+        Returns:
+            sensors_dict: dictionary containing sensor models
+            depths_dict: dictionary containing converted depths
+        """
+        sensors_dict = {} 
+        for sensor_name in self.args.training.sensors:
+            if sensor_name == "RGBD":
+                sensors_dict["RGBD"] = RGBDModel(
+                    args=self.args, 
+                    img_wh=img_wh
+                )
+            elif sensor_name == "ToF":
+                sensors_dict["ToF"] = ToFModel(
+                    args=self.args, 
+                    img_wh=img_wh
+                )
+            elif sensor_name == "USS":
+                sensors_dict["USS"] = USSModel(
+                    args=self.args, 
+                    img_wh=img_wh,
+                    num_imgs=self.df.shape[0],
+                )
+            else:
+                print(f"ERROR: robot_at_home.__init__: sensor model {sensor_name} not implemented")
+
+        depths_dict = {}
+        for sensor_name, sensor_model in sensors_dict.items():
+            depths_dict[sensor_name] = torch.tensor(
+                data=sensor_model.convertDepth(depths),
+                dtype=torch.float32,
+                requires_grad=False,
+            )
+
+        return sensors_dict, depths_dict
+    
+
+    
+
     
 
     
