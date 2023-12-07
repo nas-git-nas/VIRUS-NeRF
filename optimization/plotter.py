@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 
-from optimization.particle_swarm_optimization import ParticleSwarmOptimization
+from optimization.particle_swarm_optimization_wrapper import ParticleSwarmOptimizationWrapper
 from optimization.metric import Metric
 
 
@@ -61,15 +61,23 @@ class Plotter():
     
     def plot2D(
         self,
-        pso:ParticleSwarmOptimization,
+        pso:ParticleSwarmOptimizationWrapper,
         metric:Metric,
-        X_list:list,
-        score_list:list,
         ax_idx:int,
         res:int=64,
     ):
-        axes_i, axes_j = np.unravel_index(ax_idx, self.axes.shape)
-        ax = self.axes[axes_i, axes_j]
+        if isinstance(ax_idx, matplotlib.axes.Axes):
+            ax = self.axes
+        else:
+            axes_i, axes_j = np.unravel_index(ax_idx, self.axes.shape)
+            ax = self.axes[axes_i, axes_j]
+
+        pos, vel, best_pos, best_score = self._loadData(
+            pso=pso,
+        ) # (N, M, L), (N, M, L), (N, M, L)
+        N = pos.shape[0] # number of particles
+        M = pos.shape[1] # number of hparams
+        L = pos.shape[2] # number of iterations
 
         # interfere gaussian
         m1, m2 = np.meshgrid(
@@ -86,24 +94,21 @@ class Plotter():
         extent = [pso.hparams_lims[0, 0], pso.hparams_lims[0, 1], pso.hparams_lims[1,0], pso.hparams_lims[1, 1]]
         self.im = ax.imshow(scores.T, origin='lower', extent=extent, cmap='Greys', vmin=0, vmax=1)
 
-        X_list = np.array(X_list) # (N, T, M)
         cmaps = Cmaps(
-            num_cmaps=X_list.shape[0],
+            num_cmaps=N,
             norm_min=0,
-            norm_max=X_list.shape[1]-2,
+            norm_max=M-2,
             skip_bright_colors=True,
         )
-        for n in range(X_list.shape[0]):
-            for t in range(X_list.shape[1]-1):
-                ax.plot([X_list[n, t, 0], X_list[n, t+1, 0]], [X_list[n, t, 1], X_list[n, t+1, 1]], 
-                        color=cmaps(n, t), linewidth=2)
+        for n in range(N):
+            for l in range(L-1):
+                ax.plot([pos[n, 0, l], pos[n, 0, l+1]], [pos[n, 1, l], pos[n, 1, l+1]], 
+                        color=cmaps(n, l), linewidth=2)
 
-        score_list = np.array(score_list) # (N, T)
         ax.scatter(metric.centre[0], metric.centre[1], color="black", s=200, marker='*') 
-        for n in range(X_list.shape[0]):
-            best_idx = np.argmin(score_list[n])
-            ax.scatter(X_list[n, best_idx, 0], X_list[n, best_idx, 1], color=cmaps(n, X_list.shape[1]-2), s=100, marker='*') 
-            ax.scatter(X_list[n, 0, 0], X_list[n, 0, 1], color=cmaps(n, 0), s=10) 
+        for n in range(N):
+            ax.scatter(best_pos[n, 0, -1], best_pos[n, 1, -1], color=cmaps(n, L-2), s=100, marker='*') 
+            ax.scatter(pos[n, 0, 0], pos[n, 1, 0], color=cmaps(n, 0), s=10) 
 
         hparams_order_inv = {}
         for hparam in pso.hparams_order.keys():
@@ -119,8 +124,68 @@ class Plotter():
         else:
             ax.set_yticks([])
 
-        best_idxs = np.unravel_index(np.argmin(score_list), score_list.shape)
-        ax.set_title(f"score={score_list[best_idxs[0], best_idxs[1]]:.2f}, "
-                    + f"dist={np.linalg.norm(metric.centre - X_list[best_idxs[0], best_idxs[1]]):.2f}")
+        best_idx = np.argmin(best_score[:,-1])
+        ax.set_title(f"score={best_score[best_idx,-1]:.3f}, "
+                    + f"dist={np.linalg.norm(metric.centre - best_pos[best_idx,:,-1]):.2f}")
 
         self.axes[axes_i, axes_j] = ax
+
+    def _loadData(
+        self,
+        pso:ParticleSwarmOptimizationWrapper,
+    ):
+        """
+        Load data from files.
+        Args:
+            pso: particle swarm optimization; ParticleSwarmOptimizationWrapper
+        Returns:
+            pos: position of particles; np.array (N, M, L)
+            vel: velocity of particles; np.array (N, M, L)
+            best_pos: best position of particles; np.array (N, M, L)
+            best_score: best score of particles; np.array (N, L)
+        """
+        N = pso.N # number of particles
+        L = pso.T // pso.N # number of iterations per particle
+        M = pso.M # number of hyperparameters
+
+        pos = np.zeros((N, M, L))
+        vel = np.zeros((N, M, L))
+        best_pos = np.zeros((N, M, L))
+        best_score = np.zeros((N, L))
+        for i in range(N):
+            # load data
+            pos_dict = pso._loadStateFromFile(
+                file_path=pso.pos_files[i],
+                return_last_row=False,
+            ) # dict of lists of floats
+            del pos_dict["score"]
+            del pos_dict["time"]
+            del pos_dict["iteration"]     
+
+            best_pos_dict = pso._loadStateFromFile(
+                file_path=pso.best_pos_files[i],
+                return_last_row=False,
+            ) # dict of lists of floats
+            best_score[i] = np.array(best_pos_dict["best_score"])
+            del best_pos_dict["best_score"]
+            del best_pos_dict["best_count"]
+
+            vel_dict = pso._loadStateFromFile(
+                file_path=pso.vel_files[i],
+                return_last_row=False,
+            ) # dict of lists of floats
+
+            # convert to np.array
+            pos[i] = pso._nameDict2hparam(
+                name_dict=pos_dict,
+            ) # np.array (L, M)
+
+            vel[i] = pso._nameDict2hparam(
+                name_dict=vel_dict,
+            ) # np.array (L, M)
+
+            best_pos[i] = pso._nameDict2hparam(
+                name_dict=best_pos_dict,
+            ) # np.array (L, M)
+
+        return pos, vel, best_pos, best_score

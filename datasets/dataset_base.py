@@ -71,6 +71,7 @@ class DatasetBase(Dataset):
         self.poses = self.poses.to(device)
         self.K = self.K.to(device)
         self.directions = self.directions.to(device)
+        self.times = self.times.to(device)
         if hasattr(self, 'depths_dict'):
             for key in self.depths_dict.keys():
                 self.depths_dict[key] = self.depths_dict[key].to(device)
