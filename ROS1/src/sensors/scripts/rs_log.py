@@ -97,6 +97,73 @@ class LogRealSense():
                 "g": struct.unpack('!f', bytes.fromhex('0000FF00'))[0],
                 "b": struct.unpack('!f', bytes.fromhex('000000FF'))[0],
             }
+            
+            # a = np.deg2rad(180)
+            # self.xyz_rotation = np.array([[1.0, 0.0, 0.0],
+            #                               [0.0, np.cos(a), -np.sin(a)],
+            #                               [0.0, np.sin(a), np.cos(a)]])
+            # self.xyz_translation = np.array([0.4, -0.2, 0.2])            
+
+            if camera_id == "CAM1":
+                fx, fy, cx, cy = (385.64675017644703, 385.11955977870474, 326.37231134404396, 243.8456231838371)
+                self.rot_cam2sens = np.identity(3)
+                self.trans_cam2sens = np.zeros((3))
+                # self.rot_cam2sens = np.array([[0.9301244451630732, 0.01797626033041122, -0.3668042673887754],
+                #                 [0.03279193955601337, 0.9907462305640599, 0.13170647411292763],
+                #                 [0.36577753513609573, -0.1345316345237721, 0.9209278115586054]])
+                # a = np.deg2rad(-30)
+                # self.rot_cam2sens = np.array([[np.cos(a), 0.0, np.sin(a)],
+                #                               [0.0, 1.0, 0.0],
+                #                               [-np.sin(a), 0.0, np.cos(a)]])
+                # self.trans_cam2sens = np.array([-0.43059516122700314, -0.17551265817557457, 0.009690706409878532])
+               
+            # elif camera_id == "CAM2":
+            #     fx, fy, cx, cy = (381.8818263840882, 381.81960206089127, 318.76908626308136, 252.65292684183083)
+            elif camera_id == "CAM3":
+                fx, fy, cx, cy = (385.73700476936654, 385.36011039694336, 331.8394638201339, 242.75739627661798)
+                # self.rot_cam2sens = np.identity(3)
+                # self.trans_cam2sens = np.zeros((3))
+                self.rot_cam2sens = np.array([[0.9301244451630732, 0.01797626033041122, -0.3668042673887754],
+                                [0.03279193955601337, 0.9907462305640599, 0.13170647411292763],
+                                [0.36577753513609573, -0.1345316345237721, 0.9209278115586054]])
+                self.trans_cam2sens = np.array([-0.43059516122700314, -0.17551265817557457, 0.009690706409878532])
+                
+            self.directions = self._calcDirections(
+                fx=fx,
+                fy=fy,
+                cx=cx,
+                cy=cy,
+                W=640,
+                H=480,
+            )
+            
+            self.T_cam1_lidar = np.array([[0.24761, -0.10048, 0.96364, 0.36199],
+                                          [0.96679, -0.03926, -0.25252, -0.15161],
+                                          [0.06321, 0.99416, 0.08742, -0.15014],
+                                          [0.0, 0.0, 0.0, 1.0]])
+            R_inv_temp = np.linalg.inv(self.T_cam1_lidar[:3,:3])
+            t_inv_temp = - R_inv_temp @ self.T_cam1_lidar[:3,3]
+            self.T_lidar_cam1 = np.zeros_like(self.T_cam1_lidar)
+            self.T_lidar_cam1[:3,:3] = R_inv_temp
+            self.T_lidar_cam1[:3,3] = t_inv_temp
+            self.T_lidar_cam1[3,3] = 1
+            
+            a = np.deg2rad(50)
+            b = np.deg2rad(-2)
+            R = np.array([[np.cos(b), np.sin(b), 0.0, 0.0],
+                          [-np.sin(b), np.cos(b), 0.0, 0.0],
+                          [0.0, 0.0, 1.0, 0.0],
+                          [0.0, 0.0, 0.0, 1.0]])
+            R = np.array([[np.cos(a), 0.0, np.sin(a), -0.5],
+                            [0.0, 1.0, 0.0, 0.0],
+                            [-np.sin(a), 0.0, np.cos(a), -0.2],
+                            [0.0, 0.0, 0.0, 1.0]]) @ R
+            R = np.array([[0.911262, -0.234436, 0.338589, 0.097039],
+                          [0.265099, 0.963094, -0.046639, 0.088046],
+                          [-0.315159, 0.132260, 0.939779, 0.337549],
+                          [0.0, 0.0, 0.0, 1.0]]) @ R
+            self.T_cam3_cam1 = R
+            
         
     def subscribe(
         self,
@@ -180,7 +247,8 @@ class LogRealSense():
         if not status:
             rospy.logwarn(f"LogRealSense._cbDepthImage: img save status: {status}")
         
-        if self.publish_pointcloud and isinstance(self.directions, np.ndarray):
+        # if self.publish_pointcloud and isinstance(self.directions, np.ndarray):
+        if self.publish_pointcloud:
             # rospy.loginfo(f"LogRealSense._callback: pup pointcloud ...")
             depth = self._convertDepth(
                 depth=img,
@@ -188,9 +256,13 @@ class LogRealSense():
             xyz = self._depth2pointcloud(
                 depth=depth,
             )
+            xyz = self._transformPointcloud(
+                xyz=xyz,
+            )
             self._publishPointcloud(
                 xyz=xyz,
-                mask=np.ones((xyz.shape[0], xyz.shape[1]), dtype=bool),
+                mask=depth<1.2,
+                header=data.header
             )
         
         if self.print_elapse_time:
@@ -298,7 +370,8 @@ class LogRealSense():
         #   dir_x <-> viewing direction
         #   dir_y <-> width
         #   dir_z <-> height
-        directions = np.stack((dir_z, dir_x, dir_y), axis=2)
+        # directions = np.stack((dir_z, dir_x, dir_y), axis=2)
+        directions = np.stack((dir_x, dir_y, dir_z), axis=2)
         return directions / np.linalg.norm(directions, axis=2, keepdims=True)
     
     def _convertDepth(
@@ -328,14 +401,47 @@ class LogRealSense():
         Returns:
             xyz: pointcloud; np.array (H, W, 3)
         """
-        depth[depth>1.0] = 0
         return depth[:,:,None] * self.directions
+    
+    def _transformPointcloud(
+        self,
+        xyz:np.array,
+    ):
+        """
+        Transform pointcloud
+        Args:
+            xyz: pointcloud; np.array (H, W, 3)
+        """
+        # H = xyz.shape[0]
+        # W = xyz.shape[1]
+        # xyz = xyz.reshape(H*W, 3).T, # (3, H*W)
         
+        # xyz = self.rot_img2cam @ xyz
+        # xyz = (self.rot_cam2sens @ xyz) + self.trans_cam2sens[:, None] # (3, H*W)
+        # xyz = self.rot_sens2robot @ xyz # (3, H*W)
+        
+        # xyz = xyz.T.reshape(H, W, 3) # (H, W, 3)
+        
+        H = xyz.shape[0]
+        W = xyz.shape[1]
+        xyz = xyz.reshape(H*W, 3).T # (3, H*W)
+        xyz = np.concatenate((xyz, np.ones((1, H*W))), axis=0) # (4, H*W)
+        
+        if self.camera_id == "CAM3":
+            xyz = self.T_cam3_cam1 @ xyz
+        
+        # xyz = self.T_cam1_lidar @ xyz
+        
+        xyz = xyz[:3,:] # (3, H*W)
+        xyz = xyz.T.reshape(H, W, 3)
+        
+        return xyz
         
     def _publishPointcloud(
         self,
         xyz:np.array,
         mask:np.array,
+        header:Header,
     ):
         """
         Publish pointcloud as Pointcloud2 ROS message.
@@ -346,16 +452,29 @@ class LogRealSense():
         xyz[xyz==np.NAN] = 0
         if xyz.dtype != np.float32:
             xyz = xyz.astype(dtype=np.float32)
+            
+        xyz = xyz.reshape(-1 ,3) # (H*W, 3)
+        mask = mask.flatten()
+        xyz = xyz[mask]
         
-        rgb = self.color_floats["w"] * np.ones((xyz.shape[0], xyz.shape[1]), dtype=np.float32) # (H, W)
-        xyzrgb = np.concatenate((xyz, rgb[:,:,None]), axis=2)
+        xyz = xyz[xyz[:,1]>-0.35]
+            
+        if self.camera_id == "CAM1":
+            color = self.color_floats["w"]
+        elif self.camera_id == "CAM3":
+            color = self.color_floats["b"]
+        
+        rgb = color * np.ones((xyz.shape[0]), dtype=np.float32) # (H, W)
+        xyzrgb = np.concatenate((xyz, rgb[:, None]), axis=1)
         # rgb = self.color_floats["w"] * np.ones_like(mask, dtype=np.float32) # (H, W)
         # rgb[mask] = self.color_floats["r"]
         # xyzrgb = np.concatenate((xyz, rgb[:,:,None]), axis=2)
         
         pointcloud_msg = PointCloud2()
         pointcloud_msg.header = Header()
-        pointcloud_msg.header.frame_id = "RGBD"
+        pointcloud_msg.header.frame_id = "rslidar"
+        pointcloud_msg.header.stamp.secs = header.stamp.secs
+        pointcloud_msg.header.stamp.nsecs = header.stamp.nsecs
 
         # Define the point fields (attributes)        
         pointcloud_msg.fields = [
@@ -364,7 +483,7 @@ class LogRealSense():
             PointField('z', 8, PointField.FLOAT32, 1),
             PointField('rgb', 12, PointField.UINT32, 1),
         ]
-        pointcloud_msg.height = xyz.shape[1]
+        pointcloud_msg.height = 1 #xyz.shape[1]
         pointcloud_msg.width = xyz.shape[0]
 
         # Float occupies 4 bytes. Each point then carries 12 bytes.
@@ -377,7 +496,9 @@ class LogRealSense():
         pointcloud_msg.data = xyzrgb.tobytes()
         
         self.pub_pointcloud.publish(pointcloud_msg)
-            
+        
+        # rospy.loginfo(f"LogRealSense._publishPointcloud: published")
+        
         
 
 def main():
