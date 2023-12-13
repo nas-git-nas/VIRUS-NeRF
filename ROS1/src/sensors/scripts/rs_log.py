@@ -162,6 +162,15 @@ class LogRealSense():
                           [0.265099, 0.963094, -0.046639, 0.088046],
                           [-0.315159, 0.132260, 0.939779, 0.337549],
                           [0.0, 0.0, 0.0, 1.0]]) @ R
+            R = np.array([[0.998423, 0.056128, -0.000969, 0.060750],
+                          [-0.056028, 0.997414, 0.045011, -0.046822],
+                          [0.003493, -0.044886, 0.998986, -0.035082],
+                          [0.0, 0.0, 0.0, 1.0]]) @ R
+            R = np.array([[0.974062, 0.054679, 0.219576, -0.581597],
+                          [-0.072013, 0.994821, 0.071725, -0.095861],
+                          [-0.214517, -0.085677, 0.972955, 0.383083],
+                          [0.0, 0.0, 0.0, 1.0]]) @ R
+
             self.T_cam3_cam1 = R
             
         
@@ -256,12 +265,17 @@ class LogRealSense():
             xyz = self._depth2pointcloud(
                 depth=depth,
             )
-            xyz = self._transformPointcloud(
-                xyz=xyz,
-            )
+            # xyz = self._transformPointcloud(
+            #     xyz=xyz,
+            # )
+            # self._publishPointcloud(
+            #     xyz=xyz[::1,::1],
+            #     mask=(depth<6.0)[::1,::1],
+            #     header=data.header
+            # )
             self._publishPointcloud(
                 xyz=xyz,
-                mask=depth<1.2,
+                mask=(depth<6.0),
                 header=data.header
             )
         
@@ -320,15 +334,15 @@ class LogRealSense():
         }
         self.subscribe_rgb_info.unregister()
         
-        if self.publish_pointcloud:
-            self.directions = self._calcDirections(
-                fx=self.camera_info["fx"],
-                fy=self.camera_info["fy"],
-                cx=self.camera_info["cx"],
-                cy=self.camera_info["cy"],
-                W=self.camera_info["W"],
-                H=self.camera_info["H"],
-            )
+        # if self.publish_pointcloud:
+        #     self.directions = self._calcDirections(
+        #         fx=self.camera_info["fx"],
+        #         fy=self.camera_info["fy"],
+        #         cx=self.camera_info["cx"],
+        #         cy=self.camera_info["cy"],
+        #         W=self.camera_info["W"],
+        #         H=self.camera_info["H"],
+        #     )
         
         if self.print_elapse_time:
             rospy.loginfo(f"LogRealSense._cbRGBInfo: elapse time: {(time.time()-start):.3f}s")
@@ -455,9 +469,10 @@ class LogRealSense():
             
         xyz = xyz.reshape(-1 ,3) # (H*W, 3)
         mask = mask.flatten()
-        xyz = xyz[mask]
         
-        xyz = xyz[xyz[:,1]>-0.35]
+        # xyz = xyz[mask]
+        # xyz = xyz[xyz[:,1]>-1.5]
+        
             
         if self.camera_id == "CAM1":
             color = self.color_floats["w"]
@@ -472,7 +487,8 @@ class LogRealSense():
         
         pointcloud_msg = PointCloud2()
         pointcloud_msg.header = Header()
-        pointcloud_msg.header.frame_id = "rslidar"
+        # pointcloud_msg.header.frame_id = "rslidar"
+        pointcloud_msg.header.frame_id = "CAM1" if self.camera_id=="CAM1" else "CAM3"
         pointcloud_msg.header.stamp.secs = header.stamp.secs
         pointcloud_msg.header.stamp.nsecs = header.stamp.nsecs
 

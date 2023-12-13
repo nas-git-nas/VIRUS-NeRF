@@ -16,16 +16,7 @@
             /CAM1/gyro/imu_info
             /CAM1/gyro/metadata
             /CAM1/gyro/sample
-            /CAM2/aligned_depth_to_color/image_raw 
-            /CAM2/color/image_raw
-            /CAM2/infra1/image_rect_raw
-            /CAM2/infra2/image_rect_raw
-            /CAM2/accel/imu_info
-            /CAM2/accel/metadata
-            /CAM2/accel/sample
-            /CAM2/gyro/imu_info
-            /CAM2/gyro/metadata
-            /CAM2/gyro/sample
+            /CAM1/depth/color/points
             /CAM3/aligned_depth_to_color/image_raw 
             /CAM3/color/image_raw
             /CAM3/infra1/image_rect_raw
@@ -36,12 +27,11 @@
             /CAM3/gyro/imu_info
             /CAM3/gyro/metadata
             /CAM3/gyro/sample
+            /CAM3/depth/color/points
             /USS1 
-            /USS2 
             /USS3 
             /TOF1 
-            /TOF2 
             /TOF3
-            /LIDAR/rslidar_points" />
+            /rslidar_points" />
 
 </launch>

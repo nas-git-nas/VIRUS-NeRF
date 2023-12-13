@@ -1,52 +1,37 @@
 <launch>
 
-    
-
-    <include file="$(find timed_roslaunch)/launch/timed_roslaunch.launch">
-        <arg name="time" value="0" />
-        <arg name="pkg" value="sensors" />
-        <arg name="file" value="visualization.launch" />
-        <arg name="node_name" value="timed_tf" />
-    </include>
-
-    <param 
-        name="port" 
-        type="str"
-        value="/dev/ttyACM0" />
-    <param 
-        name="baud" 
-        type="int"
-        value="115200" />
-    <node 
-        pkg="rosserial_python" 
-        type="serial_node.py" 
-        name="serial_node" >
-    </node>
-
     <include 
-        file="$(find rslidar_sdk)/launch/start.launch">
+        file="$(find sensors)/Launch/visualization.launch">
     </include>   
 
-    <include file="$(find timed_roslaunch)/launch/timed_roslaunch.launch">
-        <arg name="time" value="0" />
-        <arg name="pkg" value="sensors" />
-        <arg name="file" value="rs_cam1.launch" />
-        <arg name="node_name" value="timed_roslaunch1" />
-    </include>
+    <include 
+        file="$(find kiss_icp)/launch/odometry.launch">
+    </include>   
 
-    <!-- <include file="$(find timed_roslaunch)/launch/timed_roslaunch.launch">
-        <arg name="time" value="20" />
-        <arg name="pkg" value="sensors" />
-        <arg name="file" value="rs_cam2.launch" />
-        <arg name="node_name" value="timed_roslaunch2" />
-    </include> -->
+    <node 
+        pkg="rs_to_velodyne" 
+        type="rs_to_velodyne" 
+        name="rs_to_velodyne_node" 
+        output="screen" 
+        args="XYZIRT XYZIR"/>
 
-    <include file="$(find timed_roslaunch)/launch/timed_roslaunch.launch">
-        <arg name="time" value="20" />
-        <arg name="pkg" value="sensors" />
-        <arg name="file" value="rs_cam3.launch" />
-        <arg name="node_name" value="timed_roslaunch3" />
-    </include>
+    <node 
+        pkg="sensors" 
+        type="pointcloud_processor.py" 
+        name="pointcloud_processor_node" 
+        output="screen" />
+
+    <group ns="/Rosbag">
+        <arg 
+            name="path" 
+            default="/home/spadmin/catkin_ws_ngp/data/Experiments/medium_1.bag" />
+        <node 
+            pkg="rosbag" 
+            type="play" 
+            name="player" 
+            output="screen" 
+            args="--clock $(arg path)"/>
+    </group>
 
     <!-- <group ns="/CAM1">
         <param 

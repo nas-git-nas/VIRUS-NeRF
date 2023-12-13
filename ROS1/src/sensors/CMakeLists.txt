@@ -21,7 +21,7 @@ find_package(catkin REQUIRED COMPONENTS
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
 ## See http://ros.org/doc/api/catkin/html/user_guide/setup_dot_py.html
-# catkin_python_setup()
+catkin_python_setup()
 
 ################################################
 ## Declare ROS messages, services and actions ##
@@ -187,8 +187,10 @@ include_directories(
 # )
 
 
-catkin_install_python(PROGRAMS scripts/uss_log.py scripts/tof_log.py scripts/rs_log.py
-  scripts/watchdog.py
+catkin_install_python(PROGRAMS 
+  scripts/uss_log.py scripts/tof_log.py scripts/rs_log.py scripts/watchdog.py scripts/rs_kalibr.py 
+  src/pcl_tools/__init__.py src/pcl_tools/pcl_processor.py src/pcl_tools/pcl_transformer.py 
+  src/pcl_tools/pcl_creator.py src/pcl_tools/pcl_coordinator.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

@@ -197,7 +197,7 @@ class LogToF():
         Returns:
             xyz: point cloud; np.array (8, 8, 3)
         """
-        depths[depths>1.0] = 0
+        depths[depths<0.1] = 0
         
         x = np.cos(self.angles_y) * np.cos(self.angles_z) * depths # (N, N)
         y = np.sin(self.angles_y) * depths # (N, N)
@@ -217,12 +217,15 @@ class LogToF():
         xyz[xyz==np.NAN] = 0
         xyz = xyz.astype(dtype=np.float32)
         
-        rgb = self.color_floats["g"] * np.ones((xyz.shape[0], xyz.shape[1]), dtype=np.float32) # (H, W)
-        xyzrgb = np.concatenate((xyz, rgb[:,:,None]), axis=2)
+        xyz = xyz.reshape(-1,3) # (64, 3)
+        xyz = xyz[~((xyz[:,0]==0) & (xyz[:,1]==0) & (xyz[:,2]==0))]
+        
+        rgb = self.color_floats["w"] * np.ones((xyz.shape[0]), dtype=np.float32) # (H, W)
+        xyzrgb = np.concatenate((xyz, rgb[:,None]), axis=1)
         
         pointcloud_msg = PointCloud2()
         pointcloud_msg.header = Header()
-        pointcloud_msg.header.frame_id = "RGBD"
+        pointcloud_msg.header.frame_id = self.tof_id
 
         # Define the point fields (attributes)        
         pointcloud_msg.fields = [
@@ -231,7 +234,7 @@ class LogToF():
             PointField('z', 8, PointField.FLOAT32, 1),
             PointField('rgb', 12, PointField.UINT32, 1),
         ]
-        pointcloud_msg.height = xyz.shape[1]
+        pointcloud_msg.height = 1
         pointcloud_msg.width = xyz.shape[0]
 
         # Float occupies 4 bytes. Each point then carries 12 bytes.

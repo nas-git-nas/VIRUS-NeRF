@@ -52,14 +52,15 @@ class LogUSS():
         
         # pointcloud
         if self.publish_pointcloud:
-            fov = 45 # field of view in degrees
+            fov_xy = [50, 40] # field of view in degrees
             num_pts_in_row = 64
             
-            cell_fov = np.deg2rad(fov) / num_pts_in_row
-            angle_max = cell_fov * (num_pts_in_row - 1) / 2
+            cell_fov_xy = np.deg2rad(fov_xy) / num_pts_in_row
+            angle_max = cell_fov_xy * (num_pts_in_row - 1) / 2
             angle_min = - angle_max
-            angles = np.linspace(angle_max, angle_min, num_pts_in_row)
-            self.angles_y, self.angles_z = np.meshgrid(angles, angles, indexing="xy") # (N, N), (N, N)
+            angles_x = np.linspace(angle_max[0], angle_min[0], num_pts_in_row)
+            angles_y = np.linspace(angle_max[1], angle_min[1], num_pts_in_row)
+            self.angles_y, self.angles_z = np.meshgrid(angles_x, angles_y, indexing="xy") # (N, N), (N, N)
             
             self.pub_pointcloud = rospy.Publisher('tof_pointcloud', PointCloud2, queue_size=10)
             
@@ -183,7 +184,7 @@ class LogUSS():
         
         pointcloud_msg = PointCloud2()
         pointcloud_msg.header = Header()
-        pointcloud_msg.header.frame_id = "RGBD"
+        pointcloud_msg.header.frame_id = self.uss_id
 
         # Define the point fields (attributes)        
         pointcloud_msg.fields = [
