@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 import numpy as np
 from abc import ABC, abstractmethod
+import rospy
 
 
 class PCLCreator():
-    
     def __init__(
         self,
     ):
@@ -17,26 +17,26 @@ class PCLCreator():
     ):
         pass
     
-    def meas2pc(
+    def meas2pcl(
         self,
         meas:np.array,
     ):
         """
         Convert depth measurments to pointcloud depending on sensor type.
         Args:
-            depth: depth measurments; numpy array of shape (N,)
+            meas: meas measurments; numpy array of shape (N,)
         Returns:
             xyz: pointcloud; numpy array of shape (N,3)
         """
         depth = self.meas2depth(
             meas=meas,
         )
-        xyz = self.depth2pc(
+        xyz = self.depth2pcl(
             depth=depth,
         )
         return xyz
     
-    def depth2pc(
+    def depth2pcl(
         self,
         depth:np.array,
     ):
@@ -73,7 +73,7 @@ class PCLCreator():
         fov_xy = np.deg2rad(fov_xy) # (2,)
         num_pts = np.array([W, H]) # (2,)
         
-        fov_cells = np.deg2rad(fov_xy) / num_pts
+        fov_cells = fov_xy / num_pts
         angle_max = fov_cells * (num_pts - 1) / 2
         angle_min = - angle_max
         
@@ -87,6 +87,7 @@ class PCLCreator():
         y = np.sin(angles_y) # (H*W,)
         z = np.cos(angles_x) * np.cos(angles_y) # (H*W,)
         directions = np.stack((x, y, z), axis=1) # (H*W, 3)
+        
         return directions
     
     def cameraDirections(
@@ -133,7 +134,7 @@ class PCLCreatorUSS(PCLCreator):
         self.W = 64
         self.H = 64
         self.directions = self.fovDirections(
-            fov_xy=[50, 40],
+            fov_xy=[55, 35],
             W=self.W,
             H=self.H,
         )
@@ -153,7 +154,7 @@ class PCLCreatorUSS(PCLCreator):
             meas = 0.0
         depth = meas / 5000
         return depth * np.ones((self.H, self.W))
-    
+
     
 class PCLCreatorToF(PCLCreator):
     def __init__(self):
@@ -165,7 +166,9 @@ class PCLCreatorToF(PCLCreator):
             H=8,
         )
         
-    def _meas2depth(
+        self.depth_min = 0.1
+        
+    def meas2depth(
         self,
         meas:float,
     ):
@@ -178,6 +181,8 @@ class PCLCreatorToF(PCLCreator):
         """
         meas = np.array(meas, dtype=np.float32)
         depth = 0.001 * meas
+        
+        depth[depth <= self.depth_min] = np.nan
         
         depth = depth.reshape(8, 8)
         depth = depth[:, ::-1].T
@@ -191,7 +196,7 @@ class PCLCreatorRS(PCLCreator):
         super().__init__()
 
 
-    def _meas2depth(
+    def meas2depth(
         self,
         meas:float,
     ):
@@ -205,6 +210,4 @@ class PCLCreatorRS(PCLCreator):
         meas = np.array(meas, dtype=np.float32)
         depth = 0.001 * meas
         return depth
-
-if __name__ == '__main__':
-    pass
+    

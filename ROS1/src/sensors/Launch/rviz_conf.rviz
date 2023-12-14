@@ -8,7 +8,6 @@ Panels:
         - /Status1
         - /TF1/Frames1
         - /Map1/Autocompute Value Bounds1
-        - /Path1
       Splitter Ratio: 0.5441176295280457
     Tree Height: 719
   - Class: rviz/Selection
@@ -216,7 +215,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.05000000074505806
       Style: Flat Squares
-      Topic: /TOF1/tof_pointcloud
+      Topic: /TOF1_pcl
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
@@ -244,7 +243,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.05000000074505806
       Style: Flat Squares
-      Topic: /TOF3/tof_pointcloud
+      Topic: /TOF3_pcl
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
@@ -272,7 +271,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.009999999776482582
       Style: Flat Squares
-      Topic: /USS1/tof_pointcloud
+      Topic: /USS1_pcl
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
@@ -300,7 +299,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.009999999776482582
       Style: Flat Squares
-      Topic: /USS3/tof_pointcloud
+      Topic: /USS3_pcl
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true

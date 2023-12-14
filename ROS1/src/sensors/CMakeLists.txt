@@ -188,9 +188,10 @@ include_directories(
 
 
 catkin_install_python(PROGRAMS 
-  scripts/uss_log.py scripts/tof_log.py scripts/rs_log.py scripts/watchdog.py scripts/rs_kalibr.py 
+  scripts/uss_log.py scripts/tof_log.py scripts/rs_log.py scripts/watchdog.py scripts/rs_kalibr.py
+  scripts/pcl_meas_publisher_node.py scripts/pcl_filter_publisher_node.py 
   src/pcl_tools/__init__.py src/pcl_tools/pcl_processor.py src/pcl_tools/pcl_transformer.py 
-  src/pcl_tools/pcl_creator.py src/pcl_tools/pcl_coordinator.py
+  src/pcl_tools/pcl_creator.py src/pcl_tools/pcl_coordinator.py src/pcl_tools/pcl_converter.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

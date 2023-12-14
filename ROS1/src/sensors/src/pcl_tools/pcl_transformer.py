@@ -69,7 +69,7 @@ class PCLTransformer():
             
         print(f"ERROR: PointCloudTransformer.setT: Transform is not complete")
 
-    def getTransfrom(
+    def getTransform(
         self,
         type:str,
     ):
@@ -108,6 +108,7 @@ class PCLTransformer():
         
         self._r = r_inv
         self._t = t_inv
+        return self
         
     def transformPointcloud(
         self,

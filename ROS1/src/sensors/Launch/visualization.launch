@@ -18,12 +18,6 @@
         name="tf_rslidar_cam1" 
         args="0.36199 -0.15161 -0.15014 0.5476 0.3955 0.4688 0.5692 rslidar CAM1" />
 
-    <!-- <node 
-        pkg="tf2_ros" 
-        type="static_transform_publisher" 
-        name="tf_cam3_cam1" 
-        args="-0.274 0.005 -0.064 -0.006 -0.25 -0.0124 0.968 CAM3 CAM1" /> -->
-
     <node 
         pkg="tf2_ros" 
         type="static_transform_publisher" 
@@ -42,7 +36,7 @@
         name="tf_cam3_pc" 
         args="0 0 0 0 0 0 1 CAM3 CAM3_color_optical_frame" />
 
-    <node 
+    <!-- <node 
         pkg="tf2_ros" 
         type="static_transform_publisher" 
         name="tf_CAM1_TOF1" 
@@ -64,12 +58,6 @@
         pkg="tf2_ros" 
         type="static_transform_publisher" 
         name="tf_CAM3_USS3" 
-        args="0 0 0 -0.5 -0.5 -0.5 0.5 CAM3 USS3 " />
-
-
-    
-
-    
-
+        args="0 0 0 -0.5 -0.5 -0.5 0.5 CAM3 USS3 " /> -->
 
 </launch>

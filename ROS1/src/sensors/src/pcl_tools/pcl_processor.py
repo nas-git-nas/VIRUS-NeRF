@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import numpy as np
+import rospy
 
 
 class PCLProcessor:
@@ -11,17 +12,17 @@ class PCLProcessor:
     def limitXYZ(
         self,
         xyz:np.array,
-        x_lims:list=None,
-        y_lims:list=None,
-        z_lims:list=None,
+        x_lims:tuple=None,
+        y_lims:tuple=None,
+        z_lims:tuple=None,
     ):
         """
         Limit the pointcloud to a certain range in x, y and z.
         Args:
             xyz: pointcloud; numpy array (N,3)
-            x_lims: limits in x; list of length 2
-            y_lims: limits in y; list of length 2
-            z_lims: limits in z; list of length 2
+            x_lims: limits in x; tuple of length 2
+            y_lims: limits in y; tuple of length 2
+            z_lims: limits in z; tuple of length 2
         Returns:
             xyz: limited pointcloud; numpy array (N,3)
         """
@@ -36,30 +37,35 @@ class PCLProcessor:
     def limitRTP(
         self,
         xyz,
-        r_lims:list=None,
-        t_lims:list=None,
-        p_lims:list=None,
+        r_lims:tuple=None,
+        t_lims:tuple=None,
+        p_lims:tuple=None,
     ):
         """
         Limit the pointcloud to a certain range in radius, theta and phi.
         Args:
             xyz: pointcloud; numpy array (N,3)
-            r_lims: limits in radius; list of length 2
-            t_lims: limits in theta [degrees]; list of length 2
-            p_lims: limits in phi [degrees]; list of length 2
+            r_lims: limits in radius; tuple of length 2
+            t_lims: limits in theta [degrees]; tuple of length 2
+            p_lims: limits in phi [degrees]; tuple of length 2
         Returns:
             xyz: limited pointcloud; numpy array (N,3)
         """
+        if r_lims is None and t_lims is None and p_lims is None:
+            return xyz
+        
         rtp = self._cart2sph(
             xyz=xyz
         )
         
         if r_lims is not None:
-            xyz = xyz[np.logical_and(rtp[:,0] >= r_lims[0], rtp[:,0] <= r_lims[1])]
+            rtp = rtp[np.logical_and(rtp[:,0] >= r_lims[0], rtp[:,0] <= r_lims[1])]
         if t_lims is not None:
-            xyz = xyz[np.logical_and(rtp[:,1] >= t_lims[0], rtp[:,1] <= t_lims[1])]
+            t_lims = np.deg2rad(t_lims)
+            rtp = rtp[np.logical_and(rtp[:,1] >= t_lims[0], rtp[:,1] <= t_lims[1])]
         if p_lims is not None:
-            xyz = xyz[np.logical_and(rtp[:,2] >= p_lims[0], rtp[:,2] <= p_lims[1])]
+            p_lims = np.deg2rad(p_lims)
+            rtp = rtp[np.logical_and(rtp[:,2] >= p_lims[0], rtp[:,2] <= p_lims[1])]
         
         xyz = self._sph2cart(
             rtp=rtp
@@ -68,8 +74,8 @@ class PCLProcessor:
         
     def offsetDepth(
         self,
-        xyz,
-        offset,
+        xyz:np.array,
+        offset:float,
     ):
         """
         Offsets the depth of a pointcloud assuming sensor is at position (0,0,0).
@@ -83,6 +89,9 @@ class PCLProcessor:
         Returns:
             xyz: pointcloud with offset; numpy array (N,3)
         """
+        if offset is None:
+            return xyz
+        
         rtp = self._cart2sph(
             xyz=xyz
         )

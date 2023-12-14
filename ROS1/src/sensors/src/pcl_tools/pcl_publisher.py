@@ -5,23 +5,31 @@ from std_msgs.msg import Header
 from sensors.msg import USS, TOF
 import numpy as np
 import struct
+from abc import ABC, abstractmethod
 
-from pcl_tools.pcl_creator import PCLCreatorUSS, PCLCreatorTOF, PCLCreatorRS
+import sensor_msgs.point_cloud2 as pc2
+
+
+from pcl_tools.pcl_processor import PCLProcessor
+from pcl_tools.pcl_creator import PCLCreatorUSS, PCLCreatorToF, PCLCreatorRS
 from pcl_tools.pcl_coordinator import PCLCoordinator
 
 
 class PCLPublisher():
     def __init__(
         self,
-        sensor_id:str,
-        pub_frame_id:str,
-    ):
-        self.sensor_id = sensor_id
-        self.pub_frame_id = pub_frame_id
+        pub_topic:str,
+        sub_topic:str,
+        sub_topic_msg_type:object,
+    ) -> None:
+        self.pub_topic = pub_topic
+        self.sub_topic = sub_topic
+        self.sub_topic_msg_type = sub_topic_msg_type
         
         # ROS
         self.sub = None
-        self.pub = rospy.Publisher(sensor_id+"_pcl", PointCloud2, queue_size=10)
+        self.pub = rospy.Publisher(pub_topic, PointCloud2, queue_size=10)
+        rospy.init_node('PCLPublisher', anonymous=True)
         
         # colors
         self.color_floats = {
@@ -30,13 +38,96 @@ class PCLPublisher():
             "g": struct.unpack('!f', bytes.fromhex('0000FF00'))[0],
             "b": struct.unpack('!f', bytes.fromhex('000000FF'))[0],
         }
+    
+    @abstractmethod 
+    def _callback(
+        self,
+        msg:object,
+    ):
+        pass
+    
+        
+    def subscribe(
+        self,
+    ):
+        """
+        Subscribe to topic and wait for data.
+        """
+        self.subscribe_uss = rospy.Subscriber(self.sub_topic, self.sub_topic_msg_type, self._callback)       
+        rospy.loginfo(f"PCLPublisher.subscribe: Subscribed to: {self.sub_topic}")
+        
+        rospy.spin()
+        
+    def _publishPCL(
+        self,
+        xyz:np.array,
+        header:Header=None,
+    ):
+        """
+        Publish pointcloud as Pointcloud2 ROS message.
+        Args:
+            xyz: pointcloud; np.array (N,3)
+            header: ROS header to publish; Header
+        """
+        xyz = xyz[(xyz[:,0]!=np.NAN) & (xyz[:,1]!=np.NAN) & (xyz[:,2]!=np.NAN)]
+        xyz = xyz.astype(dtype=np.float32)
+        
+        rgb = self.color * np.ones((xyz.shape[0], 1), dtype=np.float32) # (H, W)
+        xyzrgb = np.concatenate((xyz, rgb), axis=1)
+        
+        pointcloud_msg = PointCloud2()
+        pointcloud_msg.header = header
+
+        # Define the point fields (attributes)        
+        pointcloud_msg.fields = [
+            PointField('x', 0, PointField.FLOAT32, 1),
+            PointField('y', 4, PointField.FLOAT32, 1),
+            PointField('z', 8, PointField.FLOAT32, 1),
+            PointField('rgb', 12, PointField.UINT32, 1),
+        ]
+        pointcloud_msg.height = 1
+        pointcloud_msg.width = xyz.shape[0]
+
+        # Float occupies 4 bytes. Each point then carries 12 bytes.
+        pointcloud_msg.point_step = len(pointcloud_msg.fields) * 4 
+        pointcloud_msg.row_step = pointcloud_msg.point_step * pointcloud_msg.width
+        pointcloud_msg.is_bigendian = False # assumption
+        pointcloud_msg.is_dense = True
+        
+        pointcloud_msg.data = xyzrgb.tobytes()
+        self.pub.publish(pointcloud_msg)
+
+
+class PCLMeasPublisher(PCLPublisher):
+    def __init__(
+        self,
+        sensor_id:str,
+        pub_frame_id:str,
+    ):
+        self.sensor_id = sensor_id
+        self.pub_frame_id = pub_frame_id
+        
+        if "USS" in self.sensor_id:
+            msg_type = USS
+        elif "TOF" in self.sensor_id:
+            msg_type = TOF
+        elif "CAM" in self.sensor_id:
+            msg_type = Image
+        else:
+            rospy.logerr(f"PCLPublisher.subscribe: Unknown sensor_id: {self.sensor_id}")
+        
+        super().__init__(
+            pub_topic="/" + self.sensor_id + "_pcl",
+            sub_topic="/" + self.sensor_id,
+            sub_topic_msg_type=msg_type,
+        )
         
         # sensor type specific variables
         if "USS" in self.sensor_id:
             self.pcl_creator = PCLCreatorUSS()
             self.color = self.color_floats["b"]
         elif "TOF" in self.sensor_id:
-            self.pcl_creator = PCLCreatorTOF()
+            self.pcl_creator = PCLCreatorToF()
             self.color = self.color_floats["w"]
         elif "CAM" in self.sensor_id:
             self.pcl_creator = PCLCreatorRS()
@@ -58,29 +149,9 @@ class PCLPublisher():
                 target=self.pub_frame_id,
             )
         
-    def subscribe(
-        self,
-    ):
-        """
-        Subscribe to topic and wait for data.
-        """
-        if "USS" in self.sensor_id:
-            msg_type = USS
-        elif "TOF" in self.sensor_id:
-            msg_type = TOF
-        elif "CAM" in self.sensor_id:
-            msg_type = Image
-        else:
-            rospy.logerr(f"PCLPublisher.subscribe: Unknown sensor_id: {self.sensor_id}")
-            
-        self.subscribe_uss = rospy.Subscriber("/"+self.sensor_id, msg_type, self._callback)       
-        rospy.loginfo(f"PCLPublisher.subscribe: Subscribed to: {self.sensor_id}")
-        
-        rospy.spin()
-        
     def _callback(
         self,
-        msg,
+        msg:object,
     ):
         """
         Callback function for subscriber.
@@ -92,7 +163,7 @@ class PCLPublisher():
         else:
             rospy.logerr(f"PCLPublisher._callback: Unknown sensor_id: {self.sensor_id}")
             
-        xyz = self.pcl_creator.meas2pc(
+        xyz = self.pcl_creator.meas2pcl(
             meas=meas,
         )
         
@@ -101,55 +172,80 @@ class PCLPublisher():
                 xyz=xyz,
             )
             
+        header = msg.header
+        header.frame_id = self.pub_frame_id  
         self._publishPCL(
             xyz=xyz,
+            header=header,
         )
         
-    def _publishPCL(
+    
+class PCLFilterPublisher(PCLPublisher):
+    def __init__(
         self,
-        xyz:np.array,
+        sub_topic:str,
+        pub_topic:str,
+        lims_x:tuple=None,
+        lims_y:tuple=None,
+        lims_z:tuple=None,
+        lims_r:tuple=None,
+        lims_t:tuple=None,
+        lims_p:tuple=None,
+        offset_depth:float=None,
+    ):
+        self.lims_x = lims_x
+        self.lims_y = lims_y
+        self.lims_z = lims_z
+        self.lims_r = lims_r
+        self.lims_t = lims_t
+        self.lims_p = lims_p
+        self.offset_depth = offset_depth
+        
+        super().__init__(
+            pub_topic=pub_topic,
+            sub_topic=sub_topic,
+            sub_topic_msg_type=PointCloud2,
+        )
+        
+        self.pcl_processor = PCLProcessor()
+        self.color = self.color_floats["w"]
+        
+    def _callback(
+        self,
+        msg:PointCloud2,
     ):
         """
-        Publish pointcloud as Pointcloud2 ROS message.
+        Callback function for subscriber.
         Args:
-            xyz: pointcloud; np.array (N,3)
+            msg: ROS pointcloud message; PointCloud2
         """
-        xyz = xyz[(xyz[:,0]!=np.NAN) & (xyz[:,1]!=np.NAN) & (xyz[:,2]!=np.NAN)]
-        xyz = xyz.astype(dtype=np.float32)
+            
+        xyz = []
+        for p in pc2.read_points(msg, field_names = ("x", "y", "z"), skip_nans=True):
+            xyz.append(p)
+        xyz = np.array(xyz)
+            
+        xyz = self.pcl_processor.limitXYZ(
+            xyz=xyz,
+            x_lims=self.lims_x,
+            y_lims=self.lims_y,
+            z_lims=self.lims_z,
+        )
         
-        rgb = self.color * np.ones((xyz.shape[0], 1), dtype=np.float32) # (H, W)
-        xyzrgb = np.concatenate((xyz, rgb), axis=1)
+        xyz = self.pcl_processor.limitRTP(
+            xyz=xyz,
+            r_lims=self.lims_r,
+            t_lims=self.lims_t,
+            p_lims=self.lims_p,
+        )
         
-        pointcloud_msg = PointCloud2()
-        pointcloud_msg.header = Header()
-        pointcloud_msg.header.frame_id = self.pub_frame_id
-
-        # Define the point fields (attributes)        
-        pointcloud_msg.fields = [
-            PointField('x', 0, PointField.FLOAT32, 1),
-            PointField('y', 4, PointField.FLOAT32, 1),
-            PointField('z', 8, PointField.FLOAT32, 1),
-            PointField('rgb', 12, PointField.UINT32, 1),
-        ]
-        pointcloud_msg.height = 1
-        pointcloud_msg.width = xyz.shape[0]
-
-        # Float occupies 4 bytes. Each point then carries 12 bytes.
-        pointcloud_msg.point_step = len(pointcloud_msg.fields) * 4 
-        pointcloud_msg.row_step = pointcloud_msg.point_step * pointcloud_msg.width
-        pointcloud_msg.is_bigendian = False # assumption
-        pointcloud_msg.is_dense = True
+        xyz = self.pcl_processor.offsetDepth(
+            xyz=xyz,
+            offset=self.offset_depth,
+        )
+            
+        self._publishPCL(
+            xyz=xyz,
+            header=msg.header,
+        )
         
-        pointcloud_msg.data = xyzrgb.tobytes()
-        self.pub_pointcloud.publish(pointcloud_msg)
-        
-
-def main():
-    pub_pcl = PCLPublisher(
-        sensor_id=rospy.get_param("sensor_id"),
-        pub_frame_id=rospy.get_param("pub_frame_id"),
-    )
-    pub_pcl.subscribe()
-
-if __name__ == '__main__':
-    main()
