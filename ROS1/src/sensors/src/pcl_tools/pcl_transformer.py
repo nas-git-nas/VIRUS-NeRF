@@ -109,6 +109,34 @@ class PCLTransformer():
         self._r = r_inv
         self._t = t_inv
         return self
+    
+    def concatTransform(
+        self,
+        add_transform,
+        apply_first_add_transform:bool,
+    ):
+        """
+        Concatenate additional with propre transformation.
+        Args:
+            additonal_transform: additional transformation; PCLTransformer
+            apply_first_additonal: apply additional transformation first and then propre one; bool
+        """
+        T_self = self.getTransform(
+            type="matrix",
+        )
+        T_add = add_transform.getTransform(
+            type="matrix",
+        )
+        
+        if apply_first_add_transform:
+            T = T_self @ T_add
+        else:
+            T = T_add @ T_self
+            
+        self.setTransform(
+            T=T,
+        )
+        return self
         
     def transformPointcloud(
         self,

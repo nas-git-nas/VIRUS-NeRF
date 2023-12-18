@@ -3,56 +3,69 @@
 from rosbag import Bag
 import numpy as np
 import os
+from matplotlib import pyplot as plt
+import copy
 
 from rosbag_wrapper import RosbagWrapper
-from matplotlib import pyplot as plt
 
 
-class RosbagSync(RosbagWrapper):
+
+class TimeSync(RosbagWrapper):
     def __init__(
         self,
-        bag_path:str,
+        data_dir:str,
+        bag_name:str,
     ) -> None:
+        self.data_dir = data_dir
+        
         super().__init__(
-            bag_path=bag_path,
+            bag_path=os.path.join(data_dir, bag_name),
         )
         
         self.plot_range = [0, 8]
-        self.meas_error_max_uss = 0.1
-        self.meas_error_max_tof = 0.15
+        self.meas_error_max_uss = 10.0
+        self.meas_error_max_tof = 10.0
         self.time_error_max_uss = 0.15
         self.time_error_max_tof = 0.05
-        
-    def syncBag(
-        self,
-        plot_dir:str=None,
-    ):
-        
-        stack1_sync_paths = self.syncSensorStack(
-            stack_id=1,
-            plot_dir=plot_dir,
-        )
-        stack3_sync_paths = self.syncSensorStack(
-            stack_id=3,
-            plot_dir=plot_dir,
-        )
-        bag_sync_path = stack1_sync_paths + stack3_sync_paths + [self.bag_path]
-        keep_topics = (len(stack1_sync_paths) + len(stack3_sync_paths)) * ["all"] \
-                        + [["/CAM1/depth/color/points", "/CAM3/depth/color/points", "/rslidar_points"]]
-        delete_ins = (len(stack1_sync_paths) + len(stack3_sync_paths)) * [True] + [False]
-        
-        self.merge(
-            bag_path_out=self.bag_path.replace(".bag", "_sync.bag"),
-            bag_paths_ins=bag_sync_path,
-            keep_topics=keep_topics,
-            delete_ins=delete_ins,
-        )
     
-    def syncSensorStack(
+    def __call__(
+        self,
+    ):
+        """
+        Synchronize time stamps of USS and ToF to RS time stamps.
+        Returns:
+            topics_read: topics to read from bag; list of str
+            topics_write: topics to write to bag; list of str
+            times_read: time stamps to read from bag; list of np.array of floats
+            times_write: time stamps to write to bag; list of np.array of floats
+        """
+        topics_read_1, topics_write_1, times_read_1, times_write_1 = self._syncTime(
+            stack_id=1,
+        )
+        topics_read_3, topics_write_3, times_read_3, times_write_3 = self._syncTime(
+            stack_id=3,
+        )
+        
+        topics_read = topics_read_1 + topics_read_3
+        topics_write = topics_write_1 + topics_write_3
+        times_read = times_read_1 + times_read_3
+        times_write = times_write_1 + times_write_3
+        return topics_read, topics_write, times_read, times_write
+    
+    def _syncTime(
         self,
         stack_id:int,
-        plot_dir:str=None,
     ):
+        """
+        Synchronize time stamps of USS and ToF to RS time stamps.
+        Args:
+            stack_id: stack id; int
+        Returns:
+            topics_read: topics to read from bag; list of str
+            topics_write: topics to write to bag; list of str
+            times_read: time stamps to read from bag; list of np.array of floats
+            times_write: time stamps to write to bag; list of np.array of floats
+        """
         meass_uss, times_uss = self.read(
             topic="/USS"+str(stack_id),
         )
@@ -63,9 +76,8 @@ class RosbagSync(RosbagWrapper):
             topic="/CAM"+str(stack_id)+"/color/image_raw",
         )
         
-        axs = [None, None]
-        if plot_dir is not None:
-            fig, axs = plt.subplots(ncols=2, nrows=3, figsize=(12, 7))
+        # create figure for plotting
+        fig, axs = plt.subplots(ncols=2, nrows=3, figsize=(12, 7))
         
         times_closest_uss, mask_uss, axs[0,0], axs[1,0], axs[2,0] = self._findClosestTime(
             times_source=times_uss,
@@ -86,47 +98,40 @@ class RosbagSync(RosbagWrapper):
             sensor="ToF",
         )
         
-        mask = mask_uss & mask_tof
+        # mask = mask_uss & mask_tof      
+        mask = np.ones_like(mask_uss, dtype=np.bool_) # TODO: add mask
         
-        bag_path_sync_uss = self.bag_path.replace(".bag", "_sync_uss"+str(stack_id)+".bag")
-        self.writeTimeStamp(
-            bag_path_sync=bag_path_sync_uss,
-            topic_async="/USS"+str(stack_id),
-            topic_sync="/USS"+str(stack_id)+"_sync",
-            time_async=times_closest_uss[mask],
-            time_sync=times_rs[mask],
+        topics_read = [
+            "/USS"+str(stack_id), 
+            "/TOF"+str(stack_id), 
+            "/CAM"+str(stack_id)+"/color/image_raw",
+            "/CAM"+str(stack_id)+"/aligned_depth_to_color/image_raw"
+        ]
+        topics_write = copy.copy(topics_read)
+        times_read = [
+            times_closest_uss[mask],
+            times_closest_tof[mask],
+            times_rs[mask],
+            times_rs[mask],
+        ]
+        times_write = [
+            times_rs[mask],
+            times_rs[mask],
+            times_rs[mask],
+            times_rs[mask],
+        ]
+        
+        # plot results
+        freq_rs = self._calcFreq(
+            times=times_rs,
         )
+        fig.suptitle(f"Synchronization on RS time stamps (RS freq = {freq_rs:.2f} Hz), keeping {mask.sum()}/{mask.shape[0]} samples")
         
-        bag_path_sync_tof = self.bag_path.replace(".bag", "_sync_tof"+str(stack_id)+".bag")
-        self.writeTimeStamp(
-            bag_path_sync=bag_path_sync_tof,
-            topic_async="/TOF"+str(stack_id),
-            topic_sync="/TOF"+str(stack_id)+"_sync",
-            time_async=times_closest_tof[mask],
-            time_sync=times_rs[mask],
-        )
-        
-        bag_path_sync_cam = self.bag_path.replace(".bag", "_sync_rs"+str(stack_id)+".bag")
-        self.writeTimeStamp(
-            bag_path_sync=bag_path_sync_cam,
-            topic_async="/CAM"+str(stack_id)+"/color/image_raw",
-            topic_sync="/CAM"+str(stack_id)+"/color/image_raw_sync",
-            time_async=times_rs[mask],
-            time_sync=times_rs[mask],
-        )
-        bag_path_sync_list = [bag_path_sync_uss, bag_path_sync_tof, bag_path_sync_cam]
-        
-        if plot_dir is not None:
-            freq_rs = self._calcFreq(
-                times=times_rs,
-            )
-            fig.suptitle(f"Synchronization on RS time stamps (RS freq = {freq_rs:.2f} Hz), keeping {mask.sum()}/{mask.shape[0]} samples")
+        fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+        path_splits = self.bag_path.split("/")
+        plt.savefig(os.path.join(self.data_dir, path_splits[-1].replace(".bag", "") + f"_stack{stack_id}_sync.png"))
             
-            fig.tight_layout(rect=[0, 0.03, 1, 0.95])
-            path_splits = self.bag_path.split("/")
-            plt.savefig(os.path.join(plot_dir, path_splits[-1].replace(".bag", "") + f"_stack{stack_id}_sync.png"))
-            
-        return bag_path_sync_list
+        return topics_read, topics_write, times_read, times_write
     
     def _findClosestTime(
         self,
@@ -402,11 +407,119 @@ class RosbagSync(RosbagWrapper):
 def main():
 
     bag = RosbagSync(
-        bag_path="/home/spadmin/catkin_ws_ngp/data/DataSync/office_2.bag",
+        bag_path="/home/spadmin/catkin_ws_ngp/data/medium_2/medium_2_2.bag",
     )
     bag.syncBag(
-        plot_dir="/home/spadmin/catkin_ws_ngp/data/DataSync",
+        plot_dir="/home/spadmin/catkin_ws_ngp/data/medium_2/",
     )
 
 if __name__ == "__main__":
     main()
+    
+    
+    
+    
+ # def syncBag(
+    #     self,
+    #     plot_dir:str=None,
+    # ):
+        
+    #     stack1_sync_paths = self.syncSensorStack(
+    #         stack_id=1,
+    #         plot_dir=plot_dir,
+    #     )
+    #     stack3_sync_paths = self.syncSensorStack(
+    #         stack_id=3,
+    #         plot_dir=plot_dir,
+    #     )
+    #     bag_sync_path = stack1_sync_paths + stack3_sync_paths + [self.bag_path]
+    #     keep_topics = (len(stack1_sync_paths) + len(stack3_sync_paths)) * ["all"] \
+    #                     + [["/CAM1/depth/color/points", "/CAM3/depth/color/points", "/rslidar_points"]]
+    #     delete_ins = (len(stack1_sync_paths) + len(stack3_sync_paths)) * [True] + [False]
+        
+    #     self.merge(
+    #         bag_path_out=self.bag_path.replace(".bag", "_sync.bag"),
+    #         bag_paths_ins=bag_sync_path,
+    #         keep_topics=keep_topics,
+    #         delete_ins=delete_ins,
+    #     )
+    
+    # def syncSensorStack(
+    #     self,
+    #     stack_id:int,
+    #     plot_dir:str=None,
+    # ):
+    #     meass_uss, times_uss = self.read(
+    #         topic="/USS"+str(stack_id),
+    #     )
+    #     meass_tof, times_tof = self.read(
+    #         topic="/TOF"+str(stack_id),
+    #     )
+    #     _, times_rs = self.read(
+    #         topic="/CAM"+str(stack_id)+"/color/image_raw",
+    #     )
+        
+    #     axs = [None, None]
+    #     if plot_dir is not None:
+    #         fig, axs = plt.subplots(ncols=2, nrows=3, figsize=(12, 7))
+        
+    #     times_closest_uss, mask_uss, axs[0,0], axs[1,0], axs[2,0] = self._findClosestTime(
+    #         times_source=times_uss,
+    #         times_target=times_rs,
+    #         meass_source=meass_uss,
+    #         ax_cor=axs[0,0],
+    #         ax_err_time=axs[1,0],
+    #         ax_err_meas=axs[2,0],
+    #         sensor="USS",
+    #     )
+    #     times_closest_tof, mask_tof, axs[0,1], axs[1,1], axs[2,1] = self._findClosestTime(
+    #         times_source=times_tof,
+    #         times_target=times_rs,
+    #         meass_source=meass_tof,
+    #         ax_cor=axs[0,1],
+    #         ax_err_time=axs[1,1],
+    #         ax_err_meas=axs[2,1],
+    #         sensor="ToF",
+    #     )
+        
+    #     mask = mask_uss & mask_tof
+        
+    #     bag_path_sync_uss = self.bag_path.replace(".bag", "_sync_uss"+str(stack_id)+".bag")
+    #     self.writeTimeStamp(
+    #         bag_path_sync=bag_path_sync_uss,
+    #         topic_async="/USS"+str(stack_id),
+    #         topic_sync="/USS"+str(stack_id),
+    #         time_async=times_closest_uss[mask],
+    #         time_sync=times_rs[mask],
+    #     )
+        
+    #     bag_path_sync_tof = self.bag_path.replace(".bag", "_sync_tof"+str(stack_id)+".bag")
+    #     self.writeTimeStamp(
+    #         bag_path_sync=bag_path_sync_tof,
+    #         topic_async="/TOF"+str(stack_id),
+    #         topic_sync="/TOF"+str(stack_id),
+    #         time_async=times_closest_tof[mask],
+    #         time_sync=times_rs[mask],
+    #     )
+        
+    #     bag_path_sync_cam = self.bag_path.replace(".bag", "_sync_rs"+str(stack_id)+".bag")
+    #     self.writeTimeStamp(
+    #         bag_path_sync=bag_path_sync_cam,
+    #         topic_async="/CAM"+str(stack_id)+"/color/image_raw",
+    #         topic_sync="/CAM"+str(stack_id)+"/color/image_raw",
+    #         time_async=times_rs[mask],
+    #         time_sync=times_rs[mask],
+    #     )
+    #     bag_path_sync_list = [bag_path_sync_uss, bag_path_sync_tof, bag_path_sync_cam]
+        
+        # if plot_dir is not None:
+        #     freq_rs = self._calcFreq(
+        #         times=times_rs,
+        #     )
+        #     fig.suptitle(f"Synchronization on RS time stamps (RS freq = {freq_rs:.2f} Hz), keeping {mask.sum()}/{mask.shape[0]} samples")
+            
+        #     fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+        #     path_splits = self.bag_path.split("/")
+        #     plt.savefig(os.path.join(plot_dir, path_splits[-1].replace(".bag", "") + f"_stack{stack_id}_sync.png"))
+            
+        # return bag_path_sync_list

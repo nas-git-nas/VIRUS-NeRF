@@ -8,6 +8,8 @@ Panels:
         - /Status1
         - /TF1/Frames1
         - /Map1/Autocompute Value Bounds1
+        - /Odometry11/Shape1
+        - /Odometry31/Shape1
       Splitter Ratio: 0.5441176295280457
     Tree Height: 719
   - Class: rviz/Selection
@@ -68,14 +70,6 @@ Visualization Manager:
           Value: true
         CAM3_color_optical_frame:
           Value: false
-        TOF1:
-          Value: false
-        TOF3:
-          Value: false
-        USS1:
-          Value: false
-        USS3:
-          Value: false
         map:
           Value: true
         robot:
@@ -98,14 +92,6 @@ Visualization Manager:
                 CAM3:
                   CAM3_color_optical_frame:
                     {}
-                  TOF3:
-                    {}
-                  USS3:
-                    {}
-                TOF1:
-                  {}
-                USS1:
-                  {}
       Update Interval: 0
       Value: true
     - Alpha: 1
@@ -356,6 +342,76 @@ Visualization Manager:
       Topic: /kiss/trajectory
       Unreliable: false
       Value: true
+    - Angle Tolerance: 0.10000000149011612
+      Class: rviz/Odometry
+      Covariance:
+        Orientation:
+          Alpha: 0.5
+          Color: 255; 255; 127
+          Color Style: Unique
+          Frame: Local
+          Offset: 1
+          Scale: 1
+          Value: true
+        Position:
+          Alpha: 0.30000001192092896
+          Color: 204; 51; 204
+          Scale: 1
+          Value: true
+        Value: true
+      Enabled: true
+      Keep: 100
+      Name: Odometry1
+      Position Tolerance: 0.10000000149011612
+      Queue Size: 10
+      Shape:
+        Alpha: 1
+        Axes Length: 1
+        Axes Radius: 0.10000000149011612
+        Color: 255; 25; 0
+        Head Length: 0.30000001192092896
+        Head Radius: 0.10000000149011612
+        Shaft Length: 0.33000001311302185
+        Shaft Radius: 0.05000000074505806
+        Value: Arrow
+      Topic: /kiss/odometry_sync1
+      Unreliable: false
+      Value: true
+    - Angle Tolerance: 0.10000000149011612
+      Class: rviz/Odometry
+      Covariance:
+        Orientation:
+          Alpha: 0.5
+          Color: 255; 255; 127
+          Color Style: Unique
+          Frame: Local
+          Offset: 1
+          Scale: 1
+          Value: true
+        Position:
+          Alpha: 0.30000001192092896
+          Color: 204; 51; 204
+          Scale: 1
+          Value: true
+        Value: true
+      Enabled: true
+      Keep: 100
+      Name: Odometry3
+      Position Tolerance: 0.10000000149011612
+      Queue Size: 10
+      Shape:
+        Alpha: 1
+        Axes Length: 1
+        Axes Radius: 0.10000000149011612
+        Color: 255; 25; 0
+        Head Length: 0.30000001192092896
+        Head Radius: 0.10000000149011612
+        Shaft Length: 0.33000001311302185
+        Shaft Radius: 0.05000000074505806
+        Value: Arrow
+      Topic: /kiss/odometry_sync3
+      Unreliable: false
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -384,7 +440,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 7.882173538208008
+      Distance: 4.460458278656006
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -392,17 +448,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 1.6052579879760742
-        Y: 2.884805679321289
-        Z: 1.5550721883773804
+        X: 0.5898360013961792
+        Y: -0.5446567535400391
+        Z: 0.3762171268463135
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.1047966480255127
+      Pitch: 1.3647964000701904
       Target Frame: <Fixed Frame>
-      Yaw: 3.2303850650787354
+      Yaw: 3.12538480758667
     Saved: ~
 Window Geometry:
   Displays:

@@ -19,11 +19,11 @@
             value="/rslidar_filtered" />
         <rosparam 
             param="lims_z" >
-            [-0.4, 1.6]
+            [-0.4, 1.2]
         </rosparam>
         <rosparam 
             param="lims_p" >
-            [-120, 120]
+            [-120, 60]
         </rosparam>
         <node 
             pkg="sensors" 
@@ -96,16 +96,47 @@
             output="screen" />
     </group>
 
-    <group ns="/Rosbag">
-        <arg 
-            name="path" 
-            default="/home/spadmin/catkin_ws_ngp/data/Experiments/office_2.bag" />
+    <!-- <group ns="/pose_saver">
+        <param 
+            name="topic_pose" 
+            type="str" 
+            value="/kiss/odometry" />
+        <param 
+            name="save_dir" 
+            type="str" 
+            value="/home/spadmin/catkin_ws_ngp/data/test" />
+        <param 
+            name="output_format" 
+            type="str" 
+            value="quaternion" />
         <node 
-            pkg="rosbag" 
-            type="play" 
-            name="player" 
-            output="screen" 
-            args="--clock $(arg path)"/>
-    </group>
+            pkg="sensors" 
+            type="pose_saver_node.py" 
+            name="pose_saver_node" 
+            output="screen" />
+    </group> -->
+
+    <!-- <group ns="/pcl_saver">
+        <param 
+            name="topic_pcl" 
+            type="str" 
+            value="/rslidar_points" />
+        <param 
+            name="save_dir" 
+            type="str" 
+            value="/home/spadmin/catkin_ws_ngp/data/PCL" />
+        <node 
+            pkg="sensors" 
+            type="pcl_saver_node" 
+            name="pcl_saver_node" 
+            output="screen" />
+    </group> -->
+
+    <include file="$(find timed_roslaunch)/launch/timed_roslaunch.launch">
+        <arg name="time" value="4" />
+        <arg name="pkg" value="sensors" />
+        <arg name="file" value="bag_play.launch" />
+        <arg name="node_name" value="timed_roslaunch_bag_play" />
+    </include>
 
 </launch>
