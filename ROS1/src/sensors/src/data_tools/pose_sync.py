@@ -17,14 +17,18 @@ class PoseSync(RosbagWrapper):
         self.poses_name = poses_name
         
         super().__init__(
-            bag_path=os.path.join(data_dir, bag_name),
+            data_dir=data_dir,
+            bag_name=bag_name,
         )
         
     def __call__(
         self,
+        times_dict:dict,
     ):
         """
         Sync pose with other sensors.
+        Args:
+            times_dict: dictionary with times; dict
         returns:
             topics: list of topics; list of str
             msgs: list of msgs; list of list of Odometry msgs
@@ -32,24 +36,28 @@ class PoseSync(RosbagWrapper):
         # Sync poses
         poses_1_sync, times_1 = self._syncPose(
             stack_id=1,
+            times_rs=times_dict["/CAM1/color/image_raw"],
         )
         poses_3_sync, times_3 = self._syncPose(
             stack_id=3,
+            times_rs=times_dict["/CAM3/color/image_raw"],
         )
         
         # Save to CSV file
         pd.DataFrame(
             data=np.hstack((times_1[:,None], poses_1_sync)),
             columns=['time', 'x', 'y', 'z', 'qx', 'qy', 'qz', 'qw'],
+            dtype=np.float64,
         ).to_csv(
-            path_or_buf=os.path.join(self.data_dir, 'poses_sync1.csv'),
+            path_or_buf=os.path.join(self.data_dir, 'poses', 'poses_sync1.csv'),
             index=False,
         )
         pd.DataFrame(
             data=np.hstack((times_3[:,None], poses_3_sync)),
             columns=['time', 'x', 'y', 'z', 'qx', 'qy', 'qz', 'qw'],
+            dtype=np.float64,
         ).to_csv(
-            path_or_buf=os.path.join(self.data_dir, 'poses_sync3.csv'),
+            path_or_buf=os.path.join(self.data_dir, 'poses', 'poses_sync3.csv'),
             index=False,
         )
         
@@ -72,22 +80,28 @@ class PoseSync(RosbagWrapper):
     def _syncPose(
         self,
         stack_id:int,
+        times_rs:np.array=None ,
     ):
-        _, times_rs = self.read(
-            topic="/CAM"+str(stack_id)+"/color/image_raw",
-        )
-        
-        poses = np.loadtxt(
-            fname= os.path.join(self.data_dir, self.poses_name),
-            delimiter=",", 
+        """
+        Synchronize poses with camera samples from one sensor stack.
+        Args:
+            stack_id: id of sensor stack; int
+            times_rs: times of camera samples; np.array of floats (N)
+        Returns:
+            poses_sync: synchronized poses; np.array of floats (N,7)
+            times_rs: times of camera samples; np.array of floats (N)
+        """
+        if times_rs is None: 
+            _, times_rs = self.read(
+                return_time=["/CAM"+str(stack_id)+"/color/image_raw"],
+            )
+            
+        df_poses = pd.read_csv(
+            os.path.join(self.data_dir, 'poses', self.poses_name),
             dtype=np.float64,
         )
-        
-        times_poses = np.loadtxt(
-            fname= os.path.join(self.data_dir, self.poses_name.replace('.csv', '_time.csv')),
-            delimiter=",", 
-            dtype=np.float64,
-        )
+        poses = df_poses[['x', 'y', 'z', 'qx', 'qy', 'qz', 'qw']].values
+        times_poses = df_poses['time'].values
         
         idxs_below, idxs_above = self._findNeighbours(
             times_target=times_rs,

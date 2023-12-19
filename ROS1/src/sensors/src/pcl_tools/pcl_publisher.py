@@ -6,6 +6,7 @@ from sensors.msg import USS, TOF
 import numpy as np
 import struct
 from abc import ABC, abstractmethod
+import os
 
 import sensor_msgs.point_cloud2 as pc2
 
@@ -60,20 +61,20 @@ class PCLPublisher():
         
     def _publishPCL(
         self,
-        xyz:np.array,
+        xyzi:np.array,
         header:Header=None,
     ):
         """
         Publish pointcloud as Pointcloud2 ROS message.
         Args:
-            xyz: pointcloud; np.array (N,3)
+            xyzi: pointcloud [x ,y ,z, intensity]; np.array (N,4)
             header: ROS header to publish; Header
         """
-        xyz = xyz[(xyz[:,0]!=np.NAN) & (xyz[:,1]!=np.NAN) & (xyz[:,2]!=np.NAN)]
-        xyz = xyz.astype(dtype=np.float32)
+        xyzi = xyzi[(xyzi[:,0]!=np.NAN) & (xyzi[:,1]!=np.NAN) & (xyzi[:,2]!=np.NAN)]
+        xyzi = xyzi.astype(dtype=np.float32)
         
-        rgb = self.color * np.ones((xyz.shape[0], 1), dtype=np.float32) # (H, W)
-        xyzrgb = np.concatenate((xyz, rgb), axis=1)
+        rgb = self.color * np.ones((xyzi.shape[0], 1), dtype=np.float32) # (H, W)
+        xyzirgb = np.concatenate((xyzi, rgb), axis=1)
         
         pointcloud_msg = PointCloud2()
         pointcloud_msg.header = header
@@ -83,10 +84,11 @@ class PCLPublisher():
             PointField('x', 0, PointField.FLOAT32, 1),
             PointField('y', 4, PointField.FLOAT32, 1),
             PointField('z', 8, PointField.FLOAT32, 1),
-            PointField('rgb', 12, PointField.UINT32, 1),
+            PointField('intensity', 12, PointField.FLOAT32, 1),
+            PointField('rgb', 16, PointField.UINT32, 1),
         ]
         pointcloud_msg.height = 1
-        pointcloud_msg.width = xyz.shape[0]
+        pointcloud_msg.width = xyzirgb.shape[0]
 
         # Float occupies 4 bytes. Each point then carries 12 bytes.
         pointcloud_msg.point_step = len(pointcloud_msg.fields) * 4 
@@ -94,7 +96,7 @@ class PCLPublisher():
         pointcloud_msg.is_bigendian = False # assumption
         pointcloud_msg.is_dense = True
         
-        pointcloud_msg.data = xyzrgb.tobytes()
+        pointcloud_msg.data = xyzirgb.tobytes()
         self.pub.publish(pointcloud_msg)
 
 
@@ -103,6 +105,7 @@ class PCLMeasPublisher(PCLPublisher):
         self,
         sensor_id:str,
         pub_frame_id:str,
+        data_dir:str=None,
     ):
         self.sensor_id = sensor_id
         self.pub_frame_id = pub_frame_id
@@ -144,9 +147,15 @@ class PCLMeasPublisher(PCLPublisher):
             rospy.logerr(f"PCLPublisher.__init__: Unknown sensor_id: {self.sensor_id}")
             
         if self.sub_frame_id != self.pub_frame_id:
+            
+            lookup_table_path = None
+            if self.pub_frame_id == "map":
+                lookup_table_path = os.path.join(data_dir, "poses", "poses_sync"+self.sensor_id[-1]+"_cam_robot.csv")
+                
             self.pcl_coordinator = PCLCoordinator(
                 source=self.sub_frame_id,
                 target=self.pub_frame_id,
+                lookup_table_path=lookup_table_path,
             )
         
     def _callback(
@@ -170,12 +179,14 @@ class PCLMeasPublisher(PCLPublisher):
         if self.sub_frame_id != self.pub_frame_id:
             xyz = self.pcl_coordinator.transformCoordinateSystem(
                 xyz=xyz,
+                time=msg.header.stamp.to_sec(),
             )
             
         header = msg.header
         header.frame_id = self.pub_frame_id  
+        xyzi = np.concatenate((xyz, np.ones((xyz.shape[0], 1))), axis=1)
         self._publishPCL(
-            xyz=xyz,
+            xyzi=xyzi,
             header=header,
         )
         
@@ -220,32 +231,32 @@ class PCLFilterPublisher(PCLPublisher):
             msg: ROS pointcloud message; PointCloud2
         """
             
-        xyz = []
-        for p in pc2.read_points(msg, field_names = ("x", "y", "z"), skip_nans=True):
-            xyz.append(p)
-        xyz = np.array(xyz)
+        xyzi = []
+        for p in pc2.read_points(msg, field_names = ("x", "y", "z", "intensity"), skip_nans=True):
+            xyzi.append(p)
+        xyzi = np.array(xyzi)
             
-        xyz = self.pcl_processor.limitXYZ(
-            xyz=xyz,
+        xyzi = self.pcl_processor.limitXYZ(
+            xyzi=xyzi,
             x_lims=self.lims_x,
             y_lims=self.lims_y,
             z_lims=self.lims_z,
         )
         
-        xyz = self.pcl_processor.limitRTP(
-            xyz=xyz,
+        xyzi = self.pcl_processor.limitRTP(
+            xyzi=xyzi,
             r_lims=self.lims_r,
             t_lims=self.lims_t,
             p_lims=self.lims_p,
         )
         
-        xyz = self.pcl_processor.offsetDepth(
-            xyz=xyz,
+        xyzi = self.pcl_processor.offsetDepth(
+            xyzi=xyzi,
             offset=self.offset_depth,
         )
-            
+        
         self._publishPCL(
-            xyz=xyz,
+            xyzi=xyzi,
             header=msg.header,
         )
         

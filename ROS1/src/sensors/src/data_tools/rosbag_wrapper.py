@@ -3,6 +3,9 @@
 from rosbag import Bag
 import rospy
 import numpy as np
+import pandas as pd
+import cv2 as cv
+from cv_bridge import CvBridge
 from fnmatch import fnmatchcase
 import copy
 import os
@@ -14,66 +17,48 @@ from tqdm import tqdm
 class RosbagWrapper():
     def __init__(
         self,
-        bag_path:str,
+        data_dir:str,
+        bag_name:str,
     ) -> None:
-        self.bag_path = bag_path
+        self.data_dir = data_dir
+        self.bag_path = os.path.join(data_dir, bag_name)
         
-    # def read(
-    #     self,
-    #     topic:str,
-    # ):
-    #     """
-    #     Get messages from a particular topic.
-    #     Args:
-    #         topic: topic name; str
-    #     Returns:
-    #         meass: measurements; np.array of floats (N)
-    #         times: times of measurements in seconds; np.array of floats (N)
-    #     """
-    #     print(f"INFO: RosbagWrapper.read: topic={topic} from {self.bag_path}")
-    #     with Bag(self.bag_path, 'r') as bag:
-            
-    #         meass = []
-    #         times = []
-    #         for b_topic, b_msg, b_time in tqdm(bag):
-                
-    #             if b_topic != topic:
-    #                 continue
-                
-    #             if "USS" in topic:
-    #                 meas, time = self._readMsgUSS(
-    #                     msg=b_msg,
-    #                 )
-    #             elif "TOF" in topic:
-    #                 meas, time = self._readMsgToF(
-    #                     msg=b_msg,
-    #                 )
-    #             elif "CAM" in topic:
-    #                 meas = None
-    #                 time = self._readMsgRS(
-    #                     msg=b_msg,
-    #                 )
-    #             meass.append(meas)
-    #             times.append(time)
-                
-    #     return np.array(meass), np.array(times)
+        self.cv_bridge = CvBridge()
     
     def read(
         self,
-        topics:str,
+        return_time:list=[],
+        return_meas:list=[],
+        save_meas:list=[],
     ):
         """
         Get messages from a particular topic.
         Args:
-            topics: topic names to read; list of str
+            return_time: return time stamps; list of str
+            return_meas: return measurements; list of str
+            save_meas: save measurements; list of str
         Returns:
             meass: measurements from each topic; list of np.array of floats (N)
             times: times of measurements in seconds from each topic; list np.array of floats (N)
         """
+        # unique topics
+        topics = return_time + return_meas + save_meas
+        topics = np.unique(topics)
         print(f"INFO: RosbagWrapper.read: topics={topics} from {self.bag_path}")
+
+        # create dataframes for saving measurements
+        df_meas = {}
+        img_counters = {}
+        for topic in save_meas:
+            if "USS" in topic:
+                df_meas[topic] = pd.DataFrame(columns=['time', 'meas'])
+            elif "TOF" in topic:
+                df_meas[topic] = pd.DataFrame(columns=self._getToFColumns())
+            elif "CAM" in topic:
+                img_counters[topic] = 0
         
-        meass_dict = { topic:[] for topic in topics }
-        times_dict = { topic:[] for topic in topics }
+        meass_dict = { topic:[] for topic in return_meas }
+        times_dict = { topic:[] for topic in return_time }
         with Bag(self.bag_path, 'r') as bag:
             
             for topic_temp, msg_temp, _ in tqdm(bag):
@@ -82,24 +67,153 @@ class RosbagWrapper():
                     continue
                 
                 if "USS" in topic_temp:
-                    meas = msg_temp.meas
-                    time = msg_temp.header.stamp.to_sec()
+                    meas, time, df_meas = self._readMsgUss(
+                        topic_temp=topic_temp,
+                        msg_temp=msg_temp,
+                        return_msg=topic_temp in return_meas,
+                        return_time=topic_temp in return_time,
+                        save_meas=topic_temp in save_meas,
+                        df_meas=df_meas,
+                    )
                 elif "TOF" in topic_temp:
-                    meas = msg_temp.meas
-                    time = msg_temp.header.stamp.to_sec()
+                    meas, stds, time, df_meas = self._readMsgTof(
+                        topic_temp=topic_temp,
+                        msg_temp=msg_temp,
+                        return_msg=topic_temp in return_meas,
+                        return_time=topic_temp in return_time,
+                        save_meas=topic_temp in save_meas,
+                        df_meas=df_meas,
+                    )
                 elif "CAM" in topic_temp:
-                    meas = None
-                    time = msg_temp.header.stamp.to_sec()
-                    
-                meass_dict[topic_temp].append(meas)
-                times_dict[topic_temp].append(time)
+                    img, time, img_counter = self._readMsgCam(
+                        topic_temp=topic_temp,
+                        msg_temp=msg_temp,
+                        return_msg=topic_temp in return_meas,
+                        return_time=topic_temp in return_time,
+                        save_meas=topic_temp in save_meas,
+                        img_counters=img_counters,
+                    )
+
+                if topic_temp in return_meas:
+                    meass_dict[topic_temp].append(meas)
+                if topic_temp in return_time:
+                    times_dict[topic_temp].append(time)
+
+        if not os.path.exists(os.path.join(self.data_dir, "measurements")):
+                os.makedirs(os.path.join(self.data_dir,  "measurements"))
+        for topic in df_meas.keys():
+            df_meas[topic].to_csv(os.path.join(self.data_dir, "measurements", f"{topic[1:].replace('/', '_')}.csv"), index=False)
                 
         meass_dict_arr = {}
-        times_dict_arr = {}
-        for topic in topics:
+        for topic in return_meas:
             meass_dict_arr[topic] = np.array(meass_dict[topic])
+            
+        times_dict_arr = {}
+        for topic in return_time:
             times_dict_arr[topic] = np.array(times_dict[topic])
         return meass_dict_arr, times_dict_arr
+    
+    def _readMsgUss(
+        self,
+        topic_temp:str,
+        msg_temp,
+        return_msg:bool,
+        return_time:bool,
+        save_meas:bool,
+        df_meas:pd.DataFrame,
+    ):
+        if save_meas:
+            df_meas[topic_temp] = df_meas[topic_temp].append(
+                pd.DataFrame(
+                    data=np.array([[
+                        msg_temp.header.stamp.to_sec(),
+                        msg_temp.meas,
+                    ]]),
+                    columns=['time', 'meas'],
+                ),
+                ignore_index=True,
+            )
+        
+        meas = None
+        if return_msg:
+            meas = msg_temp.meas 
+            
+        time = None
+        if return_time:
+            time = msg_temp.header.stamp.to_sec()
+        return meas, time, df_meas
+    
+    def _readMsgTof(
+        self,
+        topic_temp:str,
+        msg_temp,
+        return_msg:bool,
+        return_time:bool,
+        save_meas:bool,
+        df_meas:pd.DataFrame,
+    ):
+        if save_meas:
+            df_meas[topic_temp] = df_meas[topic_temp].append(
+                pd.DataFrame(
+                    data=np.hstack([
+                        np.array([msg_temp.header.stamp.to_sec()]).reshape(1, -1),
+                        np.array(msg_temp.meas).reshape(1, -1),
+                        np.array(msg_temp.stds).reshape(1, -1),
+                    ]),
+                    columns=self._getToFColumns(),
+                ),
+                ignore_index=True,
+            )
+        meas, stds = None, None
+        if return_msg:
+            meas = msg_temp.meas
+            stds = msg_temp.stds
+            
+        time = None
+        if return_time:
+            time = msg_temp.header.stamp.to_sec()
+        return meas, stds, time, df_meas
+    
+    def _readMsgCam(
+        self,
+        topic_temp:str,
+        msg_temp,
+        return_msg:bool,
+        return_time:bool,
+        save_meas:bool,
+        img_counters:dict,
+    ):
+        if save_meas or return_msg:
+            img = self.cv_bridge.imgmsg_to_cv2(msg_temp, desired_encoding=msg_temp.encoding)
+            
+        if save_meas:
+            folder_name = f"{topic_temp[1:].replace('/', '_')}"
+            img_name = f"img{img_counters[topic_temp]}.png"
+                
+            if not os.path.exists(os.path.join(self.data_dir, "measurements", folder_name)):
+                os.makedirs(os.path.join(self.data_dir,  "measurements", folder_name))
+                
+            cv.imwrite(
+                filename=os.path.join(self.data_dir,  "measurements", folder_name, img_name), 
+                img=img,
+            )
+            img_counters[topic_temp] += 1
+            
+        if not return_msg:
+            img = None
+            
+        time = None
+        if return_time:
+            time = msg_temp.header.stamp.to_sec()
+        return img, time, img_counters
+    
+    def _getToFColumns(
+        self,
+    ):
+        col_meas = [f"meas_{i}" for i in range(0, 64)]
+        col_stds = [f"stds_{i}" for i in range(0, 64)]
+        return ['time'] + col_meas + col_stds
+    
     
     def newBag(
         self,

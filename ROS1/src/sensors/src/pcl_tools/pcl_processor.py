@@ -11,7 +11,7 @@ class PCLProcessor:
         
     def limitXYZ(
         self,
-        xyz:np.array,
+        xyzi:np.array,
         x_lims:tuple=None,
         y_lims:tuple=None,
         z_lims:tuple=None,
@@ -19,7 +19,7 @@ class PCLProcessor:
         """
         Limit the pointcloud to a certain range in x, y and z.
         Args:
-            xyz: pointcloud; numpy array (N,3)
+            xyzi: pointcloud; numpy array (N,4)
             x_lims: limits in x; tuple of length 2
             y_lims: limits in y; tuple of length 2
             z_lims: limits in z; tuple of length 2
@@ -27,16 +27,16 @@ class PCLProcessor:
             xyz: limited pointcloud; numpy array (N,3)
         """
         if x_lims is not None:
-            xyz = xyz[np.logical_and(xyz[:,0] >= x_lims[0], xyz[:,0] <= x_lims[1])]
+            xyzi = xyzi[np.logical_and(xyzi[:,0] >= x_lims[0], xyzi[:,0] <= x_lims[1])]
         if y_lims is not None:
-            xyz = xyz[np.logical_and(xyz[:,1] >= y_lims[0], xyz[:,1] <= y_lims[1])]
+            xyzi = xyzi[np.logical_and(xyzi[:,1] >= y_lims[0], xyzi[:,1] <= y_lims[1])]
         if z_lims is not None:
-            xyz = xyz[np.logical_and(xyz[:,2] >= z_lims[0], xyz[:,2] <= z_lims[1])]
-        return xyz
+            xyzi = xyzi[np.logical_and(xyzi[:,2] >= z_lims[0], xyzi[:,2] <= z_lims[1])]
+        return xyzi
     
     def limitRTP(
         self,
-        xyz,
+        xyzi,
         r_lims:tuple=None,
         t_lims:tuple=None,
         p_lims:tuple=None,
@@ -44,7 +44,7 @@ class PCLProcessor:
         """
         Limit the pointcloud to a certain range in radius, theta and phi.
         Args:
-            xyz: pointcloud; numpy array (N,3)
+            xyzi: pointcloud; numpy array (N,4)
             r_lims: limits in radius; tuple of length 2
             t_lims: limits in theta [degrees]; tuple of length 2
             p_lims: limits in phi [degrees]; tuple of length 2
@@ -52,29 +52,29 @@ class PCLProcessor:
             xyz: limited pointcloud; numpy array (N,3)
         """
         if r_lims is None and t_lims is None and p_lims is None:
-            return xyz
+            return xyzi
         
-        rtp = self._cart2sph(
-            xyz=xyz
+        rtpi = self._cart2sph(
+            xyzi=xyzi
         )
         
         if r_lims is not None:
-            rtp = rtp[np.logical_and(rtp[:,0] >= r_lims[0], rtp[:,0] <= r_lims[1])]
+            rtpi = rtpi[np.logical_and(rtpi[:,0] >= r_lims[0], rtpi[:,0] <= r_lims[1])]
         if t_lims is not None:
             t_lims = np.deg2rad(t_lims)
-            rtp = rtp[np.logical_and(rtp[:,1] >= t_lims[0], rtp[:,1] <= t_lims[1])]
+            rtpi = rtpi[np.logical_and(rtpi[:,1] >= t_lims[0], rtpi[:,1] <= t_lims[1])]
         if p_lims is not None:
             p_lims = np.deg2rad(p_lims)
-            rtp = rtp[np.logical_and(rtp[:,2] >= p_lims[0], rtp[:,2] <= p_lims[1])]
+            rtpi = rtpi[np.logical_and(rtpi[:,2] >= p_lims[0], rtpi[:,2] <= p_lims[1])]
         
-        xyz = self._sph2cart(
-            rtp=rtp
+        xyzi = self._sph2cart(
+            rtpi=rtpi,
         )
-        return xyz
+        return xyzi
         
     def offsetDepth(
         self,
-        xyz:np.array,
+        xyzi:np.array,
         offset:float,
     ):
         """
@@ -84,56 +84,56 @@ class PCLProcessor:
             y: points to the left
             z: points upwards
         Args:
-            xyz: pointcloud; numpy array (N,3)
+            xyzi: pointcloud; numpy array (N,4)
             offset: offset in ray direction; float
         Returns:
-            xyz: pointcloud with offset; numpy array (N,3)
+            xyzi: pointcloud with offset; numpy array (N,4)
         """
         if offset is None:
-            return xyz
+            return xyzi
         
-        rtp = self._cart2sph(
-            xyz=xyz
+        rtpi = self._cart2sph(
+            xyzi=xyzi
         )
         
-        rtp[:,0] += offset
+        rtpi[:,0] += offset
         
-        xyz = self._sph2cart(
-            rtp=rtp
+        xyzi = self._sph2cart(
+            rtpi=rtpi
         )
-        return xyz
+        return xyzi
 
     def _cart2sph(
         self,
-        xyz
+        xyzi
     ):
         """
         Converts a cartesian coordinate (x, y, z) into a spherical one (radius, theta, phi).
         Args:
-            xyz: points in cartesian coordinates; numpy array (N,3)
+            xyzi: points in cartesian coordinates; numpy array (N,4)
         Returns:
-            rtp: points in polar coordinates; numpy array (N,3)
+            rtpi: points in polar coordinates; numpy array (N,4)
         """
-        radius = np.linalg.norm(xyz, axis=1)
-        theta = np.arctan2(np.sqrt(xyz[:,0]**2 + xyz[:,1]**2), xyz[:,2])
-        phi = np.arctan2(xyz[:,1], xyz[:,0])
-        return np.stack((radius, theta, phi), axis=1)
+        radius = np.linalg.norm(xyzi[:,:3], axis=1)
+        theta = np.arctan2(np.sqrt(xyzi[:,0]**2 + xyzi[:,1]**2), xyzi[:,2])
+        phi = np.arctan2(xyzi[:,1], xyzi[:,0])
+        return np.stack((radius, theta, phi, xyzi[:,3]), axis=1)
 
     def _sph2cart(
         self,
-        rtp,
+        rtpi,
     ):
         """
         Converts a spherical coordinate (radius, theta, phi) into a cartesian one (x, y, z).
         Args:
-            xyz: points in polar coordinates; numpy array (N,3)
+            rtpi: points in polar coordinates; numpy array (N,4)
         Returns:
-            rtp: points in cartesian coordinates; numpy array (N,3)
+            xyzi: points in cartesian coordinates; numpy array (N,4)
         """
-        x = rtp[:,0] * np.cos(rtp[:,2]) * np.sin(rtp[:,1])
-        y = rtp[:,0] * np.sin(rtp[:,2]) * np.sin(rtp[:,1])
-        z = rtp[:,0] * np.cos(rtp[:,1])
-        return np.stack((x, y, z), axis=1)
+        x = rtpi[:,0] * np.cos(rtpi[:,2]) * np.sin(rtpi[:,1])
+        y = rtpi[:,0] * np.sin(rtpi[:,2]) * np.sin(rtpi[:,1])
+        z = rtpi[:,0] * np.cos(rtpi[:,1])
+        return np.stack((x, y, z, rtpi[:,3]), axis=1)
         
 
 if __name__ == '__main__':

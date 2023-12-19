@@ -1,4 +1,5 @@
 import os
+import numpy as np
 
 from pose_sync import PoseSync
 from time_sync import TimeSync
@@ -11,31 +12,44 @@ def readData(
     """
     Read data in one step for faster processing.
     Args:
-        data_dir:
+        data_dir: path to data directory; str
+        bag_name: name of bag file; str
+    Returns:
+        meass_dict: dictionary with measurements; dict
+        times_dict: dictionary with times; dict
     """
     bag_wrapper = RosbagWrapper(
-        bag_path=os.path.join(data_dir, bag_name),
+        data_dir=data_dir,
+        bag_name=bag_name,
     )
-    meass_dict, times_dict = bag_wrapper.readBag(
-        topics=[
+    meass_dict, times_dict = bag_wrapper.read(
+        return_time=[
             "/CAM1/color/image_raw",
             "/CAM3/color/image_raw",
+            "/CAM1/aligned_depth_to_color/image_raw",
+            "/CAM3/aligned_depth_to_color/image_raw",
+            "/USS1",
+            "/USS3",
+            "/TOF1",
+            "/TOF3",
+        ],
+        return_meas=[
             "/USS1",
             "/USS3",
             "/TOF1",
             "/TOF3",
         ],
     )
+    # meass_dict["/CAM1/aligned_depth_to_color/image_raw"] = None
+    # meass_dict["/CAM3/aligned_depth_to_color/image_raw"] = None
     
-    
-
-
+    return meass_dict, times_dict
 
 def main():
     
-    data_dir = "/home/spadmin/catkin_ws_ngp/data/test"
-    bag_name = "test.bag"
-    poses_name = "alidarPose.csv"
+    data_dir = "/home/spadmin/catkin_ws_ngp/data/office_2"
+    bag_name = "office_2_2.bag"
+    poses_name = "poses_lidar.csv"
     
     # topics to copy and paste fom old bag
     keep_topics = [
@@ -44,20 +58,31 @@ def main():
         "/rslidar_points",
     ]
     
+    # read data from rosbag
+    meass_dict, times_dict = readData(
+        data_dir=data_dir,
+        bag_name=bag_name,
+    )
+    
     # synchronized pose topics
     ps = PoseSync(
         data_dir=data_dir,
         bag_name=bag_name,
         poses_name=poses_name,
     )
-    write_topics, write_msgs = ps()
+    write_topics, write_msgs = ps(
+        times_dict=times_dict,
+    )
     
     # synchronized time topics
     ts = TimeSync(
         data_dir=data_dir,
         bag_name=bag_name,
     )
-    replace_topics_r, replace_topics_w, replace_times_r, replace_times_w = ts()
+    replace_topics_r, replace_topics_w, replace_times_r, replace_times_w = ts(
+        meass_dict=meass_dict,
+        times_dict=times_dict,
+    )
     
     ps.newBag(
         new_bag_path=os.path.join(data_dir, bag_name.replace('.bag', '_sync.bag')),

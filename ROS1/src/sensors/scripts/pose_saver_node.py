@@ -19,18 +19,19 @@ class PoseSaver():
     def __init__(
         self,
         topic_pose:str,
-        save_dir:str,
+        data_dir:str,
         output_format:str,
     ):
         self.poses = []
         self.times = []
         self.pcl_counter = 0
-        self.save_dir = save_dir
+        self.data_dir = data_dir
         self.output_format = output_format
         
-        if not os.path.exists(self.save_dir):
-            rospy.loginfo(f'Creating directory: {self.save_dir}')
-            os.makedirs(self.save_dir)
+        poses_dir = os.path.join(self.data_dir, "poses")
+        if not os.path.exists(poses_dir):
+            rospy.loginfo(f'Creating directory: {poses_dir}')
+            os.makedirs(poses_dir)
         
         # ROS
         rospy.init_node('PCLSaver_node')
@@ -71,9 +72,18 @@ class PoseSaver():
         times = np.array(self.times)
             
         # Save pose ant time to CSV file
-        file_path = os.path.join(self.save_dir, 'alidarPose.csv')
-        np.savetxt(file_path, Ts, delimiter=',')
-        np.savetxt(file_path.replace('.csv', '_time.csv'), times, delimiter=',')
+        file_path = os.path.join(self.data_dir, "poses", 'poses_lidar.csv')
+        if self.output_format == 'matrix':
+            np.savetxt(file_path.replace('.csv', '_matrix.csv'), Ts, delimiter=',')
+            np.savetxt(file_path.replace('.csv', '_time.csv'), times, delimiter=',')
+        elif self.output_format == 'quaternion':
+            pd.DataFrame(
+                data=np.hstack((times.reshape((-1,1)), Ts)),
+                columns=['time', 'x', 'y', 'z', 'qx', 'qy', 'qz', 'qw'],
+                dtype=np.float64,
+            ).to_csv(file_path, index=False)
+        else:
+            rospy.logerr(f'Invalid output format: {self.output_format}')
 
     def callbackPose(
         self, 
@@ -96,7 +106,7 @@ class PoseSaver():
 def main():
     pcl_saver = PoseSaver(
         topic_pose=rospy.get_param('topic_pose'),
-        save_dir=rospy.get_param('save_dir'),
+        data_dir=rospy.get_param('data_dir'),
         output_format=rospy.get_param('output_format'),
     )
     pcl_saver.subscribe()
@@ -123,7 +133,7 @@ if __name__ == "__main__":
 #         # cloud_o3d.intensities = o3d.core.Tensor(np.ones((xyz.shape[0],)))
 
 #         # Save to .pcd
-#         file_path = os.path.join(self.save_dir, f'full{self.pcl_counter}.pcd')
+#         file_path = os.path.join(self.data_dir, f'full{self.pcl_counter}.pcd')
 #         o3d.io.write_point_cloud(file_path, cloud_o3d)
         
 

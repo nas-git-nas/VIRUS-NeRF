@@ -1,5 +1,12 @@
 <launch>
 
+    <arg 
+        name="data_dir" 
+        default="/home/spadmin/catkin_ws_ngp/data/test/"/>
+    <arg 
+        name="bag_name" 
+        default="test_sync.bag"/>
+
     <include 
         file="$(find sensors)/Launch/visualization.launch">
     </include>   
@@ -40,7 +47,11 @@
         <param 
             name="pub_frame_id" 
             type="str" 
-            value="robot" />
+            value="map" />
+        <param 
+            name="data_dir" 
+            type="str" 
+            value="$(arg data_dir)" />
         <node 
             pkg="sensors" 
             type="pcl_meas_publisher_node.py" 
@@ -56,7 +67,11 @@
         <param 
             name="pub_frame_id" 
             type="str" 
-            value="robot" />
+            value="map" />
+        <param 
+            name="data_dir" 
+            type="str" 
+            value="$(arg data_dir)" />
         <node 
             pkg="sensors" 
             type="pcl_meas_publisher_node.py" 
@@ -72,7 +87,11 @@
         <param 
             name="pub_frame_id" 
             type="str" 
-            value="robot" />
+            value="map" />
+        <param 
+            name="data_dir" 
+            type="str" 
+            value="$(arg data_dir)" />
         <node 
             pkg="sensors" 
             type="pcl_meas_publisher_node.py" 
@@ -88,7 +107,11 @@
         <param 
             name="pub_frame_id" 
             type="str" 
-            value="robot" />
+            value="map" />
+        <param 
+            name="data_dir" 
+            type="str" 
+            value="$(arg data_dir)" />
         <node 
             pkg="sensors" 
             type="pcl_meas_publisher_node.py" 
@@ -96,47 +119,13 @@
             output="screen" />
     </group>
 
-    <!-- <group ns="/pose_saver">
-        <param 
-            name="topic_pose" 
-            type="str" 
-            value="/kiss/odometry" />
-        <param 
-            name="save_dir" 
-            type="str" 
-            value="/home/spadmin/catkin_ws_ngp/data/test" />
-        <param 
-            name="output_format" 
-            type="str" 
-            value="quaternion" />
+    <group ns="/Rosbag">
         <node 
-            pkg="sensors" 
-            type="pose_saver_node.py" 
-            name="pose_saver_node" 
-            output="screen" />
-    </group> -->
-
-    <!-- <group ns="/pcl_saver">
-        <param 
-            name="topic_pcl" 
-            type="str" 
-            value="/rslidar_points" />
-        <param 
-            name="save_dir" 
-            type="str" 
-            value="/home/spadmin/catkin_ws_ngp/data/PCL" />
-        <node 
-            pkg="sensors" 
-            type="pcl_saver_node" 
-            name="pcl_saver_node" 
-            output="screen" />
-    </group> -->
-
-    <include file="$(find timed_roslaunch)/launch/timed_roslaunch.launch">
-        <arg name="time" value="4" />
-        <arg name="pkg" value="sensors" />
-        <arg name="file" value="bag_play.launch" />
-        <arg name="node_name" value="timed_roslaunch_bag_play" />
-    </include>
+            pkg="rosbag" 
+            type="play" 
+            name="player" 
+            output="screen" 
+            args="--clock --delay=4 $(arg data_dir)$(arg bag_name)"/>
+    </group>
 
 </launch>

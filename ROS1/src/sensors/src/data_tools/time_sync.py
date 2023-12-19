@@ -19,20 +19,28 @@ class TimeSync(RosbagWrapper):
         self.data_dir = data_dir
         
         super().__init__(
-            bag_path=os.path.join(data_dir, bag_name),
+            data_dir=data_dir,
+            bag_name=bag_name,
         )
         
         self.plot_range = [0, 8]
         self.meas_error_max_uss = 10.0
         self.meas_error_max_tof = 10.0
+        self.meas_error_max_depth = 10.0
         self.time_error_max_uss = 0.15
         self.time_error_max_tof = 0.05
+        self.time_error_max_depth = 0.05
     
     def __call__(
         self,
+        meass_dict:dict,
+        times_dict:dict,
     ):
         """
         Synchronize time stamps of USS and ToF to RS time stamps.
+        Args:
+            meass_dict: dictionary with measurements; dict
+            times_dict: dictionary with times; dict
         Returns:
             topics_read: topics to read from bag; list of str
             topics_write: topics to write to bag; list of str
@@ -41,9 +49,13 @@ class TimeSync(RosbagWrapper):
         """
         topics_read_1, topics_write_1, times_read_1, times_write_1 = self._syncTime(
             stack_id=1,
+            meass_dict=meass_dict,
+            times_dict=times_dict,
         )
         topics_read_3, topics_write_3, times_read_3, times_write_3 = self._syncTime(
             stack_id=3,
+            meass_dict=meass_dict,
+            times_dict=times_dict,
         )
         
         topics_read = topics_read_1 + topics_read_3
@@ -55,6 +67,8 @@ class TimeSync(RosbagWrapper):
     def _syncTime(
         self,
         stack_id:int,
+        meass_dict:dict,
+        times_dict:dict,
     ):
         """
         Synchronize time stamps of USS and ToF to RS time stamps.
@@ -66,18 +80,43 @@ class TimeSync(RosbagWrapper):
             times_read: time stamps to read from bag; list of np.array of floats
             times_write: time stamps to write to bag; list of np.array of floats
         """
-        meass_uss, times_uss = self.read(
-            topic="/USS"+str(stack_id),
-        )
-        meass_tof, times_tof = self.read(
-            topic="/TOF"+str(stack_id),
-        )
-        _, times_rs = self.read(
-            topic="/CAM"+str(stack_id)+"/color/image_raw",
-        )
+        # load data not already done
+        if "/USS"+str(stack_id) in meass_dict.keys():
+            meass_uss = meass_dict["/USS"+str(stack_id)]
+            times_uss = times_dict["/USS"+str(stack_id)]
+        else:
+            meass_uss, times_uss = self.read(
+                return_meas=["/USS"+str(stack_id)],
+                return_time=["/USS"+str(stack_id)],
+            )
+            
+        if "/TOF"+str(stack_id) in meass_dict.keys():
+            meass_tof = meass_dict["/TOF"+str(stack_id)]
+            times_tof = times_dict["/TOF"+str(stack_id)]
+        else:
+            meass_tof, times_tof = self.read(
+                return_meas=["/TOF"+str(stack_id)],
+                return_time=["/TOF"+str(stack_id)],
+            )
+            
+        if "/CAM"+str(stack_id)+"/aligned_depth_to_color/image_raw" in meass_dict.keys():
+            meass_depth = meass_dict["/CAM"+str(stack_id)+"/aligned_depth_to_color/image_raw"]
+            times_depth = times_dict["/CAM"+str(stack_id)+"/aligned_depth_to_color/image_raw"]
+        else:
+            meass_depth, times_depth = self.read(
+                return_meas=["/CAM"+str(stack_id)+"/aligned_depth_to_color/image_raw"],
+                return_time=["/CAM"+str(stack_id)+"/aligned_depth_to_color/image_raw"],
+            )
+            
+        if "/CAM"+str(stack_id)+"/color/image_raw" in meass_dict.keys():
+            times_rs = times_dict["/CAM"+str(stack_id)+"/color/image_raw"]
+        else:
+            _, times_rs = self.read(
+                return_time=["/CAM"+str(stack_id)+"/color/image_raw"],
+            )
         
         # create figure for plotting
-        fig, axs = plt.subplots(ncols=2, nrows=3, figsize=(12, 7))
+        fig, axs = plt.subplots(ncols=3, nrows=3, figsize=(12, 7))
         
         times_closest_uss, mask_uss, axs[0,0], axs[1,0], axs[2,0] = self._findClosestTime(
             times_source=times_uss,
@@ -97,6 +136,15 @@ class TimeSync(RosbagWrapper):
             ax_err_meas=axs[2,1],
             sensor="ToF",
         )
+        times_closest_depth, mask_depth, axs[0,2], axs[1,2], axs[2,2] = self._findClosestTime(
+            times_source=times_depth,
+            times_target=times_rs,
+            meass_source=meass_depth,
+            ax_cor=axs[0,2],
+            ax_err_time=axs[1,2],
+            ax_err_meas=axs[2,2],
+            sensor="DepthCam",
+        )
         
         # mask = mask_uss & mask_tof      
         mask = np.ones_like(mask_uss, dtype=np.bool_) # TODO: add mask
@@ -104,14 +152,14 @@ class TimeSync(RosbagWrapper):
         topics_read = [
             "/USS"+str(stack_id), 
             "/TOF"+str(stack_id), 
+            "/CAM"+str(stack_id)+"/aligned_depth_to_color/image_raw",
             "/CAM"+str(stack_id)+"/color/image_raw",
-            "/CAM"+str(stack_id)+"/aligned_depth_to_color/image_raw"
         ]
         topics_write = copy.copy(topics_read)
         times_read = [
             times_closest_uss[mask],
             times_closest_tof[mask],
-            times_rs[mask],
+            times_closest_depth[mask],
             times_rs[mask],
         ]
         times_write = [
@@ -163,7 +211,7 @@ class TimeSync(RosbagWrapper):
         """
         times_source = np.copy(times_source)
         times_target = np.copy(times_target)
-        meass_source = np.copy(meass_source)
+        meass_source = np.copy(meass_source) if meass_source is not None else None
         
         times_source_rep = np.tile(times_source, (times_target.shape[0], 1)) # (M, N)
         times_target_rep = np.tile(times_target, (times_source.shape[0], 1)).T # (M, N)
@@ -173,30 +221,38 @@ class TimeSync(RosbagWrapper):
         
         times_source_closest = times_source[idxs1] # (M,)
         
-        times_error = np.abs(times_target - times_source_closest) # (M,)
-        meass_error = np.abs(meass_source[idxs1] - meass_source[idxs2]) # (M,)
         
-        # convert measurement errors to meters
-        if sensor == "USS":
-            meass_error = meass_error / 5000.0
-        elif sensor == "ToF":
-            meass_error = np.mean(meass_error, axis=1)
-            meass_error = meass_error / 1000.0
         
         # create mask
+        times_error = np.abs(times_target - times_source_closest) # (M,)
         if sensor == "USS":
-            mask = (meass_error < self.meas_error_max_uss) & (times_error < self.time_error_max_uss)
+            mask = times_error < self.time_error_max_uss
         elif sensor == "ToF":
-            mask = (meass_error < self.meas_error_max_tof) & (times_error < self.time_error_max_tof)
+            mask = times_error < self.time_error_max_tof
+        elif sensor == "DepthCam":
+            mask = times_error < self.time_error_max_depth
+        
+        if meass_source is not None:
+            meass_error = np.abs(meass_source[idxs1] - meass_source[idxs2]) # (M,)
             
-        # # if a source measurement was assigned to multiple target measurements, mask all but the closest one
-        # idxs_unique, idxs_counts = np.unique(idxs1, return_counts=True)
-        # idxs_unique = idxs_unique[idxs_counts > 1]
-        # for idx in idxs_unique:
-        #     idxs = np.where(idxs1 == idx)[0]
-        #     arg_dists = np.argsort(np.abs(times_source[idx] - times_target[idxs]))
-        #     idxs = arg_dists[1:]
-        #     mask[idxs] = False
+            # convert measurement errors to meters
+            if sensor == "USS":
+                meass_error = meass_error / 5000.0
+            elif sensor == "ToF":
+                meass_error = np.mean(meass_error, axis=1)
+                meass_error = meass_error / 1000.0
+            elif sensor == "DepthCam":
+                meass_error = np.mean(meass_error, axis=1)
+                meass_error = meass_error / 1000.0
+            
+            # create mask
+            if sensor == "USS":
+                mask = (meass_error < self.meas_error_max_uss) & mask
+            elif sensor == "ToF":
+                mask = (meass_error < self.meas_error_max_tof) & mask
+            elif sensor == "DepthCam":
+                mask = (meass_error < self.meas_error_max_depth) & mask
+            
         
         if (ax_cor is None) or (ax_err_time is None) or (ax_err_meas is None):
             return times_source_closest, mask, None, None, None
@@ -216,13 +272,14 @@ class TimeSync(RosbagWrapper):
             sensor=sensor,
             mask=mask,
         )
-        ax_err_meas = self._plotMeasError(
-            ax=ax_err_meas,
-            times_target=times_target,
-            meass_error=meass_error,
-            mask=mask,
-            sensor=sensor,
-        )
+        if meass_source is not None:
+            ax_err_meas = self._plotMeasError(
+                ax=ax_err_meas,
+                times_target=times_target,
+                meass_error=meass_error,
+                mask=mask,
+                sensor=sensor,
+            )
         return times_source_closest, mask, ax_cor, ax_err_time, ax_err_meas
     
     def _plotTimeCorrespondence(
@@ -313,6 +370,8 @@ class TimeSync(RosbagWrapper):
             error_max = self.time_error_max_uss
         elif sensor == "ToF":
             error_max = self.time_error_max_tof
+        elif sensor == "DepthCam":
+            error_max = self.time_error_max_depth
         ax.hlines(error_max, self.plot_range[0], self.plot_range[1], label="max error", color="k", linestyle="--")
 
         ax.set_ylabel("error [s]")
@@ -335,6 +394,7 @@ class TimeSync(RosbagWrapper):
             times_target: reference time stamps; np.array of floats (M,)
             meass_error: measurement error; np.array of floats (M,)
             mask: mask of valid measurements; np.array of bools (M,)
+            sensor: sensor name; str
         Returns:
             ax: axis with plot; plt.Axes
         """
@@ -352,6 +412,8 @@ class TimeSync(RosbagWrapper):
             error_max = self.meas_error_max_uss
         elif sensor == "ToF":
             error_max = self.meas_error_max_tof
+        elif sensor == "DepthCam":
+            error_max = self.meas_error_max_depth
         ax.hlines(error_max, self.plot_range[0], self.plot_range[1], label="max error", color="k", linestyle="--")
         
         ax.set_ylabel("error [m]")
