@@ -128,11 +128,13 @@ class PCLCreator():
 class PCLCreatorUSS(PCLCreator):
     def __init__(
         self,
+        W:int=64,
+        H:int=64,
     ):
         super().__init__()
         
-        self.W = 64
-        self.H = 64
+        self.W = W
+        self.H = H
         self.directions = self.fovDirections(
             fov_xy=[55, 35],
             W=self.W,
@@ -175,9 +177,9 @@ class PCLCreatorToF(PCLCreator):
         """
         Convert depth measurments to meters and correct reference frame.
         Args:
-            meas: depth measurments; float
+            meas: depth measurments; tuble of floats (64)
         Returns:
-            depth: depth measurments; float
+            depth: depth measurments; np.array of floats (H, W)
         """
         meas = np.array(meas, dtype=np.float32)
         depth = 0.001 * meas

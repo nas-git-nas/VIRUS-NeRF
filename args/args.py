@@ -9,7 +9,7 @@ import logging
 
 from args.h_params import HParamsDataset, HParamsModel, HParamsTraining, \
                             HParamsEvaluation, HParamsOccGrid, HParamsRobotAtHome, \
-                            HParamsRGBD, HParamsUSS, HParamsToF
+                            HParamsRGBD, HParamsUSS, HParamsToF, HParamsETHZ
 from args.custom_formatter import FileFormatter, TerminalFormatter
 
 
@@ -34,12 +34,16 @@ class Args():
         self.eval.setHParams(hparams)
         self.occ_grid.setHParams(hparams)
 
-        if self.dataset.name == "robot_at_home":
+        if self.dataset.name == "ethz":
+            self.ethz = HParamsETHZ()
+            self.ethz.setHParams(hparams)
+        elif self.dataset.name == "robot_at_home":
             self.rh = HParamsRobotAtHome()
             self.rh.setHParams(hparams)
             self.rgbd = HParamsRGBD()
             self.rgbd.setHParams(hparams) 
 
+        if (self.dataset.name == "ethz") or (self.dataset.name == "robot_at_home"):
             for sensor_name in self.training.sensors:
                 if sensor_name == "USS":
                     self.uss = HParamsUSS()

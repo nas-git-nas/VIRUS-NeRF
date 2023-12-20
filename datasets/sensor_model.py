@@ -87,18 +87,30 @@ class ToFModel(SensorModel):
         ) # (H*W,)
         
 
-    def convertDepth(self, depths):
+    def convertDepth(
+            self, 
+            depths:np.array,
+            format:str="img",
+        ):
         """
         Convert depth img using ToF sensor model. Set all unknown depths to nan.
         Args:
-            depths: depth img; array of shape (N, H*W)
+            depths: depth img
+            format: depths format; str
+                    "img": depth per camera pixel; depths array of shape (N, H*W)
+                    "sensor": depth per ToF pixel; depths array of shape (N, 8*8)
         Returns:
             depths: depth img converted to ToF sensor array; array of shape (N, H*W)
         """
         depths = np.copy(depths) # (N, H*W)
+        depths_out = np.full((depths.shape[0], self.H*self.W), np.nan) # (N, H*W)
 
-        depths_out = np.full_like(depths, np.nan) # (N, H*W)
-        depths_out[:, self.mask] = depths[:,self.error_mask]  
+        if format == "img":
+            depths_out[:, self.mask] = depths[:,self.error_mask] 
+        elif format == "sensor":
+            depths_out[:, self.mask] = depths
+        else:
+            self.args.logger.error(f"Unknown depth format: {format}")
 
         if (self.args.tof.sensor_random_error == 0.0) or (self.args.tof.sensor_random_error is None):
             return depths_out
@@ -189,36 +201,36 @@ class USSModel(SensorModel):
         self.mask = np.sqrt(m1**2 + m2**2) < r # (H, W)
         self.mask = self.mask.flatten() # (H*W,)  
 
-        self.imgs_min_depth = torch.ones((num_imgs), dtype=torch.float32).to(self.args.device) * np.inf
-        self.imgs_min_idx = torch.ones((num_imgs), dtype=torch.int32).to(self.args.device) * -1
+        self.imgs_min_depth = np.inf * torch.ones((num_imgs), dtype=torch.float32).to(self.args.device)
+        self.imgs_min_idx = -1 * torch.ones((num_imgs), dtype=torch.int32).to(self.args.device)
         self.imgs_min_counts = torch.zeros((num_imgs), dtype=torch.int32).to(self.args.device)
 
-    def convertDepth(self, depths:np.array):
+    def convertDepth(
+        self, 
+        depths:np.array,
+        format:str="img",
+    ):
         """
-        Down sample depths from depth per pixel to depth per uss/img.
+        Convert depth img using ToF sensor model. Set all unknown depths to nan.
         Args:
-            depths: depths per pixel; array of shape (N, H*W)
+            depths: depth img
+            format: depths format; str
+                    "img": depth per camera pixel; depths array of shape (N, H*W)
+                    "sensor": depth per ToF pixel; depths array of shape (N, 8*8)
         Returns:
-            depths_out: depths per uss; array of shape (N, H*W)
+            depths_out: depth img converted to ToF sensor array; array of shape (N, H*W)
         """
         depths = np.copy(depths) # (N, H*W)
-
-        d_min = np.nanmin(depths[:, self.mask], axis=1) # (N,)
-
         depths_out = np.full_like(depths, np.nan) # (N, H*W)
-        depths_out[:, self.mask] = d_min[:,None]  
 
-        # # get closest pixels inside mask and the corresponding indices
-        # depths_m = depths[:, self.mask] # (N, M)
-        # d_min = np.nanmin(depths_m, axis=1) # (N,)
-        # d_idxs = np.where(depths_m==d_min[:,None]) # (N,), (N,)
+        if format == "img":
+            d_min = np.nanmin(depths[:, self.mask], axis=1) # (N,)
+        elif format == "sensor":
+            d_min = depths # (N,)
+        else:
+            self.args.logger.error(f"Unknown depth format: {format}")
 
-        # depths_m_out = np.full_like(depths_m, np.nan) # (N, M)
-        # depths_m_out[d_idxs[0], d_idxs[1]] = depths_m[d_idxs[0], d_idxs[1]]
-
-        # depths_out = np.full_like(depths, np.nan) # (N, H*W)
-        # depths_out[:, self.mask] = depths_m_out
-
+        depths_out[:, self.mask] = d_min[:,None] # (N, H*W)
         return depths_out
     
 

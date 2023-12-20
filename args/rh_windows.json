@@ -58,6 +58,11 @@
         "nerf_threshold_slope": 0.01
 
     },
+    "ethz":
+    {
+        "dataset_dir": "../ETHZDataset",
+        "room": "office_2"
+    },
     "robot_at_home":
     {
         "session": "session_2",

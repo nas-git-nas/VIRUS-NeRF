@@ -101,6 +101,15 @@ class HParamsOccGrid(HParams):
         HParams.__init__(self, name="occ_grid")
 
 
+class HParamsETHZ(HParams):
+    def __init__(self) -> None:
+        # hyper parameters
+        self.dataset_dir = None
+        self.room = None
+
+        HParams.__init__(self, name="robot_at_home")
+
+
 class HParamsRobotAtHome(HParams):
     def __init__(self) -> None:
         # hyper parameters
