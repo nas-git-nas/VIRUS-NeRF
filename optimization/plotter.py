@@ -46,10 +46,26 @@ class Plotter():
         self,
         num_axes:int,
     ) -> None:
+        # determine number of rows and columns
+        squares = np.arange(1, num_axes+1)**2
+        for s in squares:
+            if s >= num_axes:
+                self.num_rows = int(np.sqrt(s))
+                self.num_cols = int(np.sqrt(s))
+                break
+
         # create figure
-        self.num_rows = np.ceil(np.sqrt(num_axes)).astype(int)
-        self.num_cols = self.num_rows
-        self.fig, self.axes = plt.subplots(ncols=self.num_cols, nrows=self.num_rows, figsize=(9,7))
+        self.fig, self.axes = plt.subplots(
+            ncols=self.num_cols, 
+            nrows=self.num_rows, 
+            figsize=(max(9, 3+3*self.num_cols), max(7, 1+3*self.num_rows))
+        )
+
+        # delete unused axes
+        if num_axes > 1:
+            self.axes = self.axes.flatten()
+            for ax in self.axes[num_axes:]:
+                ax.remove()
 
     def show(
         self,
@@ -66,11 +82,10 @@ class Plotter():
         ax_idx:int,
         res:int=64,
     ):
-        if isinstance(ax_idx, matplotlib.axes.Axes):
-            ax = self.axes
+        if self.num_cols*self.num_rows > 1:
+            ax = self.axes[ax_idx]
         else:
-            axes_i, axes_j = np.unravel_index(ax_idx, self.axes.shape)
-            ax = self.axes[axes_i, axes_j]
+            ax = self.axes
 
         pos, vel, best_pos, best_score = self._loadData(
             pso=pso,
@@ -97,7 +112,7 @@ class Plotter():
         cmaps = Cmaps(
             num_cmaps=N,
             norm_min=0,
-            norm_max=M-2,
+            norm_max=L-1,
             skip_bright_colors=True,
         )
         for n in range(N):
@@ -109,17 +124,20 @@ class Plotter():
         for n in range(N):
             ax.scatter(best_pos[n, 0, -1], best_pos[n, 1, -1], color=cmaps(n, L-2), s=100, marker='*') 
             ax.scatter(pos[n, 0, 0], pos[n, 1, 0], color=cmaps(n, 0), s=10) 
+            arrow = 0.02 * vel[n, :, -1] / np.linalg.norm(vel[n, :, -1])
+            ax.arrow(pos[n, 0, -1], pos[n, 1, -1], arrow[0], arrow[1], color=cmaps(n, L-2), linewidth=2, 
+                     head_width=0.02, head_length=0.02)
 
         hparams_order_inv = {}
         for hparam in pso.hparams_order.keys():
             if pso.hparams_order[hparam] in hparams_order_inv.keys():
                 print("ERROR: test_psoGauss: more than one parameter with order 0")
             hparams_order_inv[pso.hparams_order[hparam]] = hparam
-        if axes_i == self.num_rows-1:
+        if ax_idx >= (self.num_rows-1)*self.num_cols:
             ax.set_xlabel(str(hparams_order_inv[0]))
         else:
             ax.set_xticks([])   
-        if axes_j == 0:
+        if ax_idx % self.num_cols == 0:
             ax.set_ylabel(str(hparams_order_inv[1]))
         else:
             ax.set_yticks([])
@@ -127,8 +145,11 @@ class Plotter():
         best_idx = np.argmin(best_score[:,-1])
         ax.set_title(f"score={best_score[best_idx,-1]:.3f}, "
                     + f"dist={np.linalg.norm(metric.centre - best_pos[best_idx,:,-1]):.2f}")
-
-        self.axes[axes_i, axes_j] = ax
+        
+        if self.num_cols*self.num_rows > 1:
+            self.axes[ax_idx] = ax
+        else:
+            self.axes = ax
 
     def _loadData(
         self,
@@ -145,8 +166,13 @@ class Plotter():
             best_score: best score of particles; np.array (N, L)
         """
         N = pso.N # number of particles
-        L = pso.T // pso.N # number of iterations per particle
         M = pso.M # number of hyperparameters
+        pos_dict = pso._loadStateFromFile(
+            file_path=pso.pos_files[-1],
+            return_last_row=False,
+        ) # dict of lists of floats
+        T = pos_dict["iteration"][-1] # number of iterations
+        L = int(np.ceil(T / N) + 1) # number of iterations per particle, +1 for initial position
 
         pos = np.zeros((N, M, L))
         vel = np.zeros((N, M, L))

@@ -61,7 +61,7 @@ class ParticleSwarmOptimizationWrapper(ParticleSwarmOptimization):
             rng=np.random.default_rng() if rng is None else rng,
             pso_params_dict=pso_params_dict,
             pso_init_dict=pso_init_dict,
-            current_particle= 0 if self.t==0 else (self.t-1) % pso_params_dict["num_particles"],
+            current_particle= self.t % pso_params_dict["num_particles"],
         )
 
         # save initial state if no state was loaded
@@ -71,6 +71,10 @@ class ParticleSwarmOptimizationWrapper(ParticleSwarmOptimization):
                     score=np.inf,
                     particle=i,
                 )
+        
+        # increase iteration counter: t=0 is the initial state
+        # and optimization starts at t=1 or t+=1 w.r.t previous run
+        self.t += 1
 
     def nextHparams(
         self,
@@ -211,7 +215,7 @@ class ParticleSwarmOptimizationWrapper(ParticleSwarmOptimization):
             name_dict = self._loadStateFromFile(
                 file_path=pos_files[i],
             ) # dict (key: str, value: float)
-            if t < name_dict["iteration"]:
+            if name_dict["iteration"] > t:
                 t = name_dict["iteration"]
                 time = name_dict["time"]
             del name_dict["score"]
@@ -386,10 +390,10 @@ class ParticleSwarmOptimizationWrapper(ParticleSwarmOptimization):
             terminate: whether to terminate optimization; bool
         """
         if self.termination_by_time:
-            if ((time.time() - self.time_start) + self.time_offset) > self.T and (self.n == 0):
+            if ((time.time() - self.time_start) + self.time_offset) >= self.T and (self.n == 0):
                 return True
         else:
-            if (self.t > self.T) and (self.n == 0):
+            if (self.t >= self.T) and (self.n == 0):
                 return True
         return False
     

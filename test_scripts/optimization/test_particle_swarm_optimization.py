@@ -24,14 +24,14 @@ def optimize(
         pso: particle swarm optimization; ParticleSwarmOptimizationWrapper
         metric: metric to optimize; Metric
     """
-    terminate = False
+    terminate = pso._checkTermination()
     while not terminate:
         # get hparams to evaluate
         X = pso.nextHparams(
             group_dict_layout=False,
             name_dict_layout=False,
         ) # np.array (M,)
-        print(f"Iteration: t: {pso.t}, param: {X}")
+        print(f"Iteration: t: {pso.t}, particle: {pso.n}, param: {X}")
 
         # evaluate metric
         score = metric(
@@ -50,9 +50,9 @@ def optimize(
 
 def test_pso():
     # define optimization algorithm
-    seeds = np.random.randint(0, 1000, size=4)
-    T = 40
-    termination_by_time = False
+    seeds = np.arange(1)
+    T = 6
+    termination_by_time = True
     hparams_lims_file = "test_scripts/optimization/hparams_lims.json"
     save_dirs = ["results/pso/test/opt"+str(i) for i in range(len(seeds))]
     metric_name = "rand"
@@ -78,6 +78,7 @@ def test_pso():
             metric_name=metric_name,
             hparams_lims=pso.hparams_lims,
             rng=rng,
+            save_dir=save_dirs[i],
         )
 
         # run optimization
