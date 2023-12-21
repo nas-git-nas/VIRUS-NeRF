@@ -489,11 +489,11 @@ class DatasetRH(DatasetBase):
         # self.stack_ids = stack_ids
         # self.times = times
 
-        sensors_dict_temp = {}
-        for sensor_name, sensor_model in sensors_dict.items():
-            if str(1) in sensor_name:
-                sensors_dict_temp[sensor_name[:-1]] = sensors_dict[sensor_name]
-        sensors_dict = sensors_dict_temp
+        # sensors_dict_temp = {}
+        # for sensor_name, sensor_model in sensors_dict.items():
+        #     if str(1) in sensor_name:
+        #         sensors_dict_temp[sensor_name[:-1]] = sensors_dict[sensor_name]
+        # sensors_dict = sensors_dict_temp
 
         self.img_wh = img_wh
         self.K = K_dict["RGBD_1"]

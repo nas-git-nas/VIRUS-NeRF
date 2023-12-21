@@ -178,7 +178,7 @@ class Loss():
             depth_loss: depth loss value; tensor of float (1,)
         """ 
         # get minimum depth per image for batch 
-        imgs_depth_min, weights = self.sensors_dict['USS'].updateDepthMin(
+        imgs_depth_min, weights = self.sensors_dict['USS1'].updateDepthMin(
             results=results,
             data=data,
         ) # (num_test_imgs,), (num_test_imgs,)

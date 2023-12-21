@@ -141,7 +141,7 @@ class Sampler():
         if ray_strategy == "closest":
             pix_idxs = torch.randint(0, WH, size=(B,), device=self.args.device, dtype=torch.int32)
             num_min_idxs = int(0.005 * B)
-            pix_min_idxs = self.sensors_dict["USS"].imgs_min_idx
+            pix_min_idxs = self.sensors_dict["USS1"].imgs_min_idx
             pix_idxs[:num_min_idxs] = pix_min_idxs[img_idxs[:num_min_idxs]]
             return pix_idxs
         
@@ -150,14 +150,14 @@ class Sampler():
             return torch.from_numpy(pix_idxs).to(torch.int64)
         
         if ray_strategy == "valid_tof":
-            tof_mask = torch.tensor(self.sensors_dict["ToF"].mask, device=self.args.device, dtype=torch.bool)
+            tof_mask = torch.tensor(self.sensors_dict["ToF1"].mask, device=self.args.device, dtype=torch.bool)
             tof_mask_idxs = torch.where(tof_mask)[0]
             tof_rand_ints = torch.randint(0, tof_mask_idxs.shape[0], (B,), device=self.args.device, dtype=torch.int32)
             tof_img_idxs = tof_mask_idxs[tof_rand_ints]
             return tof_img_idxs
 
         if ray_strategy == "valid_uss":
-            uss_maks = torch.tensor(self.sensors_dict["USS"].mask, device=self.args.device, dtype=torch.bool)
+            uss_maks = torch.tensor(self.sensors_dict["USS1"].mask, device=self.args.device, dtype=torch.bool)
             uss_mask_idxs = torch.where(uss_maks)[0]
             uss_rand_ints = torch.randint(0, uss_mask_idxs.shape[0], (B,), device=self.args.device, dtype=torch.int32)
             uss_img_idxs = uss_mask_idxs[uss_rand_ints]
@@ -184,13 +184,13 @@ class Sampler():
         
         if ray_strategy == "uss_tof_split":
             tof_num_samples = int(B/2)
-            tof_mask = torch.tensor(self.sensors_dict["ToF"].mask, device=self.args.device, dtype=torch.bool)
+            tof_mask = torch.tensor(self.sensors_dict["ToF1"].mask, device=self.args.device, dtype=torch.bool)
             tof_mask_idxs = torch.where(tof_mask)[0]
             tof_rand_ints = torch.randint(0, tof_mask_idxs.shape[0], (tof_num_samples,), device=self.args.device, dtype=torch.int32)
             tof_img_idxs = tof_mask_idxs[tof_rand_ints]
 
             uss_num_samples = B - tof_num_samples
-            uss_maks = torch.tensor(self.sensors_dict["USS"].mask, device=self.args.device, dtype=torch.bool)
+            uss_maks = torch.tensor(self.sensors_dict["USS1"].mask, device=self.args.device, dtype=torch.bool)
             uss_mask_idxs = torch.where(uss_maks)[0]
             uss_rand_ints = torch.randint(0, uss_mask_idxs.shape[0], (uss_num_samples,), device=self.args.device, dtype=torch.int32)
             uss_img_idxs = uss_mask_idxs[uss_rand_ints]
