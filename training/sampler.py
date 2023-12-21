@@ -45,6 +45,7 @@ class Sampler():
         self,
         batch_size:int,
         sampling_strategy:dict,
+        stack_ids:torch.Tensor,
         origin:str,
     ):
         """
@@ -61,6 +62,7 @@ class Sampler():
                     'closest': sample random pixels but add some of the closest pixels
                     'weighted': sample random pixels with weights (more pixels in mid-height)
                     'valid_depth': sample random pixels with valid depth (not nan)
+            stack_ids: indices of stacks needed if ray sampling strategy is 'closest'; tensor of int64 (N_img,)
             origin: sampling origin; str
                     'nerf': sample for nerf
                     'occ': sample for occupancy grid
@@ -74,7 +76,8 @@ class Sampler():
         )
         pix_idxs = self._pixIdxs(
             ray_strategy=sampling_strategy["rays"],
-            img_idxs=img_idxs
+            img_idxs=img_idxs,
+            stack_ids=stack_ids,
         )
         # count = self._count(
         #     img_idxs=img_idxs,
@@ -112,12 +115,14 @@ class Sampler():
             self,
             ray_strategy:str,
             img_idxs:torch.Tensor=None,
+            stack_ids:torch.Tensor=None,
     ):
         """
         Sample pixel/ray indices.
         Args:
             ray_strategy: ray sampling strategy; str
             img_idxs: indices of images needed if ray sampling strategy is 'closest'; tensor of int64 (batch_size,)
+            stack_ids: indices of stacks needed if ray sampling strategy is 'closest'; tensor of int64 (N_img,)
         Returns:
             pix_idxs: indices of pixels to be used for training; tensor of int64 (batch_size,)
         """
@@ -141,7 +146,15 @@ class Sampler():
         if ray_strategy == "closest":
             pix_idxs = torch.randint(0, WH, size=(B,), device=self.args.device, dtype=torch.int32)
             num_min_idxs = int(0.005 * B)
-            pix_min_idxs = self.sensors_dict["USS"].imgs_min_idx
+
+            pix_min_idxs = -torch.ones((stack_ids.shape[0]), device=self.args.device, dtype=torch.int32) # (N_img,)
+            for sensor_id, sensor_model in self.sensors_dict.items():
+                if not "USS" in sensor_id:
+                    continue
+
+                mask = (stack_ids == int(sensor_id[-1]))
+                pix_min_idxs[mask] = sensor_model.imgs_min_idx[mask]
+            
             pix_idxs[:num_min_idxs] = pix_min_idxs[img_idxs[:num_min_idxs]]
             return pix_idxs
         
@@ -150,14 +163,14 @@ class Sampler():
             return torch.from_numpy(pix_idxs).to(torch.int64)
         
         if ray_strategy == "valid_tof":
-            tof_mask = torch.tensor(self.sensors_dict["ToF"].mask, device=self.args.device, dtype=torch.bool)
+            tof_mask = torch.tensor(self.sensors_dict["ToF1"].mask, device=self.args.device, dtype=torch.bool)
             tof_mask_idxs = torch.where(tof_mask)[0]
             tof_rand_ints = torch.randint(0, tof_mask_idxs.shape[0], (B,), device=self.args.device, dtype=torch.int32)
             tof_img_idxs = tof_mask_idxs[tof_rand_ints]
             return tof_img_idxs
 
-        if ray_strategy == "valid_uss":
-            uss_maks = torch.tensor(self.sensors_dict["USS"].mask, device=self.args.device, dtype=torch.bool)
+        if ray_strategy == "valid_uss":            
+            uss_maks = torch.tensor(self.sensors_dict["USS1"].mask, device=self.args.device, dtype=torch.bool)
             uss_mask_idxs = torch.where(uss_maks)[0]
             uss_rand_ints = torch.randint(0, uss_mask_idxs.shape[0], (B,), device=self.args.device, dtype=torch.int32)
             uss_img_idxs = uss_mask_idxs[uss_rand_ints]
@@ -199,6 +212,45 @@ class Sampler():
         
         print(f"ERROR: sampler._pixIdxs: pixel sampling strategy must be either 'random', 'ordered', 'closest' or weighted"
               + f" but is {self.args.training.sampling_strategy['rays']}")
+        
+    # def getSensorModelAttr(
+    #     self,
+    #     stack_ids:torch.Tensor,
+    #     img_idxs:torch.Tensor,
+    #     pix_idxs:torch.Tensor,
+    #     sensor_type:str,
+    #     getattr_name:str,
+    #     dtype:torch.dtype,
+    #     WH:int,
+    # ):
+    #     """
+    #     Get mask of sensor models.
+    #     Args:
+    #         stack_ids: indices of stacks needed if ray sampling strategy is 'closest'; tensor of int64 (N_img,)
+    #         sensor_type: type of sensor model, either 'USS' or 'ToF'; str
+    #         getattr_name: name of attribute to get; str
+    #         dtype: data type of attribute; torch.dtype
+    #         WH: number of pixels per image; int
+    #     Returns:
+    #         attr: mask of sensor models; tensor of bool (WH,)
+    #     """
+    #     batch_ids = stack_ids[img_idxs]
+
+    #     attr = torch.full((WH,), np.nan, device=self.args.device, dtype=dtype)
+    #     for sensor_id, sensor_model in self.sensors_dict.items():
+    #         if not sensor_type in sensor_id:
+    #             continue
+
+    #         batch_mask = (batch_ids == int(sensor_id[-1]))
+    #         pixel_mask = bat
+    #         attr[id_mask] = torch.tensor(
+    #             data=getattr(sensor_model, getattr_name),
+    #             device=self.args.device, 
+    #             dtype=dtype,
+    #         )[id_mask]
+
+    #     return attr
+
         
     # def _count(
     #     self,

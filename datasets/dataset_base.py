@@ -50,6 +50,7 @@ class DatasetBase(Dataset):
         img_idxs, pix_idxs, count = self.sampler(
             batch_size=batch_size,
             sampling_strategy=sampling_strategy,
+            stack_ids=self.stack_ids,
             origin=origin,
         )
 
@@ -83,12 +84,13 @@ class DatasetBase(Dataset):
     def to(self, device):
         self.rgbs = self.rgbs.to(device)
         self.poses = self.poses.to(device)
-        self.Ks = self.Ks.to(device)
-        self.directions = self.directions.to(device)
+        # self.Ks = self.Ks.to(device)
         self.times = self.times.to(device)
         self.stack_ids = self.stack_ids.to(device)
         for key in self.depths_dict.keys():
             self.depths_dict[key] = self.depths_dict[key].to(device)
+        for cam_id, directions in self.directions_dict.items():
+            self.directions_dict[cam_id] = directions.to(device)
         return self
     
     def getMeanHeight(
@@ -197,9 +199,9 @@ class DatasetBase(Dataset):
         """
         N = img_idxs.shape[0]
 
-        rays_o = torch.zeros((N, 3), dtype=torch.float32, device=self.args.device)
-        rays_d = torch.zeros((N, 3), dtype=torch.float32, device=self.args.device)
-        for cam_id, directions in directions_dict.keys():
+        rays_o = torch.full((N, 3), np.nan, dtype=torch.float32, device=self.args.device)
+        rays_d = torch.full((N, 3), np.nan, dtype=torch.float32, device=self.args.device)
+        for cam_id, directions in directions_dict.items():
 
             idx_mask = (stack_ids[img_idxs] == int(cam_id[-1])) # (N,)
             img_idxs_temp = img_idxs[idx_mask] # (n,)
@@ -214,7 +216,7 @@ class DatasetBase(Dataset):
             rays_d[idx_mask] = rays_d_tempt # (N, 3)
 
         if self.args.model.debug_mode:
-            if np.any(np.sum((rays_o == 0), axis=1) == 3):
+            if torch.any(torch.isnan(rays_o)) or torch.any(torch.isnan(rays_d)):
                 self.args.logger.error(f"DatasetBase:_calcRayPoses: some rays were not calculated correctly")
 
         return rays_o, rays_d

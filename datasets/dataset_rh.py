@@ -184,7 +184,7 @@ class DatasetRH(DatasetBase):
         df = df.copy(deep=True)
 
         # determine stack id: stack identity of each sample
-        stack_ids = np.full((df.shape[0],), -1, dtype=int)
+        stack_ids = torch.full((df.shape[0],), -1, dtype=int)
         for cam_id in cam_ids:
             sensor_id = self.rh.name2id(cam_id, "s")
             mask = np.array(df["sensor_id"] == sensor_id, dtype=bool)
@@ -224,6 +224,7 @@ class DatasetRH(DatasetBase):
         sensors_dict, depths_dict = self._createSensorModels(
             depths=depths,
             img_wh=img_wh,
+            cam_ids=cam_ids,
         )
 
         return poses, rgbs, depths_dict, sensors_dict, stack_ids, times
@@ -417,14 +418,14 @@ class DatasetRH(DatasetBase):
         self,
         depths:np.ndarray,
         directions_dict:np.ndarray,
-        stack_id:np.ndarray,
+        stack_ids:np.ndarray,
     ):
         """
         Convert depth images to cube coordinates.
         Args:
             depths: depth images; array of shape (N_images, H*W)
             directions_dict: ray directions; dict { cam_id: tensor of shape (H*W, 3) }
-            stack_id: id of the stack; int
+            stack_ids: id of the stack; int
         Returns:
             depths: depth images; tensor of shape (N_images, H*W)
         """
@@ -434,7 +435,7 @@ class DatasetRH(DatasetBase):
         # convert depth from depth-image to depth-scan
         depths_scan = np.zeros_like(depths) # (N, H*W)
         for cam_id, directions in directions_dict.items():
-            sensor_mask = (int(cam_id[-1]) == stack_id) # (N,)
+            sensor_mask = (int(cam_id[-1]) == stack_ids) # (N,)
 
             rs = depths / np.sqrt(1 - directions[:,0]**2 - directions[:,1]**2)[None, :] # (N, H*W)
             depths_scan[sensor_mask,:] = rs[sensor_mask,:] # (N, H*W)
@@ -469,12 +470,14 @@ class DatasetRH(DatasetBase):
             self, 
             depths:torch.tensor,
             img_wh:tuple,
+            cam_ids:list,
     ):
         """
         Create sensor models for each sensor and convert depths respectively.
         Args:
             depths: depths of all images; tensor of shape (N, H*W)
             img_wh: image width and height; tuple of ints
+            cam_ids: list of camera ids, list of strings
         Returns:
             sensors_dict: dictionary containing sensor models
             depths_dict: dictionary containing converted depths
@@ -482,30 +485,37 @@ class DatasetRH(DatasetBase):
         depths = depths.detach().clone().numpy() # (N, H*W)
 
         sensors_dict = {} 
-        for sensor_name in self.args.training.sensors:
-            if sensor_name == "RGBD":
-                sensors_dict["RGBD"] = RGBDModel(
-                    args=self.args, 
-                    img_wh=img_wh
-                )
-            elif sensor_name == "ToF":
-                sensors_dict["ToF"] = ToFModel(
-                    args=self.args, 
-                    img_wh=img_wh
-                )
-            elif sensor_name == "USS":
-                sensors_dict["USS"] = USSModel(
-                    args=self.args, 
-                    img_wh=img_wh,
-                    num_imgs=self.df.shape[0],
-                )
-            else:
-                print(f"ERROR: robot_at_home.__init__: sensor model {sensor_name} not implemented")
+        for cam_id in cam_ids:
+            for sensor_name in self.args.training.sensors:
+                if sensor_name == "RGBD":
+                    sensors_dict["RGBD"+str(cam_id[-1])] = RGBDModel(
+                        args=self.args, 
+                        img_wh=img_wh
+                    )
+                elif sensor_name == "ToF":
+                    sensors_dict["ToF"+str(cam_id[-1])] = ToFModel(
+                        args=self.args, 
+                        img_wh=img_wh
+                    )
+                elif sensor_name == "USS":
+                    sensors_dict["USS"+str(cam_id[-1])] = USSModel(
+                        args=self.args, 
+                        img_wh=img_wh,
+                        num_imgs=self.df.shape[0],
+                    )
+                else:
+                    self.args.logger.error(f"ERROR: robot_at_home.__init__: sensor model {sensor_name} not implemented")
 
         depths_dict = {}
-        for sensor_name, sensor_model in sensors_dict.items():
+        for sensor_name in self.args.training.sensors:
+            # convert depth with one sensor model
+            depths_temp = sensors_dict[sensor_name+str(1)].convertDepth(
+                depths=depths,
+                format="img",
+            ) # (N, H*W)
+
             depths_dict[sensor_name] = torch.tensor(
-                data=sensor_model.convertDepth(depths),
+                data=depths_temp,
                 dtype=torch.float32,
                 requires_grad=False,
             )
