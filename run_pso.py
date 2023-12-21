@@ -50,7 +50,7 @@ if torch.cuda.is_available():
 def main():
     # define paraeters
     T_time = 36000 # seconds
-    hparams_file = "rh_windows.json" 
+    hparams_file = "rh_gpu.json" 
     hparams_lims_file = "optimization/hparams_lims.json"
     save_dir = "results/pso/opt3"
 
@@ -147,17 +147,17 @@ def main():
         # print(f"Size of train_dataset: {get_size(train_dataset)}")
         # print(f"Size of test_dataset: {get_size(test_dataset)}")
 
-        # if args.device == "cuda":
-        if torch.cuda.is_available():
-            moveToRecursively(
-                obj=trainer,
-                destination="cpu",
-            )
+        # # if args.device == "cuda":
+        # if torch.cuda.is_available():
+        #     moveToRecursively(
+        #         obj=trainer,
+        #         destination="cpu",
+        #     )
 
-        del trainer
-        gc.collect()
-        torch.cuda.empty_cache()
-        ti.reset()
+        # del trainer
+        # gc.collect()
+        # torch.cuda.empty_cache()
+        # ti.reset()
 
         # if args.device == "cuda":
         if torch.cuda.is_available():
