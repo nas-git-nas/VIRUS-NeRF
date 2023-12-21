@@ -1,7 +1,7 @@
 import numpy as np 
-import open3d as o3d
+# import open3d as o3d
+from pypcd4 import PointCloud
 import os
-
 
 
 class PCLLoader():
@@ -45,8 +45,12 @@ class PCLLoader():
         Returns:
             xyz: point cloud; np.array of shape (N, 3)
         """
-        pcd = o3d.io.read_point_cloud(os.path.join(self.data_dir, self.pcl_dir, filename))
-        xyz = np.asarray(pcd.points)
+        # pcd = o3d.io.read_point_cloud(os.path.join(self.data_dir, self.pcl_dir, filename))
+        pc = PointCloud.from_path(os.path.join(self.data_dir, self.pcl_dir, filename))
+        # xyz = np.asarray(pcd.points)
+        xyz = pc.numpy(
+            fields=["x", "y", "z"],
+        )
         return xyz
     
     def renamePCL(

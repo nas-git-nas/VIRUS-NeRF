@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 import numpy as np
 from abc import ABC, abstractmethod
-import rospy
 
 
 class PCLCreator():

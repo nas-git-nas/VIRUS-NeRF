@@ -1,0 +1,91 @@
+{
+    "dataset":
+    {
+        "path": "",
+        "name": "ETHZ",
+        "split_ratio": {"train": 0.8, "val": 0.1, "test": 0.1},
+        "downsample": 1.0,
+        "keep_N_observations": 10,
+        "keep_sensor": "all",
+        "keep_pixels_in_angle_range": "all"
+    },
+    "model":
+    {
+        "ckpt_path": false, 
+        "scale": 0.5,
+        "encoder_type": "hash",
+        "hash_max_res": 1024,
+        "debug_mode": true,
+        "save": true
+    },
+    "training":
+    {
+        "distortion_loss_w": 0.0,
+        "batch_size": 8192,
+        "sampling_strategy": {"imgs": "all", "rays": "random"},
+        "sensors": ["RGBD"],
+        "max_steps": 2,
+        "lr": 1e-2,
+        "depth_loss_w": 100.0,
+        "random_bg": false
+    },
+    "evaluation":
+    {
+        "batch_size": 16384,
+        "res_map": 256,
+        "res_angular": 256,
+        "eval_every_n_steps": 1,
+        "num_color_pts": 0,
+        "num_depth_pts": 4,
+        "num_plot_pts": 3,
+        "num_avg_heights": 2,
+        "height_tolerance": 0.005,
+        "density_map_thr": 10,
+        "plot_results": true
+    },
+    "occ_grid":
+    {
+        "grid_type": "occ",
+        "warmup_steps": 256,
+        "batch_size": 64,
+        "sampling_strategy": {"imgs": "all", "rays": "rgbd"},  
+        "update_interval": 2,
+        "decay_warmup_steps": 80,
+        "batch_ratio_ray_update": 0.5,
+        "false_detection_prob_every_m": 0.3,
+        "std_every_m": 0.2,
+        "nerf_threshold_max": 5.91,
+        "nerf_threshold_slope": 0.01
+
+    },
+    "ethz":
+    {
+        "dataset_dir": "../ETHZDataset",
+        "room": "office_2",
+        "cam_ids": ["CAM1", "CAM3"]
+    },
+    "robot_at_home":
+    {
+        "session": "session_2",
+        "home": "anto",
+        "room": "livingroom1",
+        "subsession": "subsession_1",
+        "home_session": "s1"
+    },
+    "RGBD":
+    {
+        "angle_of_view": [90, 65]
+    },
+    "USS":
+    {
+        "angle_of_view": [30, 30]
+    },
+    "ToF":
+    {
+        "angle_of_view": [42.4, 42.4],
+        "matrix": [8, 8],
+        "sensor_calibration_error": 0.0,
+        "sensor_random_error": 0.0
+    }
+    
+}

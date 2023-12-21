@@ -106,8 +106,9 @@ class HParamsETHZ(HParams):
         # hyper parameters
         self.dataset_dir = None
         self.room = None
+        self.cam_ids = None
 
-        HParams.__init__(self, name="robot_at_home")
+        HParams.__init__(self, name="ethz")
 
 
 class HParamsRobotAtHome(HParams):

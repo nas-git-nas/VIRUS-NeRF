@@ -83,9 +83,7 @@ class DatasetBase(Dataset):
     
     def to(self, device):
         self.rgbs = self.rgbs.to(device)
-        # self.rays = self.rays.to(device)
         self.poses = self.poses.to(device)
-        # self.Ks = self.Ks.to(device)
         self.times = self.times.to(device)
         self.stack_ids = self.stack_ids.to(device)
         for key in self.depths_dict.keys():

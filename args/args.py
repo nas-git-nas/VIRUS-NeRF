@@ -34,16 +34,16 @@ class Args():
         self.eval.setHParams(hparams)
         self.occ_grid.setHParams(hparams)
 
-        if self.dataset.name == "ethz":
+        if self.dataset.name == "ETHZ":
             self.ethz = HParamsETHZ()
             self.ethz.setHParams(hparams)
         elif self.dataset.name == "robot_at_home":
             self.rh = HParamsRobotAtHome()
             self.rh.setHParams(hparams)
-            self.rgbd = HParamsRGBD()
-            self.rgbd.setHParams(hparams) 
+        else:
+            self.logger.error("Dataset not implemented!")
 
-        if (self.dataset.name == "ethz") or (self.dataset.name == "robot_at_home"):
+        if (self.dataset.name == "ETHZ") or (self.dataset.name == "robot_at_home"):
             for sensor_name in self.training.sensors:
                 if sensor_name == "USS":
                     self.uss = HParamsUSS()
@@ -51,6 +51,9 @@ class Args():
                 elif sensor_name == "ToF":
                     self.tof = HParamsToF()
                     self.tof.setHParams(hparams)
+                elif sensor_name == "RGBD":
+                    self.rgbd = HParamsRGBD()
+                    self.rgbd.setHParams(hparams) 
 
         # device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

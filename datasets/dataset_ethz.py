@@ -48,6 +48,10 @@ class DatasetETHZ(DatasetBase):
         split:str='train',
         scene:SceneETHZ=None,
     ):
+        
+        self.rng = np.random.RandomState(
+            seed=args.seed,
+        )
 
         super().__init__(
             args=args, 
@@ -56,16 +60,13 @@ class DatasetETHZ(DatasetBase):
 
         dataset_dir = self.args.ethz.dataset_dir
         data_dir = os.path.join(dataset_dir, self.args.ethz.room)
-        cam_ids = [
-            "CAM1", 
-            "CAM3",
-        ]
 
         # load scene
         self.scene = scene
         if scene is None:
             self.scene = SceneETHZ(
-                args=self.args
+                args=self.args,
+                data_dir=data_dir,
             )
 
         # split dataset
@@ -78,7 +79,7 @@ class DatasetETHZ(DatasetBase):
         img_wh, K_dict, directions_dict = self.readIntrinsics(
             dataset_dir=dataset_dir,
             data_dir=data_dir,
-            cam_ids=cam_ids,
+            cam_ids=self.args.ethz.cam_ids,
         )
 
         # load samples
@@ -87,6 +88,7 @@ class DatasetETHZ(DatasetBase):
             cam_ids=self.args.ethz.cam_ids,
             img_wh=img_wh,
             split_mask=split_mask,
+            directions_dict=directions_dict,
         )
 
         # if self.args.dataset.keep_pixels_in_angle_range != "all":
@@ -106,7 +108,7 @@ class DatasetETHZ(DatasetBase):
         self.depths_dict = depths_dict
         self.sensors_dict = sensors_dict
         self.stack_ids = stack_ids
-        self.times = None
+        self.times = torch.zeros(10)
 
         # TODO: move to base class
         self.sampler = Sampler(
@@ -118,19 +120,24 @@ class DatasetETHZ(DatasetBase):
             fct_getValidDepthMask=self.getValidDepthMask,
         )
 
-    # def getIdxFromSensorName(self, df, sensor_name):
-    #     """
-    #     Get the indices of the dataset that belong to a particular sensor.
-    #     Args:
-    #         df: robot@home dataframe, pandas df
-    #         sensor_name: name of the sensor, str
-    #     Returns:
-    #         idxs: indices of the dataset that belong to the sensor
-    #     """
-    #     sensor_id = self.rh.name2id(sensor_name, "s")
-    #     mask = np.array(df["sensor_id"] == sensor_id, dtype=bool)
-    #     idxs = np.where(mask)[0]
-    #     return idxs
+    def getIdxFromSensorName(
+        self, 
+        sensor_name:str,
+        df:pd.DataFrame=None, 
+        
+    ):
+        """
+        Get the indices of the dataset that belong to a particular sensor.
+        Args:
+            sensor_name: name of the sensor, str
+            df: robot@home dataframe, pandas df
+        Returns:
+            idxs: indices of the dataset that belong to the sensor
+        """
+        stack_id = self.stack_ids.detach().clone().numpy()
+        mask = (stack_id == int(sensor_name[-1]))
+        idxs = np.where(mask)[0]
+        return idxs
 
     def splitDataset(
         self,
@@ -147,12 +154,9 @@ class DatasetETHZ(DatasetBase):
         """
         path_description = os.path.join(data_dir, 'split', 'split_description.csv')
         path_split = os.path.join(data_dir, 'split', 'split.csv')
+        if not os.path.exists(os.path.join(data_dir, 'split')):
+            os.mkdir(os.path.join(data_dir, 'split'))
         split_ratio = self.args.dataset.split_ratio
-
-        # verify consistendy of dataset length
-        N = self._verifyDatasetLength(
-            data_dir=data_dir,
-        )
 
         # load split if it exists already
         df_description = None
@@ -165,7 +169,8 @@ class DatasetETHZ(DatasetBase):
             # split ratio must be the same as in description (last split)
             if df_description['train'].values[0]==split_ratio['train'] \
                 and df_description['val'].values[0]==split_ratio['val'] \
-                and df_description['test'].values[0]==split_ratio['test']:
+                and df_description['test'].values[0]==split_ratio['test'] \
+                and df_description['keep_N_observations'].values[0] == str(self.args.dataset.keep_N_observations):
 
                 # load split and merge with df
                 df_split = pd.read_csv(
@@ -181,24 +186,43 @@ class DatasetETHZ(DatasetBase):
         if split_ratio['train'] + split_ratio['val'] + split_ratio['test'] != 1.0:
             self.args.logger.error(f"split ratios do not sum up to 1.0")
 
-        # create new split
-        N_train = int(split_ratio['train']*N)
-        N_val = int(split_ratio['val']*N)
+        # verify consistendy of dataset length
+        N_dataset = self._verifyDatasetLength(
+            data_dir=data_dir,
+        )
+        if self.args.dataset.keep_N_observations != 'all':
+            N_used = self.args.dataset.keep_N_observations
+            if N_used > N_dataset:
+                self.args.logger.error(f"keep_N_observations is larger than dataset length")
+        else:
+            N_used = N_dataset
 
-        rand_idxs = self.args.rng.permutation(N)
+        # create new split
+        N_train = int(split_ratio['train']*N_used)
+        N_val = int(split_ratio['val']*N_used)
+        N_test = int(split_ratio['test']*N_used)
+
+        rand_idxs = self.rng.permutation(N_dataset)
         train_idxs = rand_idxs[:N_train]
         val_idxs = rand_idxs[N_train:N_train+N_val]
+        test_idxs = rand_idxs[N_train+N_val:N_train+N_val+N_test]
 
-        split_arr = np.full((N,), "test", dtype=str)
-        split_arr[train_idxs] = "train"
-        split_arr[val_idxs] = "val"
+        split_arr = N_dataset * ["skip"]
+        for i in train_idxs:
+            split_arr[i] = "train"
+        for i in val_idxs:
+            split_arr[i] = "val"
+        for i in test_idxs:
+            split_arr[i] = "test"
+        split_arr = np.array(split_arr)
 
         # save split and description
         pd.DataFrame(
             data=split_arr,
             columns=["split"],
+            dtype=str,
         ).to_csv(
-            filepath_or_buffer=path_split,
+            path_or_buf=path_split,
             index=False,
         )
         pd.DataFrame(
@@ -206,11 +230,12 @@ class DatasetETHZ(DatasetBase):
                 'train':split_ratio['train'], 
                 'val':split_ratio['val'], 
                 'test':split_ratio['test'], 
+                'keep_N_observations':str(self.args.dataset.keep_N_observations),
                 'info':"This file contains the split ratios for this dataset. "
             },
             index=[0],
         ).to_csv(
-            filepath_or_buffer=path_description,
+            path_or_buf=path_description,
             index=False,
         )
 
@@ -249,8 +274,8 @@ class DatasetETHZ(DatasetBase):
         for cam_id in cam_ids:
             df_cam = df[df["cam_id"]==cam_id]
             K_dict[cam_id] = np.array([[df_cam['fx'].values[0], 0.0, df_cam['cx'].values[0]],
-                                  [0.0, df_cam['fy'].values[0], df_cam['cy'].values[0]], 
-                                  [0.0, 0.0, 1.0]])
+                                        [0.0, df_cam['fy'].values[0], df_cam['cy'].values[0]], 
+                                        [0.0, 0.0, 1.0]]) # (3, 3)
 
         # get ray directions
         directions_dict = {}
@@ -270,6 +295,7 @@ class DatasetETHZ(DatasetBase):
         cam_ids:list,
         img_wh:tuple,
         split_mask:np.array,
+        directions_dict:dict,
     ):
         """
         Read all samples from the dataset.
@@ -278,6 +304,7 @@ class DatasetETHZ(DatasetBase):
             cam_ids: list of camera ids; list of str
             img_wh: image width and height; tuple of ints
             split_mask: mask of split; bool array of shape (N,)
+            directions_dict: ray directions; dict of { sensor type: array of shape (N_images, H*W, 3) }
         Returns:
             poses: camera poses; array of shape (N_images, 3, 4)
             rgbs: ray origins; array of shape (N_images, H*W, 3)
@@ -285,6 +312,7 @@ class DatasetETHZ(DatasetBase):
             sensors_dict: dictionary of sensor models; dict of { sensor: sensor model }
             stack_ids: stack identity number of sample; array of shape (N_images,)
         """
+        # pose data
         poses, stack_ids = self._readPoses(
             data_dir=data_dir,
             cam_ids=cam_ids,
@@ -294,6 +322,7 @@ class DatasetETHZ(DatasetBase):
             poses=poses,
         ) # (N, 3, 4)
 
+        # image color data
         rgbs, rgbs_stack_ids = self._readColorImgs(
             data_dir=data_dir,
             cam_ids=cam_ids,
@@ -302,9 +331,34 @@ class DatasetETHZ(DatasetBase):
         ) # (N, H*W, 3), (N,)
         if self.args.model.debug_mode and not np.all(stack_ids == rgbs_stack_ids):
             self.args.logger.error(f"DatasetETHZ::read_meta: stack ids do not match")
+        rgbs = self._convertColorImgs(
+            rgbs=rgbs,
+        )
 
+        # depth data
         depths_dict = {}
         sensors_dict = {}
+
+        if "RGBD" in self.args.training.sensors:
+            depths, stack_ids = self._readDepthImgs(
+                data_dir=data_dir,
+                cam_ids=cam_ids,
+                img_wh=img_wh,
+                split_mask=split_mask,
+            )
+            if self.args.model.debug_mode and not np.all(stack_ids == rgbs_stack_ids):
+                self.args.logger.error(f"DatasetETHZ::read_meta: stack ids do not match")
+
+            rs_depths, rs_sensors_dict = self._convertDepthImgs(
+                depths=depths,
+                directions_dict=directions_dict,
+                stack_ids=stack_ids,
+                img_wh=img_wh,
+            )
+            depths_dict["RGBD"] = rs_depths
+            sensors_dict.update(rs_sensors_dict)
+
+        
         if "USS" in self.args.training.sensors:
             uss_meass, uss_stack_ids = self._readUSS(
                 data_dir=data_dir,
@@ -319,7 +373,6 @@ class DatasetETHZ(DatasetBase):
                 stack_ids=uss_stack_ids,
                 img_wh=img_wh,
             ) # (N, H*W), dict { cam_id : USSModel }
-
             depths_dict["USS"] = uss_depths
             sensors_dict.update(uss_sensors_dict)
 
@@ -338,9 +391,11 @@ class DatasetETHZ(DatasetBase):
                 stack_ids=tof_stack_ids,
                 img_wh=img_wh,
             ) # (N, H*W), (N, H*W), dict { cam_id : ToFModel }
-
             depths_dict["ToF"] = tof_depths
             sensors_dict.update(tof_sensors_dict)
+
+        # convert stack ids to tensor
+        stack_ids = torch.tensor(stack_ids, dtype=torch.int32, requires_grad=False)
 
         return poses, rgbs, depths_dict, sensors_dict, stack_ids
     
@@ -364,19 +419,20 @@ class DatasetETHZ(DatasetBase):
         stack_ids = np.zeros((0))
         for cam_id in cam_ids:
             df = pd.read_csv(
-                filepath_or_buffer=os.path.join(data_dir, 'poses', 'poses_sync'+cam_id[-1]+'cam_robot.csv'),
+                filepath_or_buffer=os.path.join(data_dir, 'poses', 'poses_sync'+cam_id[-1]+'_cam_robot.csv'),
                 dtype=np.float64,
             )
 
             pose = np.zeros((np.sum(split_mask), 3, 4))
-            for i in np.arange(df.shape[0])[split_mask]:
+            for i, pose_i in enumerate(np.arange(df.shape[0])[split_mask]):
                 trans = PCLTransformer(
-                    t=[df["x"][i], df["y"][i], df["z"][i]],
-                    q=[df["qx"][i], df["qy"][i], df["qz"][i], df["qw"][i]],
+                    t=[df["x"][pose_i], df["y"][pose_i], df["z"][pose_i]],
+                    q=[df["qx"][pose_i], df["qy"][pose_i], df["qz"][pose_i], df["qw"][pose_i]],
                 )
-                pose[i] = trans.getTransform(
+                T = trans.getTransform(
                     type="matrix",
-                )[:3,:] # (3, 4)
+                ) # (4, 4)
+                pose[i] = T[:3,:] # (3, 4)
 
             poses = np.concatenate((poses, pose), axis=0) # (N, 3, 4)
             stack_ids = np.concatenate((stack_ids, np.ones((pose.shape[0]))*int(cam_id[-1])), axis=0) # (N,)
@@ -407,7 +463,7 @@ class DatasetETHZ(DatasetBase):
         stack_ids = np.zeros((0))
         for cam_id in cam_ids:
             rgb_path = os.path.join(data_dir, 'measurements/'+cam_id+'_color_image_raw') 
-            rgb_files = ['img'+str(i)+'.png' for i in range(split_mask.shape[0])]
+            rgb_files = np.array(['img'+str(i)+'.png' for i in range(split_mask.shape[0])])
             rgb_files = rgb_files[split_mask]
 
             rgbs_temp = np.zeros((len(rgb_files), H*W, 3))
@@ -445,24 +501,19 @@ class DatasetETHZ(DatasetBase):
         stack_ids = np.zeros((0))
         for cam_id in cam_ids:
             depth_path = os.path.join(data_dir, 'measurements/'+cam_id+'_aligned_depth_to_color_image_raw')
-            depth_files = ['img'+str(i)+'.png' for i in range(split_mask.shape[0])]
+            depth_files = np.array(['img'+str(i)+'.png' for i in range(split_mask.shape[0])])
             depth_files = depth_files[split_mask]
 
             depths_temp = np.zeros((len(depth_files), H*W))
             for i, f in enumerate(depth_files):
                 depth_file = os.path.join(depth_path, f)
                 depth = cv.imread(depth_file, cv.IMREAD_UNCHANGED)
-                depths_temp[i] = depth[:,:,0].flatten() # (H*W), keep only one color channel
-
-                # verify depth image
-                if self.args.model.debug_mode:
-                    if not (np.allclose(depth[:,:,0], depth[:,:,1]) and np.allclose(depth[:,:,0], depth[:,:,2])):
-                        self.args.logger.error(f"robot_at_home.py: read_meta: depth image has more than one channel")
+                depths_temp[i] = depth.flatten() # (H*W), keep only one color channel
 
             depths = np.concatenate((depths, depths_temp), axis=0) # (N, H*W)
             stack_ids = np.concatenate((stack_ids, np.ones((depths_temp.shape[0]))*int(cam_id[-1])), axis=0) # (N,)
 
-        return # TODO: convert depth to radius and to cube coordinate system  
+        return depths, stack_ids
     
     def _readUSS(
         self,
@@ -560,6 +611,67 @@ class DatasetETHZ(DatasetBase):
             device=self.args.device,
         )
         return poses
+    
+    def _convertColorImgs(
+        self,
+        rgbs:np.ndarray,
+    ):
+        """
+        Convert color images to tensors.
+        Args:
+            rgbs: color images; array of shape (N_images, H*W, 3)
+        Returns:
+            rgbs: color images; tensor of shape (N_images, H*W, 3)
+        """
+        return torch.tensor(rgbs, dtype=torch.float32, requires_grad=False, device=self.args.device)
+
+    def _convertDepthImgs(
+        self,
+        depths:np.ndarray,
+        directions_dict:np.ndarray,
+        stack_ids:np.ndarray,
+        img_wh:tuple,
+    ):
+        """
+        Convert depth images to cube coordinates.
+        Args:
+            depths: depth images; array of shape (N_images, H*W)
+            directions_dict: ray directions; dict { cam_id: tensor of shape (H*W, 3) }
+            stack_ids: id of the stack; int
+            img_wh: image width and height; tuple of ints
+        Returns:
+            depths: depth images in cube coordinates; array of shape (N_images, H*W)
+            sensors_dict: dictionary of sensor models; dict of { sensor: sensor model }
+        """
+        # convert depth to meters
+        depths = 0.001 * depths # (N, H*W)
+
+        # convert depth from depth-image to depth-scan
+        depths_scan = np.zeros_like(depths) # (N, H*W)
+        for cam_id, directions in directions_dict.items():
+            sensor_mask = (int(cam_id[-1]) == stack_ids) # (N,)
+
+            rs = depths / np.sqrt(1 - directions[:,0]**2 - directions[:,1]**2)[None, :] # (N, H*W)
+            depths_scan[sensor_mask,:] = rs[sensor_mask,:] # (N, H*W)
+        depths = depths_scan # (N, H*W)
+
+        # set invalid depth values to nan
+        depths[depths==0.0] = np.nan # (N, H*W)
+        
+        # convert depth to cube coordinate system [-0.5, 0.5]
+        depths = self.scene.w2c(depths.flatten(), only_scale=True).reshape(depths.shape) # (N, H*W)
+        
+        # convert to tensor
+        depths = torch.tensor(depths, dtype=torch.float32, requires_grad=False, device=self.args.device)
+
+        # create sensor model dictionary: {sensor id: sensor model}
+        sensors_dict = {}
+        for cam_id in directions_dict.keys():
+            sensors_dict[cam_id] = RGBDModel(
+                args=self.args, 
+                img_wh=img_wh,
+            )
+        return depths, sensors_dict
     
     def _convertUSS(
         self,

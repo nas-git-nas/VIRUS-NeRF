@@ -20,12 +20,12 @@ from contextlib import nullcontext
 # from gui import NGPGUI
 # from opt import get_opts
 from args.args import Args
-from datasets.dataset_rh import DatasetRH
 from modules.networks import NGP
 from modules.rendering import render
 from helpers.geometric_fcts import createScanPos
 from datasets.dataset_base import DatasetBase
-
+from datasets.dataset_rh import DatasetRH
+from datasets.dataset_ethz import DatasetETHZ
 
 
 class TrainerBase():
@@ -54,7 +54,11 @@ class TrainerBase():
 
         # datasets   
         if self.args.dataset.name == 'robot_at_home':
-            dataset = DatasetRH    
+            dataset = DatasetRH 
+        elif self.args.dataset.name == 'ETHZ':   
+            dataset = DatasetETHZ
+        else:
+            self.args.logger.error(f"Unknown dataset {self.args.dataset.name}")
         
         if train_dataset is None:
             self.train_dataset = dataset(

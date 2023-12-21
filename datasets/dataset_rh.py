@@ -229,7 +229,12 @@ class DatasetRH(DatasetBase):
 
         return poses, rgbs, depths_dict, sensors_dict, stack_ids, times
     
-    def getIdxFromSensorName(self, df, sensor_name):
+    def getIdxFromSensorName(
+        self, 
+        sensor_name:str,
+        df:pd.DataFrame=None, 
+        
+    ):
         """
         Get the indices of the dataset that belong to a particular sensor.
         Args:
@@ -238,6 +243,9 @@ class DatasetRH(DatasetBase):
         Returns:
             idxs: indices of the dataset that belong to the sensor
         """
+        if df is None:
+            df = self.df
+        
         sensor_id = self.rh.name2id(sensor_name, "s")
         mask = np.array(df["sensor_id"] == sensor_id, dtype=bool)
         idxs = np.where(mask)[0]

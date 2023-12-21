@@ -213,7 +213,9 @@ class Trainer(TrainerPlot):
 
         # get indices of all test points and of one particular sensor
         img_idxs = np.arange(len(self.test_dataset))
-        img_idxs_sensor = self.test_dataset.getIdxFromSensorName(df=self.test_dataset.df, sensor_name="RGBD_1")
+        img_idxs_sensor = self.test_dataset.getIdxFromSensorName( # TODO: add parameter or evaluation positions
+            sensor_name="RGBD_1" if self.args.dataset == "robot_at_home" else "CAM1",
+        )
 
         # keep only a certain number of points
         if self.args.eval.num_color_pts != "all":
