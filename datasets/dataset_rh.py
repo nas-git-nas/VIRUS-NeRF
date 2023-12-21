@@ -592,19 +592,27 @@ class DatasetRH(DatasetBase):
             poses=poses,
         )
 
-        # read RGBD images
-        rgbs, depths = self._readImgs(
+        # # read RGBD images
+        # rgbs, depths = self._readImgs(
+        #     df=df,
+        #     img_wh=img_wh,
+        # )
+        # rgbs = self._convertColorImgs(
+        #     rgbs=rgbs,
+        # )
+        # depths = self._convertDepthImgs(
+        #     depths=depths,
+        #     directions_dict=directions_dict,
+        #     stack_ids=stack_ids,
+        # )
+
+         # read RGBD images
+        rgbs, depths = self._readRGBD_old(
             df=df,
             img_wh=img_wh,
         )
-        rgbs = self._convertColorImgs(
-            rgbs=rgbs,
-        )
-        depths = self._convertDepthImgs(
-            depths=depths,
-            directions_dict=directions_dict,
-            stack_ids=stack_ids,
-        )
+        rgbs = torch.tensor(rgbs, dtype=torch.float32, requires_grad=False)
+        depths = torch.tensor(depths, dtype=torch.float32, requires_grad=False)
 
         # read timestamps
         times = self._readTimestamp(
@@ -622,6 +630,48 @@ class DatasetRH(DatasetBase):
         )
 
         return poses, rgbs, depths_dict, sensors_dict, stack_ids, times
+    
+    def _readRGBD_old(
+        self, 
+        df:pd.DataFrame, 
+        img_wh:tuple,
+    ):
+        """
+        Read RGBD images from the dataset.
+        Args:
+            df: robot@home dataframe; pandas.DataFrame
+            img_wh: image width and height; tuple of ints
+        Returns:
+            rays: color images; array of shape (N_images, H*W, 3)
+            depths: depth images; array of shape (N_images, H*W)
+        """
+        W, H = img_wh
+
+        # get images
+        ids = df["id"].to_numpy()
+        rays = np.empty((ids.shape[0], W*H, 3))
+        depths = np.empty((ids.shape[0], W*H), dtype=np.float32)
+        for i, id in enumerate(ids):
+            # read color and depth image
+            [rgb_f, d_f] = self.rh.get_RGBD_files(id)
+            rays[i,:,:] = mpimg.imread(rgb_f).reshape(W*H, 3)
+            depth = cv.imread(d_f, cv.IMREAD_UNCHANGED)
+
+            # verify depth image
+            if self.args.model.debug_mode:
+                if np.max(depth) > 115 or np.min(depth) < 0:
+                    self.args.logger.error(f"robot_at_home.py: read_meta: depth image has invalid values")
+                if not (np.allclose(depth[:,:,0], depth[:,:,1]) and np.allclose(depth[:,:,0], depth[:,:,2])):
+                    self.args.logger.error(f"robot_at_home.py: read_meta: depth image has more than one channel")
+
+            # convert depth
+            depth = depth[:,:,0] # (H, W), keep only one color channel
+            depth = 5.0 * depth / 128.0 # (H, W), convert to meters
+            depth[depth==0] = np.nan # (H, W), set invalid depth values to nan
+            depth = self.scene.w2c(depth.flatten(), only_scale=True) # (H*W,), convert to cube coordinate system [-0.5, 0.5]
+            depths[i,:] = depth
+
+        return rays, depths
     
     def getIdxFromSensorName(self, df, sensor_name):
         """
