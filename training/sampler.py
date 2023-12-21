@@ -129,7 +129,7 @@ class Sampler():
         B = img_idxs.shape[0]
         WH = self.img_wh[0]*self.img_wh[1]
 
-        if ray_strategy == "random":
+        if ray_strategy == "random" or ray_strategy == "valid_rgbd":
             return torch.randint(0, WH, size=(B,), device=self.args.device, dtype=torch.int32)
         
         if ray_strategy == "ordered":
@@ -140,7 +140,7 @@ class Sampler():
             pix_idxs = torch.clamp(pix_idxs, min=0, max=WH-1)
             return pix_idxs
         
-        if ray_strategy == "entire_img" or ray_strategy == "valid_rgbd":
+        if ray_strategy == "entire_img":
             return torch.arange(0, WH, device=self.args.device, dtype=torch.int32)
         
         if ray_strategy == "closest":
