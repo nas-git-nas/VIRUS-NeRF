@@ -64,7 +64,7 @@ class RGBDModel(SensorModel):
     def convertDepth(
         self, 
         depths:np.array,
-        format:str,
+        format:str="img",
     ):
         """
         Convert depth img using ToF sensor model. Set all unknown depths to nan.
