@@ -482,7 +482,7 @@ class DatasetRH(DatasetBase):
             sensors_dict: dictionary containing sensor models
             depths_dict: dictionary containing converted depths
         """
-        depths = depths.detach().clone().numpy() # (N, H*W)
+        depths = depths.detach().clone().to("cpu").numpy() # (N, H*W)
 
         sensors_dict = {} 
         for cam_id in cam_ids:
