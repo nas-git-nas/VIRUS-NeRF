@@ -61,7 +61,7 @@ class RGBDModel(SensorModel):
         """
         SensorModel.__init__(self, args, img_wh)     
 
-    def convertDepth(self, depths):
+    def convertDepth(self, depths, format:str="img"):
         """
         Convert depth img using ToF sensor model. Set all unknown depths to nan.
         Args:
@@ -87,7 +87,7 @@ class ToFModel(SensorModel):
         ) # (H*W,)
         
 
-    def convertDepth(self, depths):
+    def convertDepth(self, depths, format:str="img"):
         """
         Convert depth img using ToF sensor model. Set all unknown depths to nan.
         Args:
@@ -193,7 +193,7 @@ class USSModel(SensorModel):
         self.imgs_min_idx = torch.ones((num_imgs), dtype=torch.int32).to(self.args.device) * -1
         self.imgs_min_counts = torch.zeros((num_imgs), dtype=torch.int32).to(self.args.device)
 
-    def convertDepth(self, depths:np.array):
+    def convertDepth(self, depths:np.array, format:str="img"):
         """
         Down sample depths from depth per pixel to depth per uss/img.
         Args:
