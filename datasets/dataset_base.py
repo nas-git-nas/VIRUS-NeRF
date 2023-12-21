@@ -285,7 +285,7 @@ class DatasetBase(Dataset):
         img_idxs, pix_idxs, count = self.sampler(
             batch_size=batch_size,
             sampling_strategy=sampling_strategy,
-            # stack_ids=self.stack_ids,
+            stack_ids=self.stack_ids,
             origin=origin,
         )
 
