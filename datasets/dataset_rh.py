@@ -498,10 +498,12 @@ class DatasetRH(DatasetBase):
         self.img_wh = img_wh
         self.K = K_dict["RGBD_1"]
         self.poses = poses
-        self.rays = rgbs
+        self.rgbs = rgbs
         self.directions = directions_dict["RGBD_1"]
+        self.directions_dict = directions_dict
         self.sensors_dict = sensors_dict
         self.depths_dict = depths_dict
+        self.stack_ids = stack_ids
         self.times = times
 
         # TODO: move to base class
@@ -918,54 +920,6 @@ class DatasetRH(DatasetBase):
             )
 
         return sensors_dict, depths_dict
-    
-    # def _createSensorModels(
-    #         self, 
-    #         depths:torch.tensor,
-    #         img_wh:tuple,
-    #         cam_ids:list,
-    # ):
-    #     """
-    #     Create sensor models for each sensor and convert depths respectively.
-    #     Args:
-    #         depths: depths of all images; tensor of shape (N_images, H*W)
-    #         img_wh: image width and height; tuple of ints
-    #     Returns:
-    #         sensors_dict: dictionary containing sensor models
-    #         depths_dict: dictionary containing converted depths
-    #     """
-    #     depths = depths.detach().clone().to("cpu").numpy() # (N, H*W)
-
-    #     sensors_dict = {} 
-    #     for sensor_name in self.args.training.sensors:
-    #         if sensor_name == "RGBD":
-    #             sensors_dict["RGBD"] = RGBDModel(
-    #                 args=self.args, 
-    #                 img_wh=img_wh
-    #             )
-    #         elif sensor_name == "ToF":
-    #             sensors_dict["ToF"] = ToFModel(
-    #                 args=self.args, 
-    #                 img_wh=img_wh
-    #             )
-    #         elif sensor_name == "USS":
-    #             sensors_dict["USS"] = USSModel(
-    #                 args=self.args, 
-    #                 img_wh=img_wh,
-    #                 num_imgs=self.df.shape[0],
-    #             )
-    #         else:
-    #             print(f"ERROR: robot_at_home.__init__: sensor model {sensor_name} not implemented")
-
-    #     depths_dict = {}
-    #     for sensor_name, sensor_model in sensors_dict.items():
-    #         depths_dict[sensor_name] = torch.tensor(
-    #             data=sensor_model.convertDepth(depths),
-    #             dtype=torch.float32,
-    #             requires_grad=False,
-    #         )
-
-    #     return sensors_dict, depths_dict
     
     def splitDataset(self, df, split_ratio, split_description_path, split_description_name):
         """
