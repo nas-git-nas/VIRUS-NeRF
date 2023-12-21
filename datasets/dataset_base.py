@@ -47,7 +47,6 @@ class DatasetBase(Dataset):
             batch_size=batch_size,
             sampling_strategy=sampling_strategy,
             origin=origin,
-            stack_ids=None,
         )
 
         # sample data
