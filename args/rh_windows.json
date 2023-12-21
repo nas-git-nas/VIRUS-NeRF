@@ -22,8 +22,8 @@
     {
         "distortion_loss_w": 0.0,
         "batch_size": 8192,
-        "sampling_strategy": {"imgs": "all", "rays": "random"},
-        "sensors": ["RGBD"],
+        "sampling_strategy": {"imgs": "all", "rays": "closest"},
+        "sensors": ["USS", "ToF"],
         "max_steps": 2,
         "lr": 1e-2,
         "depth_loss_w": 100.0,
@@ -45,7 +45,7 @@
     },
     "occ_grid":
     {
-        "grid_type": "nerf",
+        "grid_type": "occ",
         "warmup_steps": 256,
         "batch_size": 64,
         "sampling_strategy": {"imgs": "all", "rays": "uss_tof"},  
