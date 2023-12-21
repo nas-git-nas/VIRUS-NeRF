@@ -592,27 +592,27 @@ class DatasetRH(DatasetBase):
             poses=poses,
         )
 
-        # # read RGBD images
-        # rgbs, depths = self._readImgs(
-        #     df=df,
-        #     img_wh=img_wh,
-        # )
-        # rgbs = self._convertColorImgs(
-        #     rgbs=rgbs,
-        # )
-        # depths = self._convertDepthImgs(
-        #     depths=depths,
-        #     directions_dict=directions_dict,
-        #     stack_ids=stack_ids,
-        # )
-
-         # read RGBD images
-        rgbs, depths = self._readRGBD_old(
+        # read RGBD images
+        rgbs, depths = self._readImgs(
             df=df,
             img_wh=img_wh,
         )
-        rgbs = torch.tensor(rgbs, dtype=torch.float32, requires_grad=False)
-        depths = torch.tensor(depths, dtype=torch.float32, requires_grad=False)
+        rgbs = self._convertColorImgs(
+            rgbs=rgbs,
+        )
+        depths = self._convertDepthImgs(
+            depths=depths,
+            directions_dict=directions_dict,
+            stack_ids=stack_ids,
+        )
+
+        #  # read RGBD images
+        # rgbs, depths = self._readRGBD_old(
+        #     df=df,
+        #     img_wh=img_wh,
+        # )
+        # rgbs = torch.tensor(rgbs, dtype=torch.float32, requires_grad=False)
+        # depths = torch.tensor(depths, dtype=torch.float32, requires_grad=False)
 
         # read timestamps
         times = self._readTimestamp(
@@ -799,10 +799,7 @@ class DatasetRH(DatasetBase):
 
             # convert depth
             depth = depth[:,:,0] # (H, W), keep only one color channel
-            depth = 5.0 * depth / 128.0 # (H, W), convert to meters
-            depth[depth==0] = np.nan # (H, W), set invalid depth values to nan
-            depth = self.scene.w2c(depth.flatten(), only_scale=True) # (H*W,), convert to cube coordinate system [-0.5, 0.5]
-            depths[i,:] = depth
+            depths[i,:] = depth.flatten()
 
         return rays, depths
     
