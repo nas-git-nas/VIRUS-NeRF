@@ -47,7 +47,7 @@ class TrainerBase():
 
         # initialize taichi
         taichi_init_args = {
-            "arch": ti.cuda if self.args.device == "cuda" else ti.cpu,
+            "arch": ti.cuda if torch.cuda.is_available() else ti.cpu,
             "random_seed": self.args.seed,
         }
         ti.init(**taichi_init_args)
