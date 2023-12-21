@@ -826,14 +826,14 @@ class DatasetRH(DatasetBase):
         # convert depth to meters
         depths = 5.0 * depths / 128.0 # (N, H*W)
 
-        # convert depth from depth-image to depth-scan
-        depths_scan = np.zeros_like(depths) # (N, H*W)
-        for cam_id, directions in directions_dict.items():
-            sensor_mask = (int(cam_id[-1]) == stack_ids) # (N,)
+        # # convert depth from depth-image to depth-scan
+        # depths_scan = np.zeros_like(depths) # (N, H*W)
+        # for cam_id, directions in directions_dict.items():
+        #     sensor_mask = (int(cam_id[-1]) == stack_ids) # (N,)
 
-            rs = depths / np.sqrt(1 - directions[:,0]**2 - directions[:,1]**2)[None, :] # (N, H*W)
-            depths_scan[sensor_mask,:] = rs[sensor_mask,:] # (N, H*W)
-        depths = depths_scan # (N, H*W)
+        #     rs = depths / np.sqrt(1 - directions[:,0]**2 - directions[:,1]**2)[None, :] # (N, H*W)
+        #     depths_scan[sensor_mask,:] = rs[sensor_mask,:] # (N, H*W)
+        # depths = depths_scan # (N, H*W)
 
         # set invalid depth values to nan
         depths[depths==0] = np.nan # (N, H*W)
@@ -931,6 +931,8 @@ class DatasetRH(DatasetBase):
             sensors_dict: dictionary containing sensor models
             depths_dict: dictionary containing converted depths
         """
+        depths = depths.detach().clone().to("cpu").numpy() # (N, H*W)
+
         sensors_dict = {} 
         for sensor_name in self.args.training.sensors:
             if sensor_name == "RGBD":
