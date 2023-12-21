@@ -499,7 +499,7 @@ class DatasetRH(DatasetBase):
         self.K = K_dict["RGBD_1"]
         self.poses = poses
         self.rgbs = rgbs
-        self.directions = directions_dict["RGBD_1"]
+        # self.directions = directions_dict["RGBD_1"]
         self.directions_dict = directions_dict
         self.sensors_dict = sensors_dict
         self.depths_dict = depths_dict

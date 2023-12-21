@@ -638,9 +638,6 @@ class Trainer(TrainerPlot):
                 sampling_strategy=self.args.training.sampling_strategy,
                 origin="nerf",
             )
-
-            # direction = data['direction']
-            # pose = data['pose']
             
             with torch.autocast(device_type='cuda', dtype=torch.float16):
                 
@@ -661,7 +658,6 @@ class Trainer(TrainerPlot):
 
                 # render image
                 print(f"RENDERING")
-                # rays_o, rays_d = get_rays(direction, pose)
                 results = render(
                     self.model, 
                     data['rays_o'], 

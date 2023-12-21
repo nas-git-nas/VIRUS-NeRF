@@ -300,8 +300,8 @@ class DatasetBase(Dataset):
 
         # sample data
 
-        poses = self.poses[img_idxs]
-        directions = self.directions_dict['RGBD_1'][pix_idxs]
+        # poses = self.poses[img_idxs]
+        # directions = self.directions_dict['RGBD_1'][pix_idxs]
 
         stack_ids = self.stack_ids[img_idxs]
         rgbs = self.rgbs[img_idxs, pix_idxs, :3]
@@ -312,8 +312,8 @@ class DatasetBase(Dataset):
             'stack_id': stack_ids.detach().clone().requires_grad_(False),
             'rays_o': rays_o.detach().clone().requires_grad_(True),
             'rays_d': rays_d.detach().clone().requires_grad_(True),
-            'pose': poses.detach().clone().requires_grad_(True),
-            'direction': directions.detach().clone().requires_grad_(True),
+            # 'pose': poses.detach().clone().requires_grad_(True),
+            # 'direction': directions.detach().clone().requires_grad_(True),
             'rgb': rgbs.detach().clone().requires_grad_(True),
             'depth': {},
         }
