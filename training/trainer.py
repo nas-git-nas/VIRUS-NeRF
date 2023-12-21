@@ -161,6 +161,7 @@ class Trainer(TrainerPlot):
                     
 
                 # render image
+                print(f"RENDERING")
                 results = render(
                     self.model, 
                     data['rays_o'], 
@@ -169,6 +170,7 @@ class Trainer(TrainerPlot):
                 )
 
                 # calculate loss
+                print(f"LOSS")
                 loss, loss_dict = self.loss(
                     results=results,
                     data=data,
@@ -179,6 +181,7 @@ class Trainer(TrainerPlot):
                     loss += self.args.training.distortion_loss_w * distortion_loss(results).mean()
 
             # backpropagate and update weights
+            print(f"BACKPROPAGATE")
             self.optimizer.zero_grad()
             self.grad_scaler.scale(loss).backward()
             self.grad_scaler.step(self.optimizer)
