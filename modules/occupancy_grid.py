@@ -176,11 +176,9 @@ class OccupancyGrid(Grid):
             sampling_strategy={ "imgs": self.args.occ_grid.sampling_strategy['imgs'], "rays": "valid_"+sensor.lower() },
             origin="occ"
         )
-        rays_o, rays_d = get_rays(
-            directions=data['direction'], 
-            c2w=data['pose']
-        )
 
+        rays_o = data['rays_o']
+        rays_d = data['rays_d']
         depth_meas = data['depth'][sensor]
         valid_depth = ~torch.isnan(depth_meas)
         return {

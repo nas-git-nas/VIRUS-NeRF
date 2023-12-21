@@ -45,9 +45,12 @@ class TrainerBase():
         else:
             self.args = args
 
-        # # initialize taichi
-        # taichi_init_args = {"arch": ti.cuda,}
-        # ti.init(**taichi_init_args)
+        # initialize taichi
+        taichi_init_args = {
+            "arch": ti.cuda if self.args.device == "cuda" else ti.cpu,
+            "random_seed": self.args.seed,
+        }
+        ti.init(**taichi_init_args)
 
         # datasets   
         if self.args.dataset.name == 'robot_at_home':

@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 import rospy
-from sensors.msg import TOF
 from sensor_msgs.msg import PointCloud2, PointField
 from std_msgs.msg import Header
+from sensors.msg import USS
 
 import cv2 as cv
 import numpy as np
@@ -13,10 +13,10 @@ import time
 import struct
     
     
-class LogToF():
+class LogUSS():
     def __init__(
         self,
-        tof_id:list,
+        uss_id:list,
         data_dir:str,
         print_elapse_time:bool=False,
         publish_pointcloud:bool=False,
@@ -24,45 +24,44 @@ class LogToF():
         """
         Log data from RealSense Node
         Args:
-            camera_id: either TOF1, TOF2 or TOF3; str
+            uss_id: either USS1, USS2 or USS3; str
             data_dir: path where to save data; str
             print_elapse_time: wheter to print ellapse time of callback; bool
             publish_pointcloud: whether to publish pointcloud of tof measurements; bool
         """
-        self.tof_id = tof_id
-        self.tof_dir = os.path.join(data_dir, tof_id)
+        self.uss_id = uss_id
+        self.uss_dir = os.path.join(data_dir, uss_id)
         self.print_elapse_time = print_elapse_time
         self.publish_pointcloud = publish_pointcloud
         
-        # delete-data of last measurement
-        if os.path.exists(self.tof_dir):
-            shutil.rmtree(self.tof_dir)
-        os.mkdir(self.tof_dir)
-        os.mkdir(os.path.join(self.tof_dir, "imgs"))
+        # delete last measurement
+        if os.path.exists(self.uss_dir):
+            shutil.rmtree(self.uss_dir)
+        os.mkdir(os.path.join(self.uss_dir))
         
         # data
         self.sequence = []
         self.seconds = []
         self.nano_seconds = []
-        self.meas = []
-        self.stds = []
+        self.measurements = []
         
         # ROS
-        self.topic_tof = "/" + self.tof_id
-        self.subscribe_tof = None
-        rospy.init_node('tof_log', anonymous=True)
+        self.topic_uss = "/" + self.uss_id
+        self.subscribe_uss = None
+        rospy.init_node('uss_log', anonymous=True)
         
         # pointcloud
         if self.publish_pointcloud:
-            fov = 45 # field of view in degrees
-            num_cells_in_row = 8
+            fov_xy = [50, 40] # field of view in degrees
+            num_pts_in_row = 64
             
-            cell_fov = np.deg2rad(fov) / num_cells_in_row
-            angle_max = cell_fov * (num_cells_in_row - 1) / 2
+            cell_fov_xy = np.deg2rad(fov_xy) / num_pts_in_row
+            angle_max = cell_fov_xy * (num_pts_in_row - 1) / 2
             angle_min = - angle_max
-            angles = np.linspace(angle_max, angle_min, num_cells_in_row)
-            self.angles_y, self.angles_z = np.meshgrid(angles, angles, indexing="xy") # (N, N), (N, N)
-
+            angles_x = np.linspace(angle_max[0], angle_min[0], num_pts_in_row)
+            angles_y = np.linspace(angle_max[1], angle_min[1], num_pts_in_row)
+            self.angles_y, self.angles_z = np.meshgrid(angles_x, angles_y, indexing="xy") # (N, N), (N, N)
+            
             self.pub_pointcloud = rospy.Publisher('tof_pointcloud', PointCloud2, queue_size=10)
             
             self.color_floats = {
@@ -71,16 +70,16 @@ class LogToF():
                 "g": struct.unpack('!f', bytes.fromhex('0000FF00'))[0],
                 "b": struct.unpack('!f', bytes.fromhex('000000FF'))[0],
             }
-            
+        
     def subscribe(
         self,
     ):
         """
         Subscribe to topic and wait for data.
         """
-        self.subscribe_tof = rospy.Subscriber(self.topic_tof, TOF, self._callback)
+        self.subscribe_uss = rospy.Subscriber(self.topic_uss, USS, self._callback)
         
-        rospy.loginfo(f"LogToF.subscribe: Subscribed to: {self.tof_id}")
+        rospy.loginfo(f"LogUSS.subscribed: Subscribe to: {self.uss_id}")
         rospy.spin()
         
     def save(
@@ -88,30 +87,29 @@ class LogToF():
     ):
         """
         Save data.
-        """      
-        # create pandas dataframe with data
+        """
         df = pd.DataFrame(
-            data={
+            {
                 "sequence": self.sequence,
                 "time": np.array(self.seconds) + 1e-9*np.array(self.nano_seconds),
+                "measurements": self._convertMeasurments(),
             },
         )
        
-        # save data
         df.to_csv(
-            os.path.join(self.tof_dir, "meta_data.csv"),
+            os.path.join(self.uss_dir, "data.csv"),
             index=False,
         )
-        rospy.loginfo(f"LogToF.save: Save to: {self.tof_dir}")
+        rospy.loginfo(f"LogUSS.save: Save to: {self.uss_dir}")
         
     def _callback(
         self,
-        data:TOF,
+        data:USS,
     ):
         """
         Callback for topic.
         Args:
-            data: measurements from ToF
+            data: data from USS; USS
         """
         if self.print_elapse_time:
             start = time.time()
@@ -120,88 +118,52 @@ class LogToF():
         self.sequence.append(data.header.seq)
         self.seconds.append(data.header.stamp.secs)
         self.nano_seconds.append(data.header.stamp.nsecs)
-        
-        # save img
-        status = cv.imwrite(
-            filename=os.path.join(self.tof_dir, "imgs", f"meas{self.sequence[-1]}.png"), 
-            img=np.array(data.meas, dtype=np.uint16).reshape(8, 8),
-        )
-        if not status:
-            rospy.logwarn(f"LogToF._callback: meas save status: {status}")
-        status = cv.imwrite(
-            filename=os.path.join(self.tof_dir, "imgs", f"stds{self.sequence[-1]}.png"), 
-            img=np.array(data.stds, dtype=np.uint16).reshape(8, 8),
-        )
-        if not status:
-            rospy.logwarn(f"LogToF._callback: stds save status: {status}")
+        self.measurements.append(data.meas)
         
         if self.publish_pointcloud:
-            meas = self._convertMeasurments(
+            xyz = self._meas2pointcloud(
                 meas=data.meas,
-            )
-            meas = self._transformMeasurments(
-                meas=meas,
-            )
-            xyz = self._depth2pointcloud(
-                depths=meas,
             )
             self._publishPointcloud(
                 xyz=xyz,
             )
         
         if self.print_elapse_time:
-            rospy.loginfo(f"LogRealSense._callback: elapse time: {(time.time()-start):.6f}s")
+            rospy.loginfo(f"LogRealSense._callback: elapse time: {(time.time()-start):.3f}s")
             
     def _convertMeasurments(
         self,
-        meas,
     ):
         """
-        Convert measurements from distance in mm to distance in m.
-        Invalid measurements are equal to 0.
-        Args:
-            meas: N measurements as tubles; tuble of floats (64)
+        Convert measurements from time (in us) to distance (in m).
+        Every 50ms correspond to 1cm and measurements over 50000us are invalid.
         Returns:
-            meas: measurments in meters; np.array of floats (8, 8)
+            meas: measurments in meters, np.array of floats
         """
-        meas = np.array(meas, dtype=float).reshape(8, 8)
-        
-        meas[meas == 0] = np.nan
-        return meas / 1000
+        meas = np.array(self.measurements, dtype=float)
+        meas[meas >= 50000] = np.nan
+        return meas / 5000
     
-    def _transformMeasurments(
+    def _meas2pointcloud(
         self,
-        meas,
-    ):
-        """
-        Convert measurements from distance in mm to distance in m.
-        Measurements equal to 0 are invalid.
-        Args:
-            meas: measurements not transform; np.array of floats (N, 8, 8)
-        Returns:
-            meas: measurments transformed; np.array of floats (N, 8, 8)
-        """
-        meas = meas[:, ::-1]
-        return meas.T
-    
-    def _depth2pointcloud(
-        self,
-        depths:np.array,
+        meas:float,
     ):
         """
         Converting depths into 3D point cloud.
         Assuming x points into the viewing direction and z upwards.
         Define dim1=z-axis and dim2=y-axis going from larger to smaller values.
         Args:
-            depths: depth measurements; np.array (8, 8)
+            meas: depth measurement; float
         Returns:
             xyz: point cloud; np.array (8, 8, 3)
         """
-        depths[depths>1.0] = 0
+        if meas >= 50000:
+            meas = 0
+        depth = meas / 5000
         
-        x = np.cos(self.angles_y) * np.cos(self.angles_z) * depths # (N, N)
-        y = np.sin(self.angles_y) * depths # (N, N)
-        z = np.sin(self.angles_z) * depths # (N, N)
+        x = np.cos(self.angles_y) * np.cos(self.angles_z) * depth # (N, N)
+        y = np.sin(self.angles_y) * depth # (N, N)
+        z = np.sin(self.angles_z) * depth # (N, N)
         xyz = np.concatenate((x[:,:,None], y[:,:,None], z[:,:,None]), axis=2)
         return xyz
     
@@ -212,17 +174,17 @@ class LogToF():
         """
         Publish pointcloud as Pointcloud2 ROS message.
         Args:
-            xyz: pointcloud; np.array (8, 8, 3)
+            xyz: pointcloud; np.array (N, N, 3)
         """
         xyz[xyz==np.NAN] = 0
         xyz = xyz.astype(dtype=np.float32)
         
-        rgb = self.color_floats["g"] * np.ones((xyz.shape[0], xyz.shape[1]), dtype=np.float32) # (H, W)
+        rgb = self.color_floats["b"] * np.ones((xyz.shape[0], xyz.shape[1]), dtype=np.float32) # (H, W)
         xyzrgb = np.concatenate((xyz, rgb[:,:,None]), axis=2)
         
         pointcloud_msg = PointCloud2()
         pointcloud_msg.header = Header()
-        pointcloud_msg.header.frame_id = "RGBD"
+        pointcloud_msg.header.frame_id = self.uss_id
 
         # Define the point fields (attributes)        
         pointcloud_msg.fields = [
@@ -246,8 +208,8 @@ class LogToF():
 
 
 def main():
-    log = LogToF(
-        tof_id=rospy.get_param("tof_id"),
+    log = LogUSS(
+        uss_id=rospy.get_param("uss_id"),
         data_dir=rospy.get_param("data_dir"),
         print_elapse_time=rospy.get_param("print_elapse_time"),
         publish_pointcloud=rospy.get_param("publish_pointcloud"),

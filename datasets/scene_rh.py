@@ -19,13 +19,12 @@ class SceneRH(SceneBase):
             rh: robot@home2 database; RobotAtHome object
             args: arguments; Args object
         """ 
+        self.rh = rh
+
         SceneBase.__init__(
             self, 
             args=args
         )
-        self.rh = rh
-
-        self._point_cloud = self._loadPointCloud()
 
     def getPointCloud(self):
         """

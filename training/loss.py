@@ -178,12 +178,40 @@ class Loss():
             depth_loss: depth loss value; tensor of float (1,)
         """ 
         # get minimum depth per image for batch 
-        imgs_depth_min, weights = self.sensors_dict['USS'].updateDepthMin(
-            results=results,
-            data=data,
-        ) # (num_test_imgs,), (num_test_imgs,)
-        depths_min = imgs_depth_min[data['img_idxs']] # (N,)
-        weights = weights[data['img_idxs']] # (N,)
+        depths_min = torch.zeros(
+            (data["rgb"].shape[0],), 
+            device=self.args.device, 
+            dtype=torch.float32,
+        ) # (N,)
+        weights = torch.zeros(
+            (data["rgb"].shape[0],), 
+            device=self.args.device, 
+            dtype=torch.float32,
+        ) # (N,)
+        for name, model in self.sensors_dict.items():
+            # ignore other sensors
+            if not "USS" in name:
+                continue
+
+            # mask batch to get only samples of particular sensor
+            sensor_mask = (data['stack_id'] == int(name[-1])) # (N,)
+
+            # modify sensor model function inputs
+            depths_min_temp, weights_temp = model.updateDepthMin(
+                data_depth_uss=data['depth']['USS'][sensor_mask],
+                results_depth=results['depth'][sensor_mask],
+                img_idxs=data['img_idxs'][sensor_mask],
+                pix_idxs=data['pix_idxs'][sensor_mask],
+            )
+            depths_min[sensor_mask] = depths_min_temp # (N,)
+            weights[sensor_mask] = weights_temp # (N,)
+
+        # imgs_depth_min, weights = self.sensors_dict['USS'].updateDepthMin(
+        #     results=results,
+        #     data=data,
+        # ) # (num_test_imgs,), (num_test_imgs,)
+        # depths_min = imgs_depth_min[data['img_idxs']] # (N,)
+        # weights = weights[data['img_idxs']] # (N,)
 
         # mask data
         uss_mask = ~torch.isnan(data['depth']['USS'])

@@ -142,10 +142,6 @@ class Trainer(TrainerPlot):
                 sampling_strategy=self.args.training.sampling_strategy,
                 origin="nerf",
             )
-
-            direction = data['direction']
-            pose = data['pose']
-
             
             with torch.autocast(device_type='cuda', dtype=torch.float16):
                 
@@ -164,12 +160,11 @@ class Trainer(TrainerPlot):
                         self.args.logger.error(f"grid_type {self.args.occ_grid.grid_type} not implemented")
                     
 
-                # get rays and render image
-                rays_o, rays_d = get_rays(direction, pose)
+                # render image
                 results = render(
                     self.model, 
-                    rays_o, 
-                    rays_d,
+                    data['rays_o'], 
+                    data['rays_d'],
                     exp_step_factor=self.args.exp_step_factor,
                 )
 

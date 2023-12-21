@@ -90,21 +90,12 @@ def main():
                 error_max=0.5,
             ),
             WatchInfo(
-                topic="/TOF2",
-                freq=13.0,
-                error_max=0.5,
-            ),
-            WatchInfo(
                 topic="/TOF3",
                 freq=13.0,
                 error_max=0.5,
             ),
             WatchInfo(
                 topic="/USS1",
-                freq=5.0,
-            ),
-            WatchInfo(
-                topic="/USS2",
                 freq=5.0,
             ),
             WatchInfo(
@@ -115,16 +106,10 @@ def main():
                 topic="/CAM1/aligned_depth_to_color/image_raw",
             ),
             WatchInfo(
-                topic="/CAM2/aligned_depth_to_color/image_raw",
-            ),
-            WatchInfo(
                 topic="/CAM3/aligned_depth_to_color/image_raw",
             ),
             WatchInfo(
                 topic="/CAM1/color/image_raw",
-            ),
-            WatchInfo(
-                topic="/CAM2/color/image_raw",
             ),
             WatchInfo(
                 topic="/CAM3/color/image_raw",
@@ -133,16 +118,10 @@ def main():
                 topic="/CAM1/color/camera_info",
             ),
             WatchInfo(
-                topic="/CAM2/color/camera_info",
-            ),
-            WatchInfo(
                 topic="/CAM3/color/camera_info",
             ),
             WatchInfo(
                 topic="/CAM1/color/metadata",
-            ),
-            WatchInfo(
-                topic="/CAM2/color/metadata",
             ),
             WatchInfo(
                 topic="/CAM3/color/metadata",

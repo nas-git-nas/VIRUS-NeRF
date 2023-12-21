@@ -48,7 +48,12 @@ class DatasetRH(DatasetBase):
 
         super().__init__(args=args, split=split)
 
-        # self.args = args
+        cam_ids = [
+            'RGBD_1',
+            'RGBD_2',
+            'RGBD_3',
+            'RGBD_4',
+        ]
 
         # load dataset
         self.rh = RobotAtHome(
@@ -63,41 +68,40 @@ class DatasetRH(DatasetBase):
         self.df = self._loadRHDataframe(split=split)
 
         # load scene
-        if scene is None:
+        self.scene = scene
+        if self.scene is None:
             self.scene = SceneRH(
                 rh=self.rh, 
                 args=self.args
-            )
-        else:
-            self.scene = scene
+            )            
 
-        img_wh, K, directions = self.readIntrinsics()
-        rays, depths, poses, times = self.readMeta(
+        img_wh, K_dict, directions_dict = self.readIntrinsics(
+            cam_ids=cam_ids,
+        )
+        poses, rgbs, depths_dict, sensors_dict, stack_ids, times = self.readMeta(
             df=self.df,
             img_wh=img_wh,
+            cam_ids=cam_ids,
+            directions_dict=directions_dict,
         )
 
-        if self.args.dataset.keep_pixels_in_angle_range != "all":
-            rays, directions, depths, img_wh = self.reduceImgHeight(
-                rays=rays,
-                directions=directions,
-                depths=depths,
-                img_wh=img_wh,
-                angle_min_max=self.args.dataset.keep_pixels_in_angle_range,
-            )
-
-        sensors_dict, depths_dict = self._createSensorModels(
-            depths=depths,
-            img_wh=img_wh,
-        )
+        # if self.args.dataset.keep_pixels_in_angle_range != "all":
+        #     rays, directions, depths, img_wh = self.reduceImgHeight(
+        #         rays=rays,
+        #         directions=directions,
+        #         depths=depths,
+        #         img_wh=img_wh,
+        #         angle_min_max=self.args.dataset.keep_pixels_in_angle_range,
+        #     )
 
         self.img_wh = img_wh
-        self.K = K
+        # self.Ks = Ks
         self.poses = poses
-        self.rays = rays
-        self.directions = directions
-        self.sensors_dict = sensors_dict
+        self.directions_dict = directions_dict
+        self.rgbs = rgbs
         self.depths_dict = depths_dict
+        self.sensors_dict = sensors_dict
+        self.stack_ids = stack_ids
         self.times = times
 
         # TODO: move to base class
@@ -110,29 +114,27 @@ class DatasetRH(DatasetBase):
             fct_getValidDepthMask=self.getValidDepthMask,
         )
 
-    def readIntrinsics(self):
+    def readIntrinsics(
+        self,
+        cam_ids,
+    ):
         """
         Read camera intrinsics from the dataset.
+        Args:
+            cam_ids: list of camera ids, list of strings
         Returns:
             img_wh: tuple of image width and height
-            K: camera intrinsic matrix; tensor of shape (3, 3)
-            directions: tensor of shape (W*H, 3) containing ray directions
+            K_dict: camera intrinsic matrix; dict { cam_id: tensor of shape (3, 3) }
+            directions_dict: ray directions; dict { cam_id: tensor of shape (H*W, 3) }
         """
         # get image hight and width
         id = self.df["id"].to_numpy()[0]
         [rgb_f, d_f] = self.rh.get_RGBD_files(id)
         img = mpimg.imread(rgb_f)
         h, w, _ = img.shape
+        img_wh = (w, h)
 
-        # get camera intrinsic matrix
-        # # f = 570.3422241210938 / 2 # focal length
-        # f = 363.83755595658255
-        # fh = #232.6282 # 232.632 if h/2
-        # fw = #220.7983 # 220.8053 if w/2
-        # K = np.array([[f, 0.0, w/2],
-        #               [0.0, f, h/2], 
-        #               [0.0, 0.0, 1.0]])
-        
+        # get camera intrinsics
         cx = 157.3245865
         cy = 120.0802295
         fx = 286.441384
@@ -144,56 +146,88 @@ class DatasetRH(DatasetBase):
         # get ray directions
         directions = get_ray_directions(h, w, K) # (H*W, 3) = (H, W, 3).flatten()
 
-        # # verify opening angle
-        # W_mid = w // 2
-        # H_mid = h // 2
-        # directions_np = directions.detach().cpu().numpy().reshape(h, w, 3)
-        # alpha_H = np.arccos(np.dot(directions_np[0,W_mid,:], directions_np[-1,W_mid,:]))
-        # alpha_W = np.arccos(np.dot(directions_np[H_mid,0,:], directions_np[H_mid,-1,:]))
-        # print(f"opening angle height = {np.rad2deg(alpha_H)}")
-        # print(f"opening angle width = {np.rad2deg(alpha_W)}")
+        # assume each camera has the same intrinsics
+        directions_dict = {}
+        K_dict = {}
+        for cam_id in cam_ids:
+            directions_dict[cam_id] = directions
+            K_dict[cam_id] = K
+        
+        # convert to tensors
+        for cam_id in cam_ids:
+            directions_dict[cam_id] = torch.tensor(directions_dict[cam_id], dtype=torch.float32, requires_grad=False)
+            K_dict[cam_id] = torch.tensor(K_dict[cam_id], dtype=torch.float32, requires_grad=False)
 
-        return (w, h), torch.FloatTensor(K), directions.requires_grad_(requires_grad=False)
+        return img_wh, K_dict, directions_dict
 
     def readMeta(
         self, 
         df:pd.DataFrame,
         img_wh:tuple,
+        cam_ids:list,
+        directions_dict:dict,
     ):
         """
         Read meta data from the dataset.
         Args:
             df: robot@home2 dataframe, pandas df
             img_wh: image width and height; tuple of ints
+            cam_ids: list of camera ids, list of strings
+            directions_dict: ray directions; dict { cam_id: tensor of shape (H*W, 3) }
         Returns:
-            rays: tensor of shape (N_images, H*W, 3) containing RGB images
-            depths: tensor of shape (N_images, H*W) containing depth images
             poses: tensor of shape (N_images, 3, 4) containing camera poses
+            rgbs: tensor of shape (N_images, H*W, 3) containing RGB images
+            depths: tensor of shape (N_images, H*W) containing depth images
+            stack_ids: id of the stack; numpy array (N_images,)
             times: timestamps in seconds starting at 0; tensor (N_images,)
         """
         df = df.copy(deep=True)
 
+        # determine stack id: stack identity of each sample
+        stack_ids = torch.full((df.shape[0],), -1, dtype=int)
+        for cam_id in cam_ids:
+            sensor_id = self.rh.name2id(cam_id, "s")
+            mask = np.array(df["sensor_id"] == sensor_id, dtype=bool)
+            stack_ids[mask] = int(cam_id[-1])
+
+        # read camera poses
+        poses = self._readPoses(
+            df=df,
+        )
+        poses = self._convertPoses(
+            poses=poses,
+        )
+
         # read RGBD images
-        rays, depths = self._readRGBD(
+        rgbs, depths = self._readImgs(
             df=df,
             img_wh=img_wh,
         )
-
-        # read camera poses
-        poses = self._readPose(
-            df=df,
+        rgbs = self._convertColorImgs(
+            rgbs=rgbs,
+        )
+        depths = self._convertDepthImgs(
+            depths=depths,
+            directions_dict=directions_dict,
+            stack_ids=stack_ids,
         )
 
-        # get timestamps and convert to seconds starting at 0
-        times = df["timestamp"].to_numpy() / 10000000.0
-        times = times - times[0]
+        # read timestamps
+        times = self._readTimestamp(
+            df=df,
+        )
+        times = self._convertTimestamps(
+            times=times,
+        )
 
-        # convert numpy arrays to tensors
-        rays = torch.tensor(rays, dtype=torch.float32, requires_grad=False)
-        poses = torch.tensor(poses, dtype=torch.float32, requires_grad=False)
-        times = torch.tensor(times, dtype=torch.float32, requires_grad=False)
+        # create sensor models
+        sensors_dict, depths_dict = self._createSensorModels(
+            depths=depths,
+            img_wh=img_wh,
+            cam_ids=cam_ids,
+        )
 
-        return rays, depths, poses, times
+        return poses, rgbs, depths_dict, sensors_dict, stack_ids, times
     
     def getIdxFromSensorName(self, df, sensor_name):
         """
@@ -246,9 +280,49 @@ class DatasetRH(DatasetBase):
 
         return df
     
-    def _readRGBD(
+    def _readPoses(
+        self,
+        df:pd.DataFrame,
+    ):
+        """
+        Read camera poses from the dataset.
+        Args:
+            df: robot@home dataframe; pandas.DataFrame
+        Returns:
+            poses: camera poses; array of shape (N_images, 3, 4)
+        """
+        # get positions
+        sensor_pose_x = df["sensor_pose_x"].to_numpy()
+        sensor_pose_y = df["sensor_pose_y"].to_numpy()
+        sensor_pose_z = df["sensor_pose_z"].to_numpy()
+        p_cam2w = np.stack((sensor_pose_x, sensor_pose_y, sensor_pose_z), axis=1)
+
+        # get orientations
+        sensor_pose_yaw = df["sensor_pose_yaw"].to_numpy()
+        sensor_pose_yaw -= np.deg2rad(90)
+        sensor_pose_pitch = df["sensor_pose_pitch"].to_numpy()
+        sensor_pose_roll = df["sensor_pose_roll"].to_numpy()
+
+        # create rotation matrix
+        R_yaw = np.stack((np.cos(sensor_pose_yaw), -np.sin(sensor_pose_yaw), np.zeros_like(sensor_pose_yaw),
+                              np.sin(sensor_pose_yaw), np.cos(sensor_pose_yaw), np.zeros_like(sensor_pose_yaw),
+                              np.zeros_like(sensor_pose_yaw), np.zeros_like(sensor_pose_yaw), np.ones_like(sensor_pose_yaw)), axis=1).reshape(-1, 3, 3)
+        R_pitch = np.stack((np.cos(sensor_pose_pitch), np.zeros_like(sensor_pose_pitch), np.sin(sensor_pose_pitch),
+                                np.zeros_like(sensor_pose_pitch), np.ones_like(sensor_pose_pitch), np.zeros_like(sensor_pose_pitch),
+                                -np.sin(sensor_pose_pitch), np.zeros_like(sensor_pose_pitch), np.cos(sensor_pose_pitch)), axis=1).reshape(-1, 3, 3)
+        R_roll = np.stack((np.ones_like(sensor_pose_roll), np.zeros_like(sensor_pose_roll), np.zeros_like(sensor_pose_roll),
+                               np.zeros_like(sensor_pose_roll), np.cos(sensor_pose_roll), -np.sin(sensor_pose_roll),
+                               np.zeros_like(sensor_pose_roll), np.sin(sensor_pose_roll), np.cos(sensor_pose_roll)), axis=1).reshape(-1, 3, 3)
+        R_cam2w = np.matmul(R_yaw, np.matmul(R_pitch, R_roll))
+
+        # create pose matrix
+        poses = np.concatenate((R_cam2w, p_cam2w[:, :, np.newaxis]), axis=2) # (N_images, 3, 4)
+        return poses
+    
+    def _readImgs(
         self, 
-        df:pd.DataFrame, 
+        df:pd
+        .DataFrame, 
         img_wh:tuple,
     ):
         """
@@ -288,92 +362,230 @@ class DatasetRH(DatasetBase):
 
         return rays, depths
     
-    def _readPose(
+    def _readTimestamp(
         self,
-        df:pd.DataFrame,
+        df,
     ):
         """
-        Read camera poses from the dataset.
+        Read timestamps from the dataset.
         Args:
             df: robot@home dataframe; pandas.DataFrame
         Returns:
-            poses: camera poses; array of shape (N_images, 3, 4)
+            timestamps: timestamps; numpy array (N_images,)
         """
-        # get positions
-        sensor_pose_x = df["sensor_pose_x"].to_numpy()
-        sensor_pose_y = df["sensor_pose_y"].to_numpy()
-        sensor_pose_z = df["sensor_pose_z"].to_numpy()
-        p_cam2w = np.stack((sensor_pose_x, sensor_pose_y, sensor_pose_z), axis=1)
-
+        return df["timestamp"].to_numpy()
+    
+    def _convertPoses(
+        self,
+        poses:dict,
+    ):
+        """
+        Convert poses to cube coordinates.
+        Args:
+            poses: camera poses; array of shape (N_images, 3, 4)
+        Returns:
+            poses: camera poses in cube coordinates; array of shape (N_images, 3, 4)
+        """
         # convert positions from world to cube coordinate system
-        p_cam2w = self.scene.w2c(pos=p_cam2w, copy=False)
-
-        # get orientations
-        sensor_pose_yaw = df["sensor_pose_yaw"].to_numpy()
-        sensor_pose_yaw -= np.deg2rad(90)
-        sensor_pose_pitch = df["sensor_pose_pitch"].to_numpy()
-        sensor_pose_roll = df["sensor_pose_roll"].to_numpy()
-
-        # create rotation matrix
-        R_yaw = np.stack((np.cos(sensor_pose_yaw), -np.sin(sensor_pose_yaw), np.zeros_like(sensor_pose_yaw),
-                              np.sin(sensor_pose_yaw), np.cos(sensor_pose_yaw), np.zeros_like(sensor_pose_yaw),
-                              np.zeros_like(sensor_pose_yaw), np.zeros_like(sensor_pose_yaw), np.ones_like(sensor_pose_yaw)), axis=1).reshape(-1, 3, 3)
-        R_pitch = np.stack((np.cos(sensor_pose_pitch), np.zeros_like(sensor_pose_pitch), np.sin(sensor_pose_pitch),
-                                np.zeros_like(sensor_pose_pitch), np.ones_like(sensor_pose_pitch), np.zeros_like(sensor_pose_pitch),
-                                -np.sin(sensor_pose_pitch), np.zeros_like(sensor_pose_pitch), np.cos(sensor_pose_pitch)), axis=1).reshape(-1, 3, 3)
-        R_roll = np.stack((np.ones_like(sensor_pose_roll), np.zeros_like(sensor_pose_roll), np.zeros_like(sensor_pose_roll),
-                               np.zeros_like(sensor_pose_roll), np.cos(sensor_pose_roll), -np.sin(sensor_pose_roll),
-                               np.zeros_like(sensor_pose_roll), np.sin(sensor_pose_roll), np.cos(sensor_pose_roll)), axis=1).reshape(-1, 3, 3)
-        R_cam2w = np.matmul(R_yaw, np.matmul(R_pitch, R_roll))
-
-        # create pose matrix
-        poses = np.concatenate((R_cam2w, p_cam2w[:, :, np.newaxis]), axis=2) # (N_images, 3, 4)
+        xyz = poses[:,:,3] # (N, 3)
+        xyz = self.scene.w2c(pos=xyz, copy=False) # (N, 3)
+        poses[:,:,3] = xyz # (N, 3, 4)
+        
+        # convert array to tensor
+        poses = torch.tensor(
+            data=poses,
+            dtype=torch.float32,
+            requires_grad=False,
+            device=self.args.device,
+        )
         return poses
+    
+    def _convertColorImgs(
+        self,
+        rgbs:np.ndarray,
+    ):
+        """
+        Convert color images to tensors.
+        Args:
+            rgbs: color images; array of shape (N_images, H*W, 3)
+        Returns:
+            rgbs: color images; tensor of shape (N_images, H*W, 3)
+        """
+        return torch.tensor(rgbs, dtype=torch.float32, requires_grad=False, device=self.args.device)
+
+    
+    def _convertDepthImgs(
+        self,
+        depths:np.ndarray,
+        directions_dict:np.ndarray,
+        stack_ids:np.ndarray,
+    ):
+        """
+        Convert depth images to cube coordinates.
+        Args:
+            depths: depth images; array of shape (N_images, H*W)
+            directions_dict: ray directions; dict { cam_id: tensor of shape (H*W, 3) }
+            stack_ids: id of the stack; int
+        Returns:
+            depths: depth images; tensor of shape (N_images, H*W)
+        """
+        # convert depth to meters
+        depths = 5.0 * depths / 128.0 # (N, H*W)
+
+        # convert depth from depth-image to depth-scan
+        depths_scan = np.zeros_like(depths) # (N, H*W)
+        for cam_id, directions in directions_dict.items():
+            sensor_mask = (int(cam_id[-1]) == stack_ids) # (N,)
+
+            rs = depths / np.sqrt(1 - directions[:,0]**2 - directions[:,1]**2)[None, :] # (N, H*W)
+            depths_scan[sensor_mask,:] = rs[sensor_mask,:] # (N, H*W)
+        depths = depths_scan # (N, H*W)
+
+        # set invalid depth values to nan
+        depths[depths==0] = np.nan # (N, H*W)
+        
+        # convert depth to cube coordinate system [-0.5, 0.5]
+        depths = self.scene.w2c(depths.flatten(), only_scale=True).reshape(depths.shape) # (N, H*W)
+        
+        # convert to tensor
+        depths = torch.tensor(depths, dtype=torch.float32, requires_grad=False, device=self.args.device)
+        return depths
+    
+    def _convertTimestamps(
+        self,
+        times:np.ndarray,
+    ):
+        """
+        Convert timestamps to seconds starting at 0.
+        Args:
+            times: timestamps; numpy array (N_images,)
+        Returns:
+            times: timestamps in seconds starting at 0; tensor (N_images,)
+        """
+        times = times / 10000000.0
+        times = times - times[0]
+        return torch.tensor(times, dtype=torch.float32, requires_grad=False, device=self.args.device)
         
     def _createSensorModels(
             self, 
             depths:torch.tensor,
             img_wh:tuple,
+            cam_ids:list,
     ):
         """
         Create sensor models for each sensor and convert depths respectively.
         Args:
-            depths: depths of all images; tensor of shape (N_images, H*W)
+            depths: depths of all images; tensor of shape (N, H*W)
             img_wh: image width and height; tuple of ints
+            cam_ids: list of camera ids, list of strings
         Returns:
             sensors_dict: dictionary containing sensor models
             depths_dict: dictionary containing converted depths
         """
+        depths = depths.detach().clone().numpy() # (N, H*W)
+
         sensors_dict = {} 
-        for sensor_name in self.args.training.sensors:
-            if sensor_name == "RGBD":
-                sensors_dict["RGBD"] = RGBDModel(
-                    args=self.args, 
-                    img_wh=img_wh
-                )
-            elif sensor_name == "ToF":
-                sensors_dict["ToF"] = ToFModel(
-                    args=self.args, 
-                    img_wh=img_wh
-                )
-            elif sensor_name == "USS":
-                sensors_dict["USS"] = USSModel(
-                    args=self.args, 
-                    img_wh=img_wh,
-                    num_imgs=self.df.shape[0],
-                )
-            else:
-                print(f"ERROR: robot_at_home.__init__: sensor model {sensor_name} not implemented")
+        for cam_id in cam_ids:
+            for sensor_name in self.args.training.sensors:
+                if sensor_name == "RGBD":
+                    sensors_dict["RGBD"+str(cam_id[-1])] = RGBDModel(
+                        args=self.args, 
+                        img_wh=img_wh
+                    )
+                elif sensor_name == "ToF":
+                    sensors_dict["ToF"+str(cam_id[-1])] = ToFModel(
+                        args=self.args, 
+                        img_wh=img_wh
+                    )
+                elif sensor_name == "USS":
+                    sensors_dict["USS"+str(cam_id[-1])] = USSModel(
+                        args=self.args, 
+                        img_wh=img_wh,
+                        num_imgs=self.df.shape[0],
+                    )
+                else:
+                    self.args.logger.error(f"ERROR: robot_at_home.__init__: sensor model {sensor_name} not implemented")
 
         depths_dict = {}
-        for sensor_name, sensor_model in sensors_dict.items():
+        for sensor_name in self.args.training.sensors:
+            # convert depth with one sensor model
+            depths_temp = sensors_dict[sensor_name+str(1)].convertDepth(
+                depths=depths,
+                format="img",
+            ) # (N, H*W)
+
             depths_dict[sensor_name] = torch.tensor(
-                data=sensor_model.convertDepth(depths),
+                data=depths_temp,
                 dtype=torch.float32,
                 requires_grad=False,
             )
 
         return sensors_dict, depths_dict
+    
+    def splitDataset(self, df, split_ratio, split_description_path, split_description_name):
+        """
+        Split the dataset into train, val and test sets.
+        Args:
+            df: dataframe containing the dataset
+            split_ratio: dictionary containing the split ratio for each split
+            split_description_path: path to the directory containing the split description; str
+            split_description_name: filename of split description; str
+        Returns:
+            df: dataframe containing the dataset with a new column 'split'
+        """
+        df = df.copy(deep=True) 
+
+        # load split description if it exists already
+        df_description = None
+        if os.path.exists(os.path.join(split_description_path, 'split_description.csv')):    
+            df_description = pd.read_csv(os.path.join(split_description_path, 'split_description.csv'), 
+                                         index_col=0, dtype={'info':str,'train':float, 'val':float, 'test':float})
+        
+        # load split if it exists already
+        if os.path.exists(os.path.join(split_description_path, split_description_name)):
+            # split ratio must be the same as in description (last split)
+            if df_description.loc[split_description_name, 'train']==split_ratio['train'] \
+                and df_description.loc[split_description_name, 'val']==split_ratio['val'] \
+                and df_description.loc[split_description_name, 'test']==split_ratio['test']:
+
+                # load split and merge with df
+                df_split = pd.read_csv(os.path.join(split_description_path, split_description_name))
+                df = pd.merge(df, df_split, on='id', how='left')
+                return df
+
+        
+        
+        # get indices for each sensor
+        split_idxs = {"train": np.empty(0, dtype=int), "val": np.empty(0, dtype=int), "test": np.empty(0, dtype=int)}
+        for id in df["sensor_id"].unique():
+            id_idxs = df.index[df["sensor_id"] == id].to_numpy()
+   
+            # get indices for each split
+            partitions = ["train" for _ in range(int(split_ratio['train']*10))] \
+                        + ["val" for _ in range(int(split_ratio['val']*10))] \
+                        + ["test" for _ in range(int(split_ratio['test']*10))]
+            for offset, part in enumerate(partitions):
+                split_idxs[part] = np.concatenate((split_idxs[part], id_idxs[offset::10]))
+
+        # assign split
+        df.insert(1, 'split', None) # create new column for split
+        df.loc[split_idxs["train"], 'split'] = 'train'
+        df.loc[split_idxs["val"], 'split'] = 'val'
+        df.loc[split_idxs["test"], 'split'] = 'test'
+
+        # save split
+        df_split = df[['id', 'split', 'sensor_name']].copy(deep=True)
+        df_split.to_csv(os.path.join(split_description_path, split_description_name), index=False)
+
+        # save split description
+        if df_description is None:
+            df_description = pd.DataFrame(columns=['info','train', 'val', 'test'])
+            df_description.loc["info"] = ["This file contains the split ratios for each split file in the same directory. " \
+                                          + "The Ratios must be a multiple of 0.1 and sum up to 1.0 to ensure correct splitting.", "", "", ""]
+        df_description.loc[split_description_name] = ["-", split_ratio['train'], split_ratio['val'], split_ratio['test']]
+        df_description.to_csv(os.path.join(split_description_path, 'split_description.csv'), index=True)
+
+        return df
     
 
     

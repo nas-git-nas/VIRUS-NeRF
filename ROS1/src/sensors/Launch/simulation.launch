@@ -1,0 +1,131 @@
+<launch>
+
+    <arg 
+        name="data_dir" 
+        default="/home/spadmin/catkin_ws_ngp/data/test/"/>
+    <arg 
+        name="bag_name" 
+        default="test_sync.bag"/>
+
+    <include 
+        file="$(find sensors)/Launch/visualization.launch">
+    </include>   
+
+    <include 
+        file="$(find kiss_icp)/launch/odometry.launch">
+    </include>   
+
+    <group ns="/Filter_rslidar">
+        <param 
+            name="sub_topic" 
+            type="str" 
+            value="/rslidar_points" />
+        <param 
+            name="pub_topic" 
+            type="str" 
+            value="/rslidar_filtered" />
+        <rosparam 
+            param="lims_z" >
+            [-0.4, 1.2]
+        </rosparam>
+        <rosparam 
+            param="lims_p" >
+            [-120, 60]
+        </rosparam>
+        <node 
+            pkg="sensors" 
+            type="pcl_filter_publisher_node.py" 
+            name="pcl_filter_publisher_node" 
+            output="screen" />
+    </group>
+
+    <group ns="/TOF1">
+        <param 
+            name="sensor_id" 
+            type="str" 
+            value="TOF1" />
+        <param 
+            name="pub_frame_id" 
+            type="str" 
+            value="map" />
+        <param 
+            name="data_dir" 
+            type="str" 
+            value="$(arg data_dir)" />
+        <node 
+            pkg="sensors" 
+            type="pcl_meas_publisher_node.py" 
+            name="pcl_meas_publisher_node" 
+            output="screen" />
+    </group>
+
+    <group ns="/USS1">
+        <param 
+            name="sensor_id" 
+            type="str" 
+            value="USS1" />
+        <param 
+            name="pub_frame_id" 
+            type="str" 
+            value="map" />
+        <param 
+            name="data_dir" 
+            type="str" 
+            value="$(arg data_dir)" />
+        <node 
+            pkg="sensors" 
+            type="pcl_meas_publisher_node.py" 
+            name="pcl_meas_publisher_node" 
+            output="screen" />
+    </group>
+
+    <group ns="/TOF3">
+        <param 
+            name="sensor_id" 
+            type="str" 
+            value="TOF3" />
+        <param 
+            name="pub_frame_id" 
+            type="str" 
+            value="map" />
+        <param 
+            name="data_dir" 
+            type="str" 
+            value="$(arg data_dir)" />
+        <node 
+            pkg="sensors" 
+            type="pcl_meas_publisher_node.py" 
+            name="pcl_meas_publisher_node" 
+            output="screen" />
+    </group>
+
+    <group ns="/USS3">
+        <param 
+            name="sensor_id" 
+            type="str" 
+            value="USS3" />
+        <param 
+            name="pub_frame_id" 
+            type="str" 
+            value="map" />
+        <param 
+            name="data_dir" 
+            type="str" 
+            value="$(arg data_dir)" />
+        <node 
+            pkg="sensors" 
+            type="pcl_meas_publisher_node.py" 
+            name="pcl_meas_publisher_node" 
+            output="screen" />
+    </group>
+
+    <group ns="/Rosbag">
+        <node 
+            pkg="rosbag" 
+            type="play" 
+            name="player" 
+            output="screen" 
+            args="--clock --delay=4 $(arg data_dir)$(arg bag_name)"/>
+    </group>
+
+</launch>

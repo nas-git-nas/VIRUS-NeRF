@@ -87,18 +87,30 @@ class ToFModel(SensorModel):
         ) # (H*W,)
         
 
-    def convertDepth(self, depths):
+    def convertDepth(
+            self, 
+            depths:np.array,
+            format:str="img",
+        ):
         """
         Convert depth img using ToF sensor model. Set all unknown depths to nan.
         Args:
-            depths: depth img; array of shape (N, H*W)
+            depths: depth img
+            format: depths format; str
+                    "img": depth per camera pixel; depths array of shape (N, H*W)
+                    "sensor": depth per ToF pixel; depths array of shape (N, 8*8)
         Returns:
             depths: depth img converted to ToF sensor array; array of shape (N, H*W)
         """
         depths = np.copy(depths) # (N, H*W)
+        depths_out = np.full((depths.shape[0], self.H*self.W), np.nan) # (N, H*W)
 
-        depths_out = np.full_like(depths, np.nan) # (N, H*W)
-        depths_out[:, self.mask] = depths[:,self.error_mask]  
+        if format == "img":
+            depths_out[:, self.mask] = depths[:,self.error_mask] 
+        elif format == "sensor":
+            depths_out[:, self.mask] = depths
+        else:
+            self.args.logger.error(f"Unknown depth format: {format}")
 
         if (self.args.tof.sensor_random_error == 0.0) or (self.args.tof.sensor_random_error is None):
             return depths_out
@@ -189,71 +201,75 @@ class USSModel(SensorModel):
         self.mask = np.sqrt(m1**2 + m2**2) < r # (H, W)
         self.mask = self.mask.flatten() # (H*W,)  
 
-        self.imgs_min_depth = torch.ones((num_imgs), dtype=torch.float32).to(self.args.device) * np.inf
-        self.imgs_min_idx = torch.ones((num_imgs), dtype=torch.int32).to(self.args.device) * -1
+        self.imgs_min_depth = np.inf * torch.ones((num_imgs), dtype=torch.float32).to(self.args.device)
+        self.imgs_min_idx = -1 * torch.ones((num_imgs), dtype=torch.int32).to(self.args.device)
         self.imgs_min_counts = torch.zeros((num_imgs), dtype=torch.int32).to(self.args.device)
 
-    def convertDepth(self, depths:np.array):
+    def convertDepth(
+        self, 
+        depths:np.array,
+        format:str="img",
+    ):
         """
-        Down sample depths from depth per pixel to depth per uss/img.
+        Convert depth img using ToF sensor model. Set all unknown depths to nan.
         Args:
-            depths: depths per pixel; array of shape (N, H*W)
+            depths: depth img
+            format: depths format; str
+                    "img": depth per camera pixel; depths array of shape (N, H*W)
+                    "sensor": depth per ToF pixel; depths array of shape (N, 8*8)
         Returns:
-            depths_out: depths per uss; array of shape (N, H*W)
+            depths_out: depth img converted to ToF sensor array; array of shape (N, H*W)
         """
         depths = np.copy(depths) # (N, H*W)
-
-        d_min = np.nanmin(depths[:, self.mask], axis=1) # (N,)
-
         depths_out = np.full_like(depths, np.nan) # (N, H*W)
-        depths_out[:, self.mask] = d_min[:,None]  
 
-        # # get closest pixels inside mask and the corresponding indices
-        # depths_m = depths[:, self.mask] # (N, M)
-        # d_min = np.nanmin(depths_m, axis=1) # (N,)
-        # d_idxs = np.where(depths_m==d_min[:,None]) # (N,), (N,)
+        if format == "img":
+            d_min = np.nanmin(depths[:, self.mask], axis=1) # (N,)
+        elif format == "sensor":
+            d_min = depths # (N,)
+        else:
+            self.args.logger.error(f"Unknown depth format: {format}")
 
-        # depths_m_out = np.full_like(depths_m, np.nan) # (N, M)
-        # depths_m_out[d_idxs[0], d_idxs[1]] = depths_m[d_idxs[0], d_idxs[1]]
-
-        # depths_out = np.full_like(depths, np.nan) # (N, H*W)
-        # depths_out[:, self.mask] = depths_m_out
-
+        depths_out[:, self.mask] = d_min[:,None] # (N, H*W)
         return depths_out
     
 
     def updateDepthMin(
             self, 
-            results:dict, 
-            data:dict,
+            data_depth_uss:torch.Tensor,
+            results_depth:torch.Tensor,
+            img_idxs:torch.Tensor,
+            pix_idxs:torch.Tensor,
     ):
         """
         Update the minimum depth of each image and the corresponding pixel index.
         Args:
-            results: results of inference; dict
-            data: data; dict
+            data_depth_uss: depth per pixel; tensor of shape (N_batch,)
+            results_depth: depth per pixel; tensor of shape (N_batch,)
+            img_idxs: image indices; tensor of shape (N_batch,)
+            pix_idxs: pixel indices; tensor of shape (N_batch,)
         Returns:
-            imgs_depth_min: minimum depth per image; tensor of shape (num_imgs,)
-            weights: weights for loss; tensor of shape (num_imgs,)
+            imgs_depth_min: minimum depth per batch; tensor of shape (N_batch,)
+            weights: weights for loss per batch; tensor of shape (N_batch,)
         """
         # mask data
-        uss_mask = ~torch.isnan(data['depth']['USS']) # (N,)
-        img_idxs = data['img_idxs'][uss_mask] # (n,)
-        pix_idxs = data['pix_idxs'][uss_mask] # (n,)
-        depths = results['depth'][uss_mask] # (n,)
+        uss_mask = ~torch.isnan(data_depth_uss) # (N,)
+        img_idxs_n = img_idxs[uss_mask] # (n,)
+        pix_idxs_n = pix_idxs[uss_mask] # (n,)
+        depths = results_depth[uss_mask] # (n,)
 
-        self.imgs_min_counts[img_idxs] += 1
+        self.imgs_min_counts[img_idxs_n] += 1
         # weights = torch.exp(-self.imgs_min_counts/1000).to(self.args.device)
         weights = 1 - 1/(1 + self.imgs_min_counts/100)
 
         # # increase imgs_min_depth to avoid stagnation
-        # self.imgs_min_depth[img_idxs] *= 1 + 1/(1 + self.imgs_min_counts[img_idxs])
+        # self.imgs_min_depth[img_idxs_n] *= 1 + 1/(1 + self.imgs_min_counts[img_idxs_n])
         
         # determine minimum depth per image of batch
-        min_depth_batch = torch.ones((len(self.imgs_min_depth), len(img_idxs)), dtype=torch.float).to(self.args.device) * np.inf # (num_imgs, n)
-        min_depth_batch[img_idxs, np.arange(len(img_idxs))] = depths
+        min_depth_batch = torch.ones((len(self.imgs_min_depth), len(img_idxs_n)), dtype=torch.float).to(self.args.device) * np.inf # (num_imgs, n)
+        min_depth_batch[img_idxs_n, np.arange(len(img_idxs_n))] = depths
         min_idx_batch = torch.argmin(min_depth_batch, dim=1) # (num_imgs,)
-        min_idx_pix = pix_idxs[min_idx_batch] # (num_imgs,)
+        min_idx_pix = pix_idxs_n[min_idx_batch] # (num_imgs,)
         min_depth_batch = min_depth_batch[torch.arange(len(min_idx_batch)), min_idx_batch] # (num_imgs,)
 
         # update minimum depth and minimum indices
@@ -271,9 +287,13 @@ class USSModel(SensorModel):
                 other=min_idx_pix
             )
         ) # (num_imgs,)
-        self.imgs_min_depth = min_depth_temp     
+        self.imgs_min_depth = min_depth_temp # (N_img,)
 
-        return self.imgs_min_depth.clone().detach(), weights
+        # return minimum depth and weights of batch
+        depths_min = self.imgs_min_depth[img_idxs].clone().detach() # (N,)
+        weights = weights[img_idxs].clone().detach() # (N,)
+
+        return depths_min, weights
 
 
 
