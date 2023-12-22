@@ -503,21 +503,19 @@ class DatasetETHZ(DatasetBase):
         stack_ids = np.zeros((0))
         for cam_id in cam_ids:
             depth_path = os.path.join(data_dir, 'measurements/'+cam_id+'_aligned_depth_to_color_image_raw')
-            depth_files = np.array(['img'+str(i)+'.png' for i in range(split_mask.shape[0])])
+            depth_files = np.array(['img'+str(i)+'.npy' for i in range(split_mask.shape[0])])
             depth_files = depth_files[split_mask]
 
             depths_temp = np.zeros((len(depth_files), H*W))
             for i, f in enumerate(depth_files):
-                depth_file = os.path.join(depth_path, f)
-                depth = cv.imread(depth_file, cv.IMREAD_UNCHANGED)
-                depths_temp[i] = depth.flatten() # (H*W), keep only one color channel
+                # depth_file = os.path.join(depth_path, f)
+                # depth = cv.imread(depth_file, cv.IMREAD_UNCHANGED)
+                # depths_temp[i] = depth.flatten() # (H*W)
 
-
-                print(f"depth img max: {np.max(depth)}, min: {np.min(depth)}")
-                # add color scale
-                plt.imshow(depth, cmap='jet')
-                plt.colorbar()
-                plt.show()
+                depth = np.load(
+                    file=os.path.join(depth_path, f),
+                )
+                depths_temp[i] = depth.flatten() # (H*W)
 
             depths = np.concatenate((depths, depths_temp), axis=0) # (N, H*W)
             stack_ids = np.concatenate((stack_ids, np.ones((depths_temp.shape[0]))*int(cam_id[-1])), axis=0) # (N,)
@@ -663,12 +661,19 @@ class DatasetETHZ(DatasetBase):
 
             sensor_mask = (int(cam_id[-1]) == stack_ids) # (N,)
 
-            rs = depths / np.sqrt(1 - directions[:,0]**2 - directions[:,1]**2)[None, :] # (N, H*W)
-            depths_scan[sensor_mask,:] = rs[sensor_mask,:] # (N, H*W)
+            depths_temp = depths / directions[:,2].reshape(1,-1) # (N, H*W)
+            depths_scan[sensor_mask,:] = depths_temp[sensor_mask,:] # (N, H*W)
         depths = depths_scan # (N, H*W)
 
         # set invalid depth values to nan
         depths[depths==0.0] = np.nan # (N, H*W)
+
+        # for i in range(depths.shape[0]):
+        #     print(f"depth img max: {np.nanmax(depths[i])}, min: {np.nanmin(depths[i])}")
+        #     # add color scale
+        #     plt.imshow(depths[i].reshape(img_wh[1], img_wh[0]), cmap='jet', vmin=0.0, vmax=6.0)
+        #     plt.colorbar()
+        #     plt.show()
         
         # convert depth to cube coordinate system [-0.5, 0.5]
         depths = self.scene.w2c(depths.flatten(), only_scale=True).reshape(depths.shape) # (N, H*W)
