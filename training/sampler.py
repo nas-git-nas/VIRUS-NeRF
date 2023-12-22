@@ -30,11 +30,12 @@ class Sampler():
 
         self.rgn = np.random.default_rng(seed=seed)
 
-        pixels = np.arange(self.img_wh[1]) - self.img_wh[1] / 2
-        angles = pixels * self.args.rgbd.angle_of_view[1] / self.img_wh[1]
-        weights = np.exp(- np.abs(angles) / 10)
-        weights = np.repeat(weights.reshape(-1, 1), self.img_wh[0], axis=1)
-        self.weights = (weights / np.sum(weights)).flatten()
+        if self.args.training.sampling_strategy["rays"] == "weighted":
+            pixels = np.arange(self.img_wh[1]) - self.img_wh[1] / 2
+            angles = pixels * self.args.rgbd.angle_of_view[1] / self.img_wh[1]
+            weights = np.exp(- np.abs(angles) / 10)
+            weights = np.repeat(weights.reshape(-1, 1), self.img_wh[0], axis=1)
+            self.weights = (weights / np.sum(weights)).flatten()
 
         # self.sample_count = {
         #     "nerf": torch.zeros(self.dataset_len, img_wh[0]*img_wh[1], dtype=torch.uint8, device=self.args.device),
