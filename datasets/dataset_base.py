@@ -31,9 +31,11 @@ class DatasetBase(Dataset):
     
     def __call__(
         self, 
-        batch_size:int,
-        sampling_strategy:dict,
-        origin:str,
+        batch_size:int=None,
+        sampling_strategy:dict=None,
+        origin:str=None,
+        img_idxs:torch.Tensor=None,
+        pix_idxs:torch.Tensor=None,
     ):
         """
         Get some data from the dataset.
@@ -43,16 +45,19 @@ class DatasetBase(Dataset):
             origin: sampling origin; str
                     'nerf': sample for nerf
                     'occ': sample for occupancy grid
+            img_idxs: indices of images; tensor of int64 (batch_size,)
+            pix_idxs: indices of pixels; tensor of int64 (batch_size,)
         Returns:
             samples: dictionary containing the sampled data; dict
         """
-        # sample image and pixel indices
-        img_idxs, pix_idxs, count = self.sampler(
-            batch_size=batch_size,
-            sampling_strategy=sampling_strategy,
-            stack_ids=self.stack_ids,
-            origin=origin,
-        )
+        # sample image and pixel indices if not provided
+        if img_idxs is None or pix_idxs is None:
+            img_idxs, pix_idxs, count = self.sampler(
+                batch_size=batch_size,
+                sampling_strategy=sampling_strategy,
+                stack_ids=self.stack_ids,
+                origin=origin,
+            )
 
         # calculate ray origins and directions
         rays_o, rays_d = self._calcRayPoses(
