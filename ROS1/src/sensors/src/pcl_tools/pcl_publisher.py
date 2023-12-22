@@ -3,6 +3,7 @@ import rospy
 from sensor_msgs.msg import Image, PointCloud2, PointField
 from std_msgs.msg import Header
 from sensors.msg import USS, TOF
+from cv_bridge import CvBridge
 import numpy as np
 import struct
 from abc import ABC, abstractmethod
@@ -118,10 +119,15 @@ class PCLMeasPublisher(PCLPublisher):
             msg_type = Image
         else:
             rospy.logerr(f"PCLPublisher.subscribe: Unknown sensor_id: {self.sensor_id}")
+            
+        sub_topic = "/" + self.sensor_id
+        if "CAM" in self.sensor_id:
+            sub_topic += "/aligned_depth_to_color/image_raw"
+            self.cv_bridge = CvBridge()
         
         super().__init__(
             pub_topic="/" + self.sensor_id + "_pcl",
-            sub_topic="/" + self.sensor_id,
+            sub_topic=sub_topic,
             sub_topic_msg_type=msg_type,
         )
         
@@ -133,7 +139,10 @@ class PCLMeasPublisher(PCLPublisher):
             self.pcl_creator = PCLCreatorToF()
             self.color = self.color_floats["w"]
         elif "CAM" in self.sensor_id:
-            self.pcl_creator = PCLCreatorRS()
+            self.pcl_creator = PCLCreatorRS(
+                data_dir=data_dir,
+                sensor_id=self.sensor_id,
+            )
             self.color = self.color_floats["g"]
         else:
             rospy.logerr(f"PCLPublisher.__init__: Unknown sensor_id: {self.sensor_id}")

@@ -24,6 +24,10 @@ class RosbagWrapper():
         self.bag_path = os.path.join(data_dir, bag_name)
         
         self.cv_bridge = CvBridge()
+        
+        self.max_depth_csv_cols = 10
+        self.tof_cols = None
+        self.depth_cols = None
     
     def read(
         self,
@@ -54,7 +58,9 @@ class RosbagWrapper():
                 df_meas[topic] = pd.DataFrame(columns=['time', 'meas'])
             elif "TOF" in topic:
                 df_meas[topic] = pd.DataFrame(columns=self._getToFColumns())
-            elif "CAM" in topic:
+            elif "depth" in topic:
+                img_counters[topic] = 0
+            elif "color" in topic:
                 img_counters[topic] = 0
         
         meass_dict = { topic:[] for topic in return_meas }
@@ -84,8 +90,18 @@ class RosbagWrapper():
                         save_meas=topic_temp in save_meas,
                         df_meas=df_meas,
                     )
-                elif "CAM" in topic_temp:
-                    img, time, img_counter = self._readMsgCam(
+                elif "depth" in topic_temp:
+                    img, time, img_counters, df_meas = self._readMsgImgDepth(
+                        topic_temp=topic_temp,
+                        msg_temp=msg_temp,
+                        return_msg=topic_temp in return_meas,
+                        return_time=topic_temp in return_time,
+                        save_meas=topic_temp in save_meas,
+                        img_counters=img_counters,
+                        df_meas=df_meas,
+                    )
+                elif "color" in topic_temp:
+                    img, time, img_counter = self._readMsgImgColor(
                         topic_temp=topic_temp,
                         msg_temp=msg_temp,
                         return_msg=topic_temp in return_meas,
@@ -150,7 +166,7 @@ class RosbagWrapper():
         return_msg:bool,
         return_time:bool,
         save_meas:bool,
-        df_meas:pd.DataFrame,
+        df_meas:dict,
     ):
         if save_meas:
             df_meas[topic_temp] = df_meas[topic_temp].append(
@@ -174,7 +190,41 @@ class RosbagWrapper():
             time = msg_temp.header.stamp.to_sec()
         return meas, stds, time, df_meas
     
-    def _readMsgCam(
+    def _readMsgImgDepth(
+        self,
+        topic_temp:str,
+        msg_temp,
+        return_msg:bool,
+        return_time:bool,
+        save_meas:bool,
+        img_counters:dict,
+        df_meas:dict,
+    ):
+        if save_meas or return_msg:
+            img = self.cv_bridge.imgmsg_to_cv2(msg_temp, desired_encoding=msg_temp.encoding)
+            
+        if save_meas:
+            folder_name = f"{topic_temp[1:].replace('/', '_')}"
+            img_name = f"img{img_counters[topic_temp]}.npy"
+                
+            if not os.path.exists(os.path.join(self.data_dir, "measurements", folder_name)):
+                os.makedirs(os.path.join(self.data_dir,  "measurements", folder_name))
+                
+            np.save(
+                file=os.path.join(self.data_dir,  "measurements", folder_name, img_name), 
+                arr=img.astype(np.uint16),
+            )
+            img_counters[topic_temp] += 1
+            
+        if not return_msg:
+            img = None
+            
+        time = None
+        if return_time:
+            time = msg_temp.header.stamp.to_sec()
+        return img, time, img_counters, df_meas
+    
+    def _readMsgImgColor(
         self,
         topic_temp:str,
         msg_temp,
@@ -210,10 +260,14 @@ class RosbagWrapper():
     def _getToFColumns(
         self,
     ):
+        if self.tof_cols != None:
+            return self.tof_cols
+        
         col_meas = [f"meas_{i}" for i in range(0, 64)]
         col_stds = [f"stds_{i}" for i in range(0, 64)]
-        return ['time'] + col_meas + col_stds
-    
+        
+        self.tof_cols = ['time'] + col_meas + col_stds
+        return self.tof_cols
     
     def newBag(
         self,
@@ -499,3 +553,23 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
+    
+    
+# def _getDepthImgColumns(
+#         self,
+#     ):
+#         if self.depth_cols != None:
+#             return self.depth_cols
+
+#         mesh_height, mesh_width = np.meshgrid(
+#             np.arange(480),
+#             np.arange(640),
+#             indexing='ij',
+#         )
+#         mesh_height = mesh_height.flatten()
+#         mesh_width = mesh_width.flatten()
+#         col_meas = [f"h{mesh_height[i]}_w{mesh_width[i]}" for i in range(len(mesh_height))]
+        
+#         self.depth_cols = ['time'] + col_meas
+#         return self.depth_cols

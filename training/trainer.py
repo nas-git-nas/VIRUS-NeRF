@@ -366,8 +366,8 @@ class Trainer(TrainerPlot):
         # ) # (N*W*H, 3), (N*W*H, 3)
 
         data = self.test_dataset(
-            img_idxs=img_idxs,
-            pix_idxs=pix_idxs,
+            img_idxs=torch.tensor(img_idxs, device=self.args.device),
+            pix_idxs=torch.tensor(pix_idxs, device=self.args.device),
         )
         rays_o = data['rays_o']
         rays_d = data['rays_d']
