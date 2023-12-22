@@ -512,6 +512,13 @@ class DatasetETHZ(DatasetBase):
                 depth = cv.imread(depth_file, cv.IMREAD_UNCHANGED)
                 depths_temp[i] = depth.flatten() # (H*W), keep only one color channel
 
+
+                print(f"depth img max: {np.max(depth)}, min: {np.min(depth)}")
+                # add color scale
+                plt.imshow(depth, cmap='jet')
+                plt.colorbar()
+                plt.show()
+
             depths = np.concatenate((depths, depths_temp), axis=0) # (N, H*W)
             stack_ids = np.concatenate((stack_ids, np.ones((depths_temp.shape[0]))*int(cam_id[-1])), axis=0) # (N,)
 
