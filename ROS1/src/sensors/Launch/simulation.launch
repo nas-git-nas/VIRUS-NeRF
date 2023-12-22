@@ -2,10 +2,10 @@
 
     <arg 
         name="data_dir" 
-        default="/home/spadmin/catkin_ws_ngp/data/test/"/>
+        default="/home/spadmin/catkin_ws_ngp/data/office_2/"/>
     <arg 
         name="bag_name" 
-        default="test_sync.bag"/>
+        default="office_2_2_sync.bag"/>
 
     <include 
         file="$(find sensors)/Launch/visualization.launch">
@@ -79,6 +79,26 @@
             output="screen" />
     </group>
 
+    <group ns="/CAM1">
+        <param 
+            name="sensor_id" 
+            type="str" 
+            value="CAM1" />
+        <param 
+            name="pub_frame_id" 
+            type="str" 
+            value="map" />
+        <param 
+            name="data_dir" 
+            type="str" 
+            value="$(arg data_dir)" />
+        <node 
+            pkg="sensors" 
+            type="pcl_meas_publisher_node.py" 
+            name="pcl_meas_publisher_node" 
+            output="screen" />
+    </group>
+
     <group ns="/TOF3">
         <param 
             name="sensor_id" 
@@ -119,13 +139,33 @@
             output="screen" />
     </group>
 
+    <group ns="/CAM3">
+        <param 
+            name="sensor_id" 
+            type="str" 
+            value="CAM3" />
+        <param 
+            name="pub_frame_id" 
+            type="str" 
+            value="map" />
+        <param 
+            name="data_dir" 
+            type="str" 
+            value="$(arg data_dir)" />
+        <node 
+            pkg="sensors" 
+            type="pcl_meas_publisher_node.py" 
+            name="pcl_meas_publisher_node" 
+            output="screen" />
+    </group>
+
     <group ns="/Rosbag">
         <node 
             pkg="rosbag" 
             type="play" 
             name="player" 
             output="screen" 
-            args="--clock --delay=4 $(arg data_dir)$(arg bag_name)"/>
+            args="--clock --delay=4 --rate=0.2 $(arg data_dir)$(arg bag_name)"/>
     </group>
 
 </launch>

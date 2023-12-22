@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 import numpy as np
+import pandas as pd
+
 from abc import ABC, abstractmethod
+import rospy
+import os
+
 
 
 class PCLCreator():
@@ -121,19 +126,19 @@ class PCLCreator():
         
         directions = np.stack((dir_x, dir_y, dir_z), axis=2) # (H,W,3)
         directions /= np.linalg.norm(directions, axis=2, keepdims=True) # (H,W,3)
-        return directions.reshape(-1, 3) # (H*W, 3)
+        directions = directions.reshape(-1, 3) # (H*W, 3)
+        
+        return directions
         
         
 class PCLCreatorUSS(PCLCreator):
     def __init__(
         self,
-        W:int=64,
-        H:int=64,
     ):
         super().__init__()
         
-        self.W = W
-        self.H = H
+        self.W = 64
+        self.H = 64
         self.directions = self.fovDirections(
             fov_xy=[55, 35],
             W=self.W,
@@ -176,9 +181,9 @@ class PCLCreatorToF(PCLCreator):
         """
         Convert depth measurments to meters and correct reference frame.
         Args:
-            meas: depth measurments; tuble of floats (64)
+            meas: depth measurments; tuple of floats (64,)
         Returns:
-            depth: depth measurments; np.array of floats (H, W)
+            depth: depth measurments; np.array of floats (8, 8)
         """
         meas = np.array(meas, dtype=np.float32)
         depth = 0.001 * meas
@@ -193,9 +198,25 @@ class PCLCreatorToF(PCLCreator):
 class PCLCreatorRS(PCLCreator):
     def __init__(
         self,
+        data_dir:str,
+        sensor_id:str,
     ):
         super().__init__()
-
+        
+        df = pd.read_csv(
+            filepath_or_buffer=os.path.join(data_dir, "../camera_intrinsics.CSV"),
+            dtype={'cam_id': str, 'fx': np.float64, 'fy': np.float64, 'cx': np.float64, 'cy': np.float64},
+        )
+        df_cam = df[df["cam_id"] == sensor_id]
+        
+        self.directions = self.cameraDirections(
+            fx=df_cam['fx'].values[0],
+            fy=df_cam['fy'].values[0],
+            cx=df_cam['cx'].values[0],
+            cy=df_cam['cy'].values[0],
+            W=640,
+            H=480,
+        )
 
     def meas2depth(
         self,
@@ -204,11 +225,117 @@ class PCLCreatorRS(PCLCreator):
         """
         Convert depth measurments to meters and correct reference frame.
         Args:
-            meas: depth measurments; float
+            meas: depth measurments; np.array of floats (H, W)
         Returns:
-            depth: depth measurments; float
+            depth: depth measurments; np.array of floats (H, W)
         """
-        meas = np.array(meas, dtype=np.float32)
-        depth = 0.001 * meas
+        meas = np.array(meas, dtype=np.float32) # (H, W)
+        H = meas.shape[0]
+        W = meas.shape[1]
+        depth = 0.001 * meas # (H, W)    
+
+        depth = depth.flatten() # (H*W,)
+        depth = depth / self.directions[:,2] # (H*W,)
+        depth = depth.reshape(H, W)
+        
         return depth
     
+
+
+
+
+    # def convert_depth_frame_to_pointcloud(
+    #     self,
+    #     depth_image, 
+    #     fx,
+    #     fy,
+    #     cx,
+    #     cy,
+    #     H,
+    #     W,
+    # ):
+    #     """
+    #     Convert the depthmap to a 3D point cloud
+
+    #     Parameters:
+    #     -----------
+    #     depth_frame 	 	 : rs.frame()
+    #                         The depth_frame containing the depth map
+    #     camera_intrinsics : The intrinsic values of the imager in whose coordinate system the depth_frame is computed
+
+    #     Return:
+    #     ----------
+    #     x : array
+    #         The x values of the pointcloud in meters
+    #     y : array
+    #         The y values of the pointcloud in meters
+    #     z : array
+    #         The z values of the pointcloud in meters
+
+    #     """
+        
+    #     [height, width] = depth_image.shape
+
+    #     nx = np.linspace(0, width-1, width)
+    #     ny = np.linspace(0, height-1, height)
+    #     u, v = np.meshgrid(nx, ny)
+    #     x = (u.flatten() - cx)/fx
+    #     y = (v.flatten() - cy)/fy
+
+    #     z = depth_image.flatten() / 1000;
+    #     x = np.multiply(x,z)
+    #     y = np.multiply(y,z)
+
+    #     x = x[np.nonzero(z)]
+    #     y = y[np.nonzero(z)]
+    #     z = z[np.nonzero(z)]
+    #     xyz = np.concatenate((x.reshape(-1,1),y.reshape(-1,1),z.reshape(-1,1)), axis=1)
+
+    #     return xyz
+    
+    
+
+# import torch
+# from kornia import create_meshgrid
+# @torch.cuda.amp.autocast(dtype=torch.float32)
+# def get_ray_directions(H,
+#                        W,
+#                        K,
+#                        device='cpu',
+#                        random=False,
+#                        return_uv=False,
+#                        flatten=True):
+#     """
+#     Get ray directions for all pixels in camera coordinate [right down front].
+#     Reference: https://www.scratchapixel.com/lessons/3d-basic-rendering/
+#                ray-tracing-generating-camera-rays/standard-coordinate-systems
+
+#     Inputs:
+#         H, W: image height and width
+#         K: (3, 3) camera intrinsics
+#         random: whether the ray passes randomly inside the pixel
+#         return_uv: whether to return uv image coordinates
+
+#     Outputs: (shape depends on @flatten)
+#         directions: (H, W, 3) or (H*W, 3), the direction of the rays in camera coordinate
+#         uv: (H, W, 2) or (H*W, 2) image coordinates
+#     """
+#     grid = create_meshgrid(H, W, False, device=device)[0]  # (H, W, 2)
+#     u, v = grid.unbind(-1)
+
+#     fx, fy, cx, cy = K[0, 0], K[1, 1], K[0, 2], K[1, 2]
+#     if random:
+#         directions = \
+#             torch.stack([(u-cx+torch.rand_like(u))/fx,
+#                          (v-cy+torch.rand_like(v))/fy,
+#                          torch.ones_like(u)], -1)
+#     else:  # pass by the center
+#         directions = \
+#             torch.stack([(u-cx+0.5)/fx, (v-cy+0.5)/fy, torch.ones_like(u)], -1)
+#     if flatten:
+#         directions = directions.reshape(-1, 3)
+#         grid = grid.reshape(-1, 2)
+
+#     if return_uv:
+#         return directions, grid
+#     return directions
