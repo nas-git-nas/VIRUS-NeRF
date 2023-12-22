@@ -371,6 +371,7 @@ class Trainer(TrainerPlot):
         )
         rays_o = data['rays_o']
         rays_d = data['rays_d']
+        rgb_gt = data['rgb']
 
         # render rays to get color
         rgb = torch.empty(0, 3).to(self.args.device)

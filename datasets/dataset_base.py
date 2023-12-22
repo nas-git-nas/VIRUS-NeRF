@@ -74,7 +74,7 @@ class DatasetBase(Dataset):
         samples = {
             'img_idxs': img_idxs,
             'pix_idxs': pix_idxs,
-            'sample_count': count.detach().clone(),
+            # 'sample_count': count.detach().clone(),
             'stack_id': stack_ids.detach().clone().requires_grad_(False),
             'rays_o': rays_o.detach().clone().requires_grad_(True),
             'rays_d': rays_d.detach().clone().requires_grad_(True),
