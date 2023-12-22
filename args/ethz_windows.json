@@ -5,7 +5,7 @@
         "name": "ETHZ",
         "split_ratio": {"train": 0.8, "val": 0.1, "test": 0.1},
         "downsample": 1.0,
-        "keep_N_observations": 10,
+        "keep_N_observations": 50,
         "keep_sensor": "all",
         "keep_pixels_in_angle_range": "all"
     },
@@ -35,7 +35,7 @@
         "res_map": 256,
         "res_angular": 256,
         "eval_every_n_steps": 1,
-        "num_color_pts": 0,
+        "num_color_pts": 1,
         "num_depth_pts": 4,
         "num_plot_pts": 3,
         "num_avg_heights": 2,

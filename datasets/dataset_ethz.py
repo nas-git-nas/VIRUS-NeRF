@@ -624,7 +624,9 @@ class DatasetETHZ(DatasetBase):
         Returns:
             rgbs: color images; tensor of shape (N_images, H*W, 3)
         """
-        return torch.tensor(rgbs, dtype=torch.float32, requires_grad=False)
+        rgbs /= 255.0 # (N, H*W, 3)
+        rgbs = torch.tensor(rgbs, dtype=torch.float32, requires_grad=False)
+        return rgbs
 
     def _convertDepthImgs(
         self,
