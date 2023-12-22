@@ -26,7 +26,7 @@
         "sensors": ["RGBD"],
         "max_steps": 2,
         "lr": 1e-2,
-        "depth_loss_w": 100.0,
+        "depth_loss_w": 3.0,
         "random_bg": false
     },
     "evaluation":
@@ -38,14 +38,14 @@
         "num_color_pts": 1,
         "num_depth_pts": 4,
         "num_plot_pts": 3,
-        "num_avg_heights": 2,
-        "height_tolerance": 0.005,
+        "num_avg_heights": 5,
+        "height_tolerance": 0.05,
         "density_map_thr": 10,
         "plot_results": true
     },
     "occ_grid":
     {
-        "grid_type": "occ",
+        "grid_type": "nerf",
         "warmup_steps": 256,
         "batch_size": 64,
         "sampling_strategy": {"imgs": "all", "rays": "rgbd"},  
