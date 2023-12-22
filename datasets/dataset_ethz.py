@@ -134,7 +134,7 @@ class DatasetETHZ(DatasetBase):
         Returns:
             idxs: indices of the dataset that belong to the sensor
         """
-        stack_id = self.stack_ids.detach().clone().numpy()
+        stack_id = self.stack_ids.detach().clone().cpu().numpy()
         mask = (stack_id == int(sensor_name[-1]))
         idxs = np.where(mask)[0]
         return idxs
@@ -158,6 +158,11 @@ class DatasetETHZ(DatasetBase):
             os.mkdir(os.path.join(data_dir, 'split'))
         split_ratio = self.args.dataset.split_ratio
 
+        # verify consistendy of dataset length
+        N_dataset = self._verifyDatasetLength(
+            data_dir=data_dir,
+        )
+
         # load split if it exists already
         df_description = None
         if os.path.exists(path_description) and os.path.exists(path_split):    
@@ -179,17 +184,14 @@ class DatasetETHZ(DatasetBase):
                 )
 
                 # verify if split has same length as dataset
-                if df_split.shape[0] == N:
+                if df_split.shape[0] == N_dataset:
                     return (df_split["split"].values == split)
                 
         # verify that split ratio is correct
         if split_ratio['train'] + split_ratio['val'] + split_ratio['test'] != 1.0:
             self.args.logger.error(f"split ratios do not sum up to 1.0")
 
-        # verify consistendy of dataset length
-        N_dataset = self._verifyDatasetLength(
-            data_dir=data_dir,
-        )
+        # skip images for testing
         if self.args.dataset.keep_N_observations != 'all':
             N_used = self.args.dataset.keep_N_observations
             if N_used > N_dataset:
@@ -267,7 +269,7 @@ class DatasetETHZ(DatasetBase):
 
         # get camera intrinsics
         df = pd.read_csv(
-            filepath_or_buffer=os.path.join(dataset_dir, 'camera_intrinsics.csv'),
+            filepath_or_buffer=os.path.join(dataset_dir, 'camera_intrinsics.CSV'),
             dtype={'cam_id': str, 'fx': np.float64, 'fy': np.float64, 'cx': np.float64, 'cy': np.float64},
         )
         K_dict = {}
@@ -284,8 +286,8 @@ class DatasetETHZ(DatasetBase):
 
         # convert numpy arrays to tensors
         for cam_id in cam_ids:
-            K_dict[cam_id] = torch.tensor(K_dict[cam_id], dtype=torch.float32, requires_grad=False, device=self.args.device)
-            directions_dict[cam_id] = torch.tensor(directions_dict[cam_id], dtype=torch.float32, requires_grad=False, device=self.args.device)
+            K_dict[cam_id] = torch.tensor(K_dict[cam_id], dtype=torch.float32, requires_grad=False)
+            directions_dict[cam_id] = torch.tensor(directions_dict[cam_id], dtype=torch.float32, requires_grad=False)
 
         return img_wh, K_dict, directions_dict
 
@@ -608,7 +610,6 @@ class DatasetETHZ(DatasetBase):
             data=poses,
             dtype=torch.float32,
             requires_grad=False,
-            device=self.args.device,
         )
         return poses
     
@@ -623,7 +624,7 @@ class DatasetETHZ(DatasetBase):
         Returns:
             rgbs: color images; tensor of shape (N_images, H*W, 3)
         """
-        return torch.tensor(rgbs, dtype=torch.float32, requires_grad=False, device=self.args.device)
+        return torch.tensor(rgbs, dtype=torch.float32, requires_grad=False)
 
     def _convertDepthImgs(
         self,
@@ -649,6 +650,8 @@ class DatasetETHZ(DatasetBase):
         # convert depth from depth-image to depth-scan
         depths_scan = np.zeros_like(depths) # (N, H*W)
         for cam_id, directions in directions_dict.items():
+            directions = directions.detach().clone().cpu().numpy() # (H*W, 3)
+
             sensor_mask = (int(cam_id[-1]) == stack_ids) # (N,)
 
             rs = depths / np.sqrt(1 - directions[:,0]**2 - directions[:,1]**2)[None, :] # (N, H*W)
@@ -662,7 +665,7 @@ class DatasetETHZ(DatasetBase):
         depths = self.scene.w2c(depths.flatten(), only_scale=True).reshape(depths.shape) # (N, H*W)
         
         # convert to tensor
-        depths = torch.tensor(depths, dtype=torch.float32, requires_grad=False, device=self.args.device)
+        depths = torch.tensor(depths, dtype=torch.float32, requires_grad=False)
 
         # create sensor model dictionary: {sensor id: sensor model}
         sensors_dict = {}

@@ -354,16 +354,23 @@ class Trainer(TrainerPlot):
         img_idxs = img_idxs.repeat(W*H) # (N*W*H,)
         pix_idxs = np.tile(np.arange(W*H), N) # (N*W*H,)
 
-        # get poses, direction and color ground truth
-        poses = self.test_dataset.poses[img_idxs]
-        directions = self.test_dataset.directions[pix_idxs]
-        rgb_gt = self.test_dataset.rays[img_idxs, pix_idxs][:, :3]
+        # # get poses, direction and color ground truth
+        # poses = self.test_dataset.poses[img_idxs]
+        # directions_dict = self.test_dataset.directions_dict[pix_idxs]
+        # rgb_gt = self.test_dataset.rgbs[img_idxs, pix_idxs][:, :3]
 
-        # calculate rays
-        rays_o, rays_d = get_rays(
-            directions=directions, 
-            c2w=poses
-        ) # (N*W*H, 3), (N*W*H, 3)
+        # # calculate rays
+        # rays_o, rays_d = get_rays(
+        #     directions=directions, 
+        #     c2w=poses
+        # ) # (N*W*H, 3), (N*W*H, 3)
+
+        data = self.test_dataset(
+            img_idxs=img_idxs,
+            pix_idxs=pix_idxs,
+        )
+        rays_o = data['rays_o']
+        rays_d = data['rays_d']
 
         # render rays to get color
         rgb = torch.empty(0, 3).to(self.args.device)
