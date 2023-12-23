@@ -43,17 +43,12 @@ class Args():
         else:
             self.logger.error("Dataset not implemented!")
 
-        if (self.dataset.name == "ETHZ") or (self.dataset.name == "robot_at_home"):
-            for sensor_name in self.training.sensors:
-                if sensor_name == "USS":
-                    self.uss = HParamsUSS()
-                    self.uss.setHParams(hparams)
-                elif sensor_name == "ToF":
-                    self.tof = HParamsToF()
-                    self.tof.setHParams(hparams)
-                elif sensor_name == "RGBD":
-                    self.rgbd = HParamsRGBD()
-                    self.rgbd.setHParams(hparams) 
+        self.rgbd = HParamsRGBD()
+        self.rgbd.setHParams(hparams)
+        self.uss = HParamsUSS()
+        self.uss.setHParams(hparams)
+        self.tof = HParamsToF()
+        self.tof.setHParams(hparams)            
 
         # device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

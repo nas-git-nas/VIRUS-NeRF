@@ -287,7 +287,8 @@ class DatasetETHZ(DatasetBase):
         # convert numpy arrays to tensors
         for cam_id in cam_ids:
             K_dict[cam_id] = torch.tensor(K_dict[cam_id], dtype=torch.float32, requires_grad=False)
-            directions_dict[cam_id] = torch.tensor(directions_dict[cam_id], dtype=torch.float32, requires_grad=False)
+            directions_dict[cam_id] = directions_dict[cam_id].to(dtype=torch.float32)
+            directions_dict[cam_id].requires_grad = False
 
         return img_wh, K_dict, directions_dict
 
@@ -575,15 +576,15 @@ class DatasetETHZ(DatasetBase):
         stack_ids = np.zeros((0))
         for cam_id in cam_ids:
             df = pd.read_csv(
-                filepath_or_buffer=os.path.join(data_dir, 'measurements/USS'+cam_id[-1]+'.csv'),
+                filepath_or_buffer=os.path.join(data_dir, 'measurements/ToF'+cam_id[-1]+'.csv'),
                 dtype=np.float32,
             )
 
             meass_temp = np.zeros((df.shape[0], 64))
             stds = np.zeros((df.shape[0], 64))
-            for i in range(df.shape[0]):
+            for i in range(64):
                 meass_temp[:,i] = df["meas_"+str(i)].to_numpy()
-                stds[:,i] = df["std_"+str(i)].to_numpy()
+                stds[:,i] = df["stds_"+str(i)].to_numpy()
             
             meass_temp = meass_temp[split_mask]
             stds = stds[split_mask]
@@ -707,24 +708,25 @@ class DatasetETHZ(DatasetBase):
             sensors_dict: dictionary containing sensor models; dict { cam_id : USSModel }
         """
         pcl_creator = PCLCreatorUSS(
-                W=1,
-                H=1,
-            )
+            W=1,
+            H=1,
+        )
         
         # convert USS measurements to depth in meters
-        depths = np.zeros((meass.shape[0])) # (N)
+        depths_sensor = np.zeros((meass.shape[0])) # (N)
         for i, meas in enumerate(meass):
-            depths[i] = pcl_creator.meas2depth(
+            depths_sensor[i] = pcl_creator.meas2depth(
                 meas=meas,
             )
 
         # convert depth in meters to cube coordinates [-0.5, 0.5]
-        depths = self.scene.w2c(depths.flatten(), only_scale=True) # (N,)
+        depths_sensor = self.scene.w2c(depths_sensor.flatten(), only_scale=True) # (N,)
 
         sensors_dict = {} 
+        depths_img = np.zeros((meass.shape[0], img_wh[1]*img_wh[0])) # (N, H*W)
         for id in np.unique(stack_ids):
             sensor_maks = (stack_ids == id)
-            sensor_id = "USS"+str(id)
+            sensor_id = "USS"+str(int(id))
 
             # create sensor model
             sensors_dict[sensor_id] = USSModel(
@@ -734,14 +736,15 @@ class DatasetETHZ(DatasetBase):
             )
 
             # mask pixels that are outside of the field of view
-            depths[sensor_maks] = sensors_dict[sensor_id].convertDepth(
-                depths=depths[sensor_maks],
+            depths_img_temp = sensors_dict[sensor_id].convertDepth(
+                depths=depths_sensor,
                 format="sensor",
             ) # (N, H*W)
+            depths_img[sensor_maks] = depths_img_temp[sensor_maks] # (N, H*W)
 
         # convert depth to tensor
         depths =  torch.tensor(
-            data=depths,
+            data=depths_img,
             dtype=torch.float32,
             requires_grad=False,
         )
@@ -772,24 +775,26 @@ class DatasetETHZ(DatasetBase):
         )
         
         # convert ToF measurements to depth in meters
-        depths = np.zeros((meass.shape[0], 8, 8)) # (N, 8, 8)
-        stds = np.zeros((meas_stds.shape[0], 8, 8)) # (N, 8, 8)
+        depths_sensor = np.zeros((meass.shape[0], 8, 8)) # (N, 8, 8)
+        stds_sensor = np.zeros((meas_stds.shape[0], 8, 8)) # (N, 8, 8)
         for i in range(meass.shape[0]):
-            depths[i] = pcl_creator.meas2depth(
+            depths_sensor[i] = pcl_creator.meas2depth(
                 meas=meass[i],
             ) # (8, 8)
-            stds[i] = pcl_creator.meas2depth(
+            stds_sensor[i] = pcl_creator.meas2depth(
                 meas=meas_stds[i],
             ) # (8, 8)
 
         # convert depth in meters to cube coordinates [-0.5, 0.5]
-        depths = self.scene.w2c(depths.flatten(), only_scale=True).reshape(-1, 64) # (N, 8*8)
-        stds = self.scene.w2c(stds.flatten(), only_scale=True).reshape(-1, 64) # (N, 8*8)
+        depths_sensor = self.scene.w2c(depths_sensor.flatten(), only_scale=True).reshape(-1, 64) # (N, 8*8)
+        stds_sensor = self.scene.w2c(stds_sensor.flatten(), only_scale=True).reshape(-1, 64) # (N, 8*8)
 
         sensors_dict = {} 
+        depths_img = np.zeros((meass.shape[0], img_wh[1]*img_wh[0])) # (N, H*W)
+        stds_img = np.zeros((meass.shape[0], img_wh[1]*img_wh[0])) # (N, H*W)
         for id in np.unique(stack_ids):
             sensor_maks = (stack_ids == id)
-            sensor_id = "ToF"+str(id)
+            sensor_id = "ToF"+str(int(id))
 
             # create sensor model
             sensors_dict[sensor_id] = ToFModel(
@@ -798,24 +803,26 @@ class DatasetETHZ(DatasetBase):
             )
 
             # mask pixels that are outside of the field of view
-            depths[sensor_maks] = sensors_dict[sensor_id].convertDepth(
-                depths=depths[sensor_maks],
+            depths_img_temp = sensors_dict[sensor_id].convertDepth(
+                depths=depths_sensor,
                 format="sensor",
             ) # (N, H*W)
             # mask pixels that are outside of the field of view
-            stds[sensor_maks] = sensors_dict[sensor_id].convertDepth(
-                depths=stds[sensor_maks],
+            stds_img_temp = sensors_dict[sensor_id].convertDepth(
+                depths=stds_sensor,
                 format="sensor",
             ) # (N, H*W)
+            depths_img[sensor_maks] = depths_img_temp[sensor_maks] # (N, H*W)
+            stds_img[sensor_maks] = stds_img_temp[sensor_maks] # (N, H*W)
 
         # convert depth to tensor
         depths =  torch.tensor(
-            data=depths,
+            data=depths_img,
             dtype=torch.float32,
             requires_grad=False,
         )
         stds =  torch.tensor(
-            data=stds,
+            data=stds_img,
             dtype=torch.float32,
             requires_grad=False,
             )

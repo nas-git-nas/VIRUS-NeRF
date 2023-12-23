@@ -23,10 +23,10 @@
         "distortion_loss_w": 0.0,
         "batch_size": 8192,
         "sampling_strategy": {"imgs": "all", "rays": "random"},
-        "sensors": ["RGBD"],
+        "sensors": ["USS", "ToF"],
         "max_steps": 2,
         "lr": 1e-2,
-        "depth_loss_w": 3.0,
+        "depth_loss_w": 1.0,
         "random_bg": false
     },
     "evaluation":
@@ -78,11 +78,11 @@
     },
     "USS":
     {
-        "angle_of_view": [30, 30]
+        "angle_of_view": [55, 35]
     },
     "ToF":
     {
-        "angle_of_view": [42.4, 42.4],
+        "angle_of_view": [45, 45],
         "matrix": [8, 8],
         "sensor_calibration_error": 0.0,
         "sensor_random_error": 0.0

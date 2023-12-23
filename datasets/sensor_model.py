@@ -9,7 +9,11 @@ from args.args import Args
 
 
 class SensorModel():
-    def __init__(self, args:Args, img_wh:tuple) -> None:
+    def __init__(
+        self, 
+        args:Args, 
+        img_wh:tuple
+    ) -> None:
         self.args = args
         self.W = img_wh[0]
         self.H = img_wh[1]
@@ -18,7 +22,11 @@ class SensorModel():
     def convertDepth(self, depths):
         pass
 
-    def pos2idx(self, pos_h, pos_w):
+    def pos2idx(
+        self, 
+        pos_h:np.array, 
+        pos_w:np.array,
+    ):
         """
         Convert position to index.
         Args:
@@ -40,7 +48,10 @@ class SensorModel():
 
         return idxs_h, idxs_w
 
-    def AoV2pixel(self, aov_sensor:list):
+    def AoV2pixel(
+        self, 
+        aov_sensor:list
+    ):
         """
         Convert the angle of view to width in pixels
         Args:
@@ -48,12 +59,20 @@ class SensorModel():
         Returns:
             num_pixels: width in pixels; int
         """
-        num_pixels = np.min((self.W, self.H)) * np.min(aov_sensor) / np.min(self.args.rgbd.angle_of_view)
+        img_wh = np.array([self.W, self.H])
+        aov_sensor = np.array(aov_sensor)
+        aov_camera = self.args.rgbd.angle_of_view
+
+        num_pixels = img_wh * aov_sensor / aov_camera
         return np.round(num_pixels).astype(int)
     
 
 class RGBDModel(SensorModel):
-    def __init__(self, args:Args, img_wh:tuple) -> None:
+    def __init__(
+        self, 
+        args:Args, 
+        img_wh:tuple
+    ) -> None:
         """
         Sensor model for Time of Flight (ToF) sensor.
         Args:
@@ -78,16 +97,24 @@ class RGBDModel(SensorModel):
 
 
 class ToFModel(SensorModel):
-    def __init__(self, args:Args, img_wh:tuple) -> None:
+    def __init__(
+        self, 
+        args:Args, 
+        img_wh:tuple
+    ) -> None:
         """
         Sensor model for Time of Flight (ToF) sensor.
         Args:
             img_wh: image width and height, tuple of int
         """
-        SensorModel.__init__(self, args, img_wh)      
+        SensorModel.__init__(
+            self, 
+            args=args, 
+            img_wh=img_wh,
+        )    
 
         self.mask = self._createMask() # (H*W,)
-        self.error_mask = self.createErrorMask(
+        self.error_mask = self._createErrorMask(
             mask=self.mask
         ) # (H*W,)
         
@@ -136,13 +163,13 @@ class ToFModel(SensorModel):
             mask: mask for ToF sensor; array of shape (H*W,)
         """
         # calculate indices of ToF sensor array
-        width = self.AoV2pixel(aov_sensor=self.args.tof.angle_of_view)
-        idxs_w = np.linspace(0, width, self.args.tof.matrix[0], dtype=float)
-        idxs_h = np.linspace(0, width, self.args.tof.matrix[1], dtype=float)
+        pix_wh = self.AoV2pixel(aov_sensor=self.args.tof.angle_of_view)
+        idxs_w = np.linspace(0, pix_wh[0], self.args.tof.matrix[0], dtype=float)
+        idxs_h = np.linspace(0, pix_wh[1], self.args.tof.matrix[1], dtype=float)
 
         # ajust indices to quadratic shape
-        idxs_w = idxs_w + (self.W - width)/2
-        idxs_h = idxs_h + (self.H - width)/2
+        idxs_w = idxs_w + (self.W - pix_wh[0])/2
+        idxs_h = idxs_h + (self.H - pix_wh[1])/2
 
         # convert indices to ints
         idxs_h, idxs_w = self.pos2idx(idxs_h, idxs_w) # (H,), (W,)     
@@ -157,7 +184,7 @@ class ToFModel(SensorModel):
         mask[idxs_h, idxs_w] = True
         return mask.flatten() # (H*W,)
     
-    def createErrorMask(
+    def _createErrorMask(
         self,
         mask:np.array,
     ):
@@ -194,17 +221,19 @@ class ToFModel(SensorModel):
         return error_mask.flatten() # (H*W,)
 
 class USSModel(SensorModel):
-    def __init__(self, args, img_wh, num_imgs) -> None:
-        SensorModel.__init__(self, args, img_wh)
-        # define USS opening angle
-        r = self.AoV2pixel(aov_sensor=args.uss.angle_of_view) / 2
-
-        # create mask
-        m1, m2 = np.meshgrid(np.arange(self.H), np.arange(self.W), indexing='ij')
-        m1 = m1 - self.H/2 
-        m2 = m2 - self.W/2
-        self.mask = np.sqrt(m1**2 + m2**2) < r # (H, W)
-        self.mask = self.mask.flatten() # (H*W,)  
+    def __init__(
+        self, 
+        args:Args,
+        img_wh:tuple,
+        num_imgs:int,
+    ) -> None:
+        SensorModel.__init__(
+            self, 
+            args=args, 
+            img_wh=img_wh,
+        )
+        
+        self.mask = self._createMask() # (H*W,)
 
         self.imgs_min_depth = np.inf * torch.ones((num_imgs), dtype=torch.float32).to(self.args.device)
         self.imgs_min_idx = -1 * torch.ones((num_imgs), dtype=torch.int32).to(self.args.device)
@@ -221,12 +250,12 @@ class USSModel(SensorModel):
             depths: depth img
             format: depths format; str
                     "img": depth per camera pixel; depths array of shape (N, H*W)
-                    "sensor": depth per ToF pixel; depths array of shape (N, 8*8)
+                    "sensor": depth per ToF pixel; depths array of shape (N,)
         Returns:
             depths_out: depth img converted to ToF sensor array; array of shape (N, H*W)
         """
-        depths = np.copy(depths) # (N, H*W)
-        depths_out = np.full_like(depths, np.nan) # (N, H*W)
+        depths = np.copy(depths) # (N, H*W) or (N,)
+        depths_out = np.full((depths.shape[0], self.W*self.H), np.nan) # (N, H*W)
 
         if format == "img":
             d_min = np.nanmin(depths[:, self.mask], axis=1) # (N,)
@@ -237,6 +266,34 @@ class USSModel(SensorModel):
 
         depths_out[:, self.mask] = d_min[:,None] # (N, H*W)
         return depths_out
+    
+    def _createMask(
+        self,
+    ) -> np.array:
+        """
+        Create mask for ToF sensor.
+        Returns:
+            mask: mask for ToF sensor; array of shape (H*W,)
+        """
+        # define USS opening angle
+        pix_wh = self.AoV2pixel(
+            aov_sensor=self.args.uss.angle_of_view
+        ) # (2,)
+        pix_wh = (pix_wh/2.0).astype(np.int32) # convert diameter to radius
+
+        # # create mask
+        # m1, m2 = np.meshgrid(np.arange(self.H), np.arange(self.W), indexing='ij')
+        # m1 = m1 - self.H/2 
+        # m2 = m2 - self.W/2
+        # self.mask = np.sqrt(m1**2 + m2**2) < r # (H, W)
+        # self.mask = self.mask.flatten() # (H*W,)  
+
+        # create mask
+        m1, m2 = np.meshgrid(np.arange(self.H), np.arange(self.W), indexing='ij')
+        m1 = m1 - self.H/2 
+        m2 = m2 - self.W/2
+        mask = (m1/pix_wh[1])**2 + (m2/pix_wh[0])**2 < 1 # (H, W), ellipse
+        return mask.flatten() # (H*W,)  
     
 
     def updateDepthMin(
