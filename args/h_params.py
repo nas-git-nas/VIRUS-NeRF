@@ -60,8 +60,8 @@ class HParamsTraining(HParams):
         HParams.__init__(self, name="training")
     
     def checkArgs(self):
-        if self.sampling_strategy["imgs"] == "all" and self.sampling_strategy["rays"] != "random":
-            self.sampling_strategy["rays"] = "random"
+        if self.sampling_strategy["imgs"] == "all" and self.sampling_strategy["pixs"] != "random":
+            self.sampling_strategy["pixs"] = "random"
             print(f"WARNING: HParamsTraining:checkArgs: sampling strategy for rays must be 'random' if sampling strategy for images is 'all' ")
 
 
@@ -120,7 +120,7 @@ class HParamsRobotAtHome(HParams):
         self.subsession = None
         self.home_session = None
 
-        HParams.__init__(self, name="robot_at_home")
+        HParams.__init__(self, name="RH2")
 
 
 class HParamsRGBD(HParams):

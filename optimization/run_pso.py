@@ -32,7 +32,7 @@ def main():
     args.model.save = False
 
     # datasets   
-    if args.dataset.name == 'robot_at_home':
+    if args.dataset.name == 'RH2':
         dataset = DatasetRH    
     train_dataset = dataset(
         args = args,

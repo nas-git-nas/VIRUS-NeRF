@@ -63,7 +63,7 @@
         "room": "office_2",
         "cam_ids": ["CAM1", "CAM3"]
     },
-    "robot_at_home":
+    "RH2":
     {
         "session": "session_2",
         "home": "anto",

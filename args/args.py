@@ -37,7 +37,7 @@ class Args():
         if self.dataset.name == "ETHZ":
             self.ethz = HParamsETHZ()
             self.ethz.setHParams(hparams)
-        elif self.dataset.name == "robot_at_home":
+        elif self.dataset.name == "RH2":
             self.rh = HParamsRobotAtHome()
             self.rh.setHParams(hparams)
         else:
@@ -130,8 +130,8 @@ class Args():
         hparams["training"] = self.training.getHParams()
         hparams["occ_grid"] = self.occ_grid.getHParams()
 
-        if self.dataset.name == "robot_at_home":
-            hparams["robot_at_home"] = self.rh.getHParams()
+        if self.dataset.name == "RH2":
+            hparams["RH2"] = self.rh.getHParams()
 
             for sensor_name in self.training.sensors:
                 if sensor_name == "RGBD":

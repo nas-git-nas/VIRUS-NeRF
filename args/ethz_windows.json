@@ -22,7 +22,11 @@
     {
         "distortion_loss_w": 0.0,
         "batch_size": 8192,
-        "sampling_strategy": {"imgs": "all", "rays": "random"},
+        "sampling_strategy": 
+        {
+            "imgs": "all", 
+            "pixs": {"closest":0.05, "valid_uss":0.4, "valid_tof":0.4}
+        },
         "sensors": ["USS", "ToF"],
         "max_steps": 2,
         "lr": 1e-2,
@@ -48,7 +52,7 @@
         "grid_type": "occ",
         "warmup_steps": 256,
         "batch_size": 64,
-        "sampling_strategy": {"imgs": "all", "rays": "rgbd"},  
+        "sampling_strategy": {"imgs": "None", "pixs": "None"},  
         "update_interval": 2,
         "decay_warmup_steps": 80,
         "batch_ratio_ray_update": 0.5,
@@ -64,7 +68,7 @@
         "room": "office_2",
         "cam_ids": ["CAM1", "CAM3"]
     },
-    "robot_at_home":
+    "RH2":
     {
         "session": "session_2",
         "home": "anto",

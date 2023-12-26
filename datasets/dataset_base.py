@@ -7,6 +7,7 @@ import pandas as pd
 from datasets.ray_utils import get_rays
 
 from args.args import Args
+from helpers.data_fcts import sensorName2ID, sensorID2Name
 
 
 
@@ -55,7 +56,6 @@ class DatasetBase(Dataset):
             img_idxs, pix_idxs, count = self.sampler(
                 batch_size=batch_size,
                 sampling_strategy=sampling_strategy,
-                stack_ids=self.stack_ids,
                 origin=origin,
             )
 
@@ -63,19 +63,19 @@ class DatasetBase(Dataset):
         rays_o, rays_d = self._calcRayPoses(
             directions_dict=self.directions_dict,
             poses=self.poses,
-            stack_ids=self.stack_ids,
+            sensor_ids=self.sensor_ids,
             img_idxs=img_idxs,
             pix_idxs=pix_idxs,
         )
 
         # sample data
-        stack_ids = self.stack_ids[img_idxs]
+        ids = self.sensor_ids[img_idxs]
         rgbs = self.rgbs[img_idxs, pix_idxs, :3]
         samples = {
             'img_idxs': img_idxs,
             'pix_idxs': pix_idxs,
             # 'sample_count': count.detach().clone(),
-            'stack_id': stack_ids.detach().clone().requires_grad_(False),
+            'sensor_ids': ids.detach().clone().requires_grad_(False),
             'rays_o': rays_o.detach().clone().requires_grad_(True),
             'rays_d': rays_d.detach().clone().requires_grad_(True),
             'rgb': rgbs.detach().clone().requires_grad_(True),
@@ -90,7 +90,7 @@ class DatasetBase(Dataset):
         self.rgbs = self.rgbs.to(device)
         self.poses = self.poses.to(device)
         self.times = self.times.to(device)
-        self.stack_ids = self.stack_ids.to(device)
+        self.sensor_ids = self.sensor_ids.to(device)
         for key in self.depths_dict.keys():
             self.depths_dict[key] = self.depths_dict[key].to(device)
         for cam_id, directions in self.directions_dict.items():
@@ -185,7 +185,7 @@ class DatasetBase(Dataset):
         self,
         directions_dict:torch.Tensor,
         poses:torch.Tensor,
-        stack_ids:torch.Tensor,
+        sensor_ids:torch.Tensor,
         img_idxs:torch.Tensor,
         pix_idxs:torch.Tensor,
     ):
@@ -194,7 +194,7 @@ class DatasetBase(Dataset):
         Args:
             directions_dict: dictionary containing the directions for each sensor; dict { cam_id: directions (H*W, 3) }
             poses: poses; tensor of shape (N_dataset, 3, 4)
-            stack_ids: stack ids; tensor of int64 (N_dataset,)
+            sensor_ids: sensor ids; tensor of int64 (N_dataset,)
             img_idxs: indices of images; tensor of int64 (N_batch,)
             pix_idxs: indices of pixels; tensor of int64 (N_batch,)
         Returns:
@@ -206,8 +206,12 @@ class DatasetBase(Dataset):
         rays_o = torch.full((N, 3), np.nan, dtype=torch.float32, device=self.args.device)
         rays_d = torch.full((N, 3), np.nan, dtype=torch.float32, device=self.args.device)
         for cam_id, directions in directions_dict.items():
+            id = sensorName2ID(
+                sensor_name=cam_id,
+                dataset=self.args.dataset.name,
+            )
 
-            idx_mask = (stack_ids[img_idxs] == int(cam_id[-1])) # (N,)
+            idx_mask = (sensor_ids[img_idxs] == id) # (N,)
             img_idxs_temp = img_idxs[idx_mask] # (n,)
             pix_idxs_temp = pix_idxs[idx_mask] # (n,)
     
@@ -253,15 +257,15 @@ class DatasetBase(Dataset):
             # # # pix_idxs = np.random.choice(self.img_wh[0] * self.img_wh[1],
             # # #                             self.batch_size)
 
-            # if self.args.training.sampling_strategy["rays"] == "random":
+            # if self.args.training.sampling_strategy["pixs"] == "random":
             #     pix_idxs = torch.randint(0, self.img_wh[0]*self.img_wh[1], size=(self.args.training.batch_size,), device=self.rays.device)
-            # elif self.args.training.sampling_strategy["rays"] == "ordered":
+            # elif self.args.training.sampling_strategy["pixs"] == "ordered":
             #     step = self.img_wh[0]*self.img_wh[1] / self.args.training.batch_size
             #     pix_idxs = torch.linspace(0, self.img_wh[0]*self.img_wh[1]-1-step, self.args.training.batch_size, device=self.rays.device)
             #     rand_offset = step * torch.rand(size=(self.args.training.batch_size,), device=self.rays.device)
             #     pix_idxs = torch.round(pix_idxs + rand_offset).to(torch.int64)
             #     pix_idxs = torch.clamp(pix_idxs, min=0, max=self.img_wh[0]*self.img_wh[1]-1)
-            # elif self.args.training.sampling_strategy["rays"] == "closest":
+            # elif self.args.training.sampling_strategy["pixs"] == "closest":
             #     pix_idxs = torch.randint(0, self.img_wh[0]*self.img_wh[1], size=(self.args.training.batch_size,), device=self.rays.device)
             #     num_min_idxs = int(0.005 * self.args.training.batch_size)
             #     pix_min_idxs = self.sensors_dict["USS"].imgs_min_idx

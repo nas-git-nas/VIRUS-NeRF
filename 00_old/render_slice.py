@@ -73,7 +73,7 @@ def main():
 
     # datasets
     root_dir ='../RobotAtHome2/data'
-    dataset = dataset_dict["robot_at_home"]
+    dataset = dataset_dict["RH2"]
     train_dataset = dataset(
         root_dir=root_dir,
         split="train",

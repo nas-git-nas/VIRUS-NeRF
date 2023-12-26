@@ -26,7 +26,7 @@ def test_ToFModel():
     } 
     args.training.sensors = ["ToF", "RGBD"]
 
-    if args.dataset.name == "robot_at_home":
+    if args.dataset.name == "RH2":
         dataset_class = DatasetRH
     elif args.dataset.name == "ETHZ":
         dataset_class = DatasetETHZ
@@ -116,7 +116,7 @@ def test_USSModel():
     } 
     args.training.sensors = ["USS", "RGBD"]
 
-    if args.dataset.name == "robot_at_home":
+    if args.dataset.name == "RH2":
         dataset_class = DatasetRH
     elif args.dataset.name == "ETHZ":
         dataset_class = DatasetETHZ
