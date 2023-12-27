@@ -11,6 +11,8 @@ ETHZ_SENSORS = {
 }
 RH2_SENSORS = {
     "RGBD": ["RGBD_1", "RGBD_2", "RGBD_3", "RGBD_4"],
+    "USS": ["USS1", "USS2", "USS3", "USS4"],
+    "ToF": ["ToF1", "ToF2", "ToF3", "ToF4"],
 }
 
 def linInterpolateArray(

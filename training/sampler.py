@@ -142,13 +142,14 @@ class Sampler():
                                        f"but sum is {sum(pix_strategy.values())}")
                 return None
 
-        # convert strategy share to batch size and assign all remaining pixels to 'random'
+        # convert strategy share to batch size 
         B_sum = 0
         for strategy, share in pix_strategy.items():
             B = int(share*img_idxs.shape[0])
             pix_strategy[strategy] = B
             B_sum += B
 
+        # assign all remaining pixels to 'random'
         B_rest = int(img_idxs.shape[0] - B_sum)
         if B_rest > 0:
             pix_strategy["random"] = B_rest

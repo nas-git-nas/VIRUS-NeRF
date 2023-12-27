@@ -227,14 +227,14 @@ class USSModel(SensorModel):
         self, 
         args:Args,
         img_wh:tuple,
-        sensor_ids:torch.Tensor,
+        sensor_ids:np.ndarray,
     ) -> None:
         """
         USS sensor model.
         Args:
             args: arguments; Args
             img_wh: image width and height, tuple of int
-            sensor_ids: sensor identities for every image; tensor of ints (N,)
+            sensor_ids: sensor identities for every image; array of ints (N,)
         """
         SensorModel.__init__(
             self, 

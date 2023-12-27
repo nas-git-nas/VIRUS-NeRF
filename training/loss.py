@@ -163,7 +163,7 @@ class Loss():
         if torch.sum(val_idxs) > 0:
             tof_loss = F.mse_loss(results['depth'][val_idxs], data['depth']['ToF'][val_idxs])
 
-        print(f"num val idxs: {torch.sum(val_idxs)}")
+        # print(f"num val idxs: {torch.sum(val_idxs)}")
 
         if self.log_loss:
             self.loss_dict['ToF'] = tof_loss.item() * self.args.training.depth_loss_w

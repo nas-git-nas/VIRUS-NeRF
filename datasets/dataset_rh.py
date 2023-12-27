@@ -230,6 +230,7 @@ class DatasetRH(DatasetBase):
         sensors_dict, depths_dict = self._createSensorModels(
             depths=depths,
             img_wh=img_wh,
+            sensor_ids=sensor_ids,
         )
 
         return poses, rgbs, depths_dict, sensors_dict, sensor_ids, times
@@ -480,12 +481,14 @@ class DatasetRH(DatasetBase):
             self, 
             depths:torch.tensor,
             img_wh:tuple,
+            sensor_ids:np.ndarray,
     ):
         """
         Create sensor models for each sensor and convert depths respectively.
         Args:
             depths: depths of all images; tensor of shape (N, H*W)
             img_wh: image width and height; tuple of ints
+            sensor_ids: sensor identities; numpy array (N_images,)
         Returns:
             sensors_dict: dictionary containing sensor models
             depths_dict: dictionary containing converted depths
@@ -509,7 +512,7 @@ class DatasetRH(DatasetBase):
                 sensors_dict["USS"] = USSModel(
                     args=self.args, 
                     img_wh=img_wh,
-                    num_imgs=self.df.shape[0],
+                    sensor_ids=sensor_ids,
                 )
             else:
                 self.args.logger.error(f"ERROR: robot_at_home.__init__: sensor model {sensor_name} not implemented")

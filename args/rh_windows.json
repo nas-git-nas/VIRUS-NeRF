@@ -27,7 +27,7 @@
             "imgs": "all", 
             "pixs": {"closest":0.05, "valid_uss":0.4, "valid_tof":0.4}
         },
-        "sensors": ["USS", "ToF"],
+        "sensors": ["RGBD"],
         "max_steps": 2,
         "lr": 1e-2,
         "depth_loss_w": 100.0,
