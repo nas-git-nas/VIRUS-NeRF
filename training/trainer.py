@@ -229,7 +229,10 @@ class Trainer(TrainerPlot):
 
         # evaluate color and depth
         metrics_dict = self._evaluateColor(img_idxs=img_idxs)
-        depth_metrics, data_w = self._evaluateDepth(img_idxs=img_idxs_sensor)
+        depth_metrics, data_w = self._evaluateDepth(
+            img_idxs=img_idxs_sensor,
+            return_only_nerf=True,
+        )
         metrics_dict.update(depth_metrics)
 
         # create plots
@@ -310,7 +313,10 @@ class Trainer(TrainerPlot):
         if step % self.args.eval.eval_every_n_steps == 0:
             # evaluate color and depth of one random image
             img_idxs = np.array(np.random.randint(0, len(self.test_dataset), size=8))
-            depth_metrics, data_w = self._evaluateDepth(img_idxs=img_idxs)
+            depth_metrics, data_w = self._evaluateDepth(
+                img_idxs=img_idxs,
+                return_only_nerf=True,
+            )
 
             # calculate peak-signal-to-noise ratio
             mse = F.mse_loss(results['rgb'], data['rgb'])
@@ -408,9 +414,59 @@ class Trainer(TrainerPlot):
         imageio.imsave(depth_path, depth_img)
 
         return metrics_dict
-
+    
     @torch.no_grad()
     def _evaluateDepth(
+            self, 
+            img_idxs:np.array,
+            return_only_nerf:bool=False,
+    ):
+        """
+        Evaluate depth error.
+        Args:
+            img_idxs: image indices; array of int (N,)
+            return_only_nerf: return only metrics for NeRF; bool
+        Returns:
+            metrics_dict: dict of metrics
+            data_w: dict of data in world coordinates
+        """
+        metrics_dict_nerf, data_w_nerf = self._evaluateDepthNeRF(
+            img_idxs=img_idxs,
+        )
+        if return_only_nerf:
+            return metrics_dict_nerf, data_w_nerf
+
+        metrics_dict_tof, data_w_tof = self._evaluateDepthSensor(
+            img_idxs=img_idxs,
+            sensor_name="ToF",
+        )
+
+        metrics_dict_uss, data_w_uss = self._evaluateDepthSensor(
+            img_idxs=img_idxs,
+            sensor_name="USS",
+        )
+
+        metrics_dict = {}
+        for key in metrics_dict_nerf.keys():
+            metrics_dict[key+"_nerf"] = metrics_dict_nerf[key]
+            metrics_dict[key+"_tof"] = metrics_dict_tof[key]
+            metrics_dict[key+"_uss"] = metrics_dict_uss[key]
+
+        data_w = { 
+            'depth_gt': data_w_nerf['depth_gt'],
+            'rays_o': data_w_nerf['rays_o'],
+            'scan_map_gt': data_w_nerf['scan_map_gt'],
+            'depth_nerf': data_w_nerf['depth'],
+            'depth_tof': data_w_tof['depth'],
+            'depth_uss': data_w_uss['depth'],
+            'scan_angles_nerf': data_w_nerf['scan_angles'],
+            'scan_angles_tof': data_w_tof['scan_angles'],
+            'scan_angles_uss': data_w_uss['scan_angles'],
+        }
+        return metrics_dict, data_w
+
+    @torch.no_grad()
+    def _evaluateDepthNeRF(
             self, 
             img_idxs:np.array,
     ) -> dict:
@@ -458,8 +514,83 @@ class Trainer(TrainerPlot):
             h_tol_c=0.0,
             num_avg_heights=1,
         ) # (N*M*A, 3), (N*M*A, 3)
-        rays_o = rays_o.detach().cpu().numpy() # (N*M, 3)
-        rays_d = rays_d.detach().cpu().numpy() # (N*M, 3)
+
+        metrics_dict, data_w = self._evaluateDepthMetric(
+            rays_o=rays_o.detach().cpu().numpy(), # (N*M, 3), 
+            rays_d=rays_d.detach().cpu().numpy(), # (N*M, 3), 
+            depth=depth, 
+            num_test_pts=len(img_idxs),
+        )
+        return metrics_dict, data_w
+    
+    @torch.no_grad()
+    def _evaluateDepthSensor(
+            self, 
+            img_idxs:np.array,
+            sensor_name:str,
+    ) -> dict:
+        """
+        Evaluate depth error.
+        Args:
+            img_idxs: image indices; array of int (N,)
+            sensor_name: name of sensor; str
+        Returns:
+            metrics_dict: dict of metrics
+            data_w: dict of data in world coordinates
+        """
+        img_idxs = torch.tensor(img_idxs, dtype=torch.int32, device=self.args.device) # (N,)
+        W, H = self.test_dataset.img_wh
+
+        # determine scan pixel height
+        sensor_mask = self.test_dataset.sensors_dict['sensor_name'].mask.detach().clone().reshape(H,W) # (H, W)
+        if sensor_name == "USS":
+            scan_pix_h = H//2
+        elif sensor_name == "ToF":
+            sensor_mask_height = (torch.sum(sensor_mask, dim=1) > 0)
+            scan_pix_h = torch.arange(H)[sensor_mask_height][3]
+        else:
+            self.args.logger.error(f"sensor_name {sensor_name} not implemented")
+
+        # get pixel indices of sensor
+        scan_mask = torch.zeros_like(sensor_mask, dtype=torch.bool) # (H, W)
+        scan_mask[scan_pix_h, :] = sensor_mask[scan_pix_h, :] # (H, W)
+        scan_mask = scan_mask.reshape(-1) # (H*W,)
+        pix_idxs = torch.arange(H*W)[scan_mask] # (M,)
+
+        # get positions, directions and depths of sensor
+        img_idxs, pix_idxs = torch.meshgrid(img_idxs, pix_idxs, indexing="ij") # (N,M), (N,M)
+        data = self.test_dataset(
+            img_idxs=img_idxs.flatten(),
+            pix_idxs=pix_idxs.flatten(),
+        )
+
+        metrics_dict, data_w = self._evaluateDepthMetric(
+            rays_o=data['rays_o'].detach().cpu().numpy(), # (N*M, 3),
+            rays_d=data['rays_d'].detach().cpu().numpy(), # (N*M, 3),
+            depth=data['depth'][sensor_name].detach().cpu().numpy(), # (N*M,),
+            num_test_pts=len(img_idxs),
+        )
+        return metrics_dict, data_w
+
+    @torch.no_grad()
+    def _evaluateDepthMetric(
+            self, 
+            rays_o:np.array,
+            rays_d:np.array,
+            depth:np.array,
+            num_test_pts:int,
+    ) -> dict:
+        """
+        Evaluate depth error.
+        Args:
+            rays_o: ray origins; array of shape (N*M, 3)
+            rays_d: ray directions; array of shape (N*M, 3)
+            depth: depth; array of shape (N*M,)
+            num_test_pts: number of test points N; int
+        Returns:
+            metrics_dict: dict of metrics
+            data_w: dict of data in world coordinates
+        """
 
         # get ground truth depth
         scan_map_gt, depth_gt, scan_angles = self.test_dataset.scene.getSliceScan(
@@ -488,14 +619,9 @@ class Trainer(TrainerPlot):
             eval_metrics=['rmse', 'mae', 'mare', 'nn'],
             convert_to_world_coords=False,
             copy=True,
-            num_test_pts=len(img_idxs),
+            num_test_pts=num_test_pts,
         )
-
         return metrics_dict, data_w
-    
-
-    
-    
 
     
     

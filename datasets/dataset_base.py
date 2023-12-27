@@ -3,6 +3,7 @@ import torch
 from torch.utils.data import Dataset
 import os
 import pandas as pd
+import sys
 
 from datasets.ray_utils import get_rays
 
@@ -57,7 +58,7 @@ class DatasetBase(Dataset):
                 batch_size=batch_size,
                 sampling_strategy=sampling_strategy,
                 origin=origin,
-            )
+            ) 
 
         # calculate ray origins and directions
         rays_o, rays_d = self._calcRayPoses(
@@ -214,7 +215,7 @@ class DatasetBase(Dataset):
             idx_mask = (sensor_ids[img_idxs] == id) # (N,)
             img_idxs_temp = img_idxs[idx_mask] # (n,)
             pix_idxs_temp = pix_idxs[idx_mask] # (n,)
-    
+
             rays_o_temp, rays_d_tempt = get_rays(
                 directions=directions[pix_idxs_temp],
                 c2w=poses[img_idxs_temp],

@@ -190,6 +190,7 @@ class Sampler():
             if torch.any(pix_idxs == -1):
                 self.args.logger.error(f"some pixels are not sampled")
                 return None
+            
         return pix_idxs
 
     def _pixStrategyRandom(

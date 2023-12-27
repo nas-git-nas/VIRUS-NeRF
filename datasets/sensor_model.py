@@ -419,8 +419,8 @@ class USSModel(SensorModel):
         ) # (N_sensor,)
         sensor_min_pix_idxs = torch.where(
             condition=(batch_min_depths <= sensor_min_depths),
-            input=batch_min_depths,
-            other=sensor_min_depths,
+            input=batch_min_pix_idxs,
+            other=sensor_min_pix_idxs,
         ) # (N_sensor,)
 
         # update minimum counts
