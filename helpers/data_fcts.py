@@ -281,7 +281,43 @@ def sensorID2Name(
         sensor_name = str(sensor_name[0].item())
     return sensor_name
 
+def downsampleData(
+    datas:list,
+    num_imgs:int,
+    num_imgs_downsampled:int,
+):
+    """
+    Downsample data.
+    Args:
+        datas: list of data; list of torch tensors [(N*M, ...), ...] or [(N, M, ...),  ...]
+        num_imgs: number of images N; int
+        num_imgs_downsampled: number of images in downsampled data; int
+    Returns:
+        datas: list of downsampled data; list of torch tensors [(N_down*M, ...), ...] or [(N_down, M, ...), ...]
+    """
+    N = num_imgs
+    N_down = num_imgs_downsampled
+    if N < num_imgs_downsampled:
+        print(f"ERROR: data_fcts.downsampleData: N < num_imgs_downsampled")
+        return None
 
+    for i, data in enumerate(datas):
+        output_shape = data.shape
+
+        # determine number of samples per image
+        if data.shape[0] == N:
+            M = data.shape[1]
+        else:
+            M = data.shape[0] // N
+            data = data.reshape((N, M, *output_shape[1:]))
+        
+        # downsample data
+        idxs = np.linspace(0, N-1, N_down, dtype=int)
+        data = data[idxs]
+
+        # reshape data
+        datas[i] = data.reshape((-1, *output_shape[1:]))
+    return datas
 
 
 

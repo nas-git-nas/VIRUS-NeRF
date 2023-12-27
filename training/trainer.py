@@ -231,33 +231,55 @@ class Trainer(TrainerPlot):
         metrics_dict = self._evaluateColor(img_idxs=img_idxs)
         depth_metrics, data_w = self._evaluateDepth(
             img_idxs=img_idxs_sensor,
-            return_only_nerf=True,
+            return_only_nerf=False,
         )
-        metrics_dict.update(depth_metrics)
+        for key in depth_metrics.keys():
+            depth_metrics[key].update(metrics_dict)
+        metrics_dict = depth_metrics
 
         # create plots
         self._plotEvaluation(
             data_w=data_w, 
             metrics_dict=metrics_dict,
+            num_imgs=img_idxs_sensor.shape[0],
         )
-        metrics_dict = self._plotLosses(
-            logs=self.logs,
-            metrics_dict=metrics_dict,
-        )
+        # metrics_dict = self._plotLosses(
+        #     logs=self.logs,
+        #     metrics_dict=metrics_dict,
+        # )
 
         # print and save metrics
         print(
             f"evaluation: " \
-            + f"psnr_avg={np.round(metrics_dict['psnr'],2)} | " \
-            + f"ssim_avg={metrics_dict['ssim']:.3} | " \
-            + f"depth_mae={metrics_dict['mae']:.3} | " \
-            + f"depth_mare={metrics_dict['mare']:.4} | " \
-            + f"depth_mnn={metrics_dict['mnn']:.3} | " \
+            + f"psnr_avg={np.round(metrics_dict['NeRF']['psnr'],2)} | " \
+            + f"ssim_avg={metrics_dict['NeRF']['ssim']:.3} | " \
+            + f"depth_mae={metrics_dict['NeRF']['mae']:.3} | " \
+            + f"depth_mare={metrics_dict['NeRF']['mare']:.4} | " \
+            + f"depth_mnn={metrics_dict['NeRF']['mnn']:.3} | " \
         )
-        metrics_df = metrics_dict.copy()
-        del metrics_df['nn_dists']
-        metrics_df = pd.DataFrame(metrics_df, index=[0])
-        metrics_df.to_csv(os.path.join(self.args.save_dir, "metrics.csv"), index=False)
+
+
+        metric_df = {key:[] for key in metrics_dict["NeRF"].keys()}
+        del metric_df['nn_dists']
+        metric_idxs = []
+        for key in metrics_dict.keys():
+            for metric, value in metrics_dict[key].items():
+                if metric == "nn_dists":
+                    continue
+                metric_df[metric].append(value)
+            metric_idxs.append(key)
+
+        pd.DataFrame(
+            data=metric_df,
+            index=metric_idxs,
+        ).to_csv(os.path.join(self.args.save_dir, "metrics.csv"), index=True)
+
+        # metrics_df = metrics_dict.copy()
+        # del metrics_df['nn_dists_nerf']
+        # del metrics_df['nn_dists_tof']
+        # del metrics_df['nn_dists_uss']
+        # metrics_df = pd.DataFrame(metrics_df, index=[0])
+        # metrics_df.to_csv(os.path.join(self.args.save_dir, "metrics.csv"), index=False)
 
         return metrics_dict
 
@@ -446,15 +468,17 @@ class Trainer(TrainerPlot):
             sensor_name="USS",
         )
 
-        metrics_dict = {}
-        for key in metrics_dict_nerf.keys():
-            metrics_dict[key+"_nerf"] = metrics_dict_nerf[key]
-            metrics_dict[key+"_tof"] = metrics_dict_tof[key]
-            metrics_dict[key+"_uss"] = metrics_dict_uss[key]
+        metrics_dict = {
+            "NeRF": metrics_dict_nerf,
+            "ToF": metrics_dict_tof,
+            "USS": metrics_dict_uss,
+        }
 
         data_w = { 
             'depth_gt': data_w_nerf['depth_gt'],
-            'rays_o': data_w_nerf['rays_o'],
+            'rays_o_nerf': data_w_nerf['rays_o'],
+            'rays_o_tof': data_w_tof['rays_o'],
+            'rays_o_uss': data_w_uss['rays_o'],
             'scan_map_gt': data_w_nerf['scan_map_gt'],
             'depth_nerf': data_w_nerf['depth'],
             'depth_tof': data_w_tof['depth'],
@@ -542,20 +566,21 @@ class Trainer(TrainerPlot):
         W, H = self.test_dataset.img_wh
 
         # determine scan pixel height
-        sensor_mask = self.test_dataset.sensors_dict['sensor_name'].mask.detach().clone().reshape(H,W) # (H, W)
+        sensor_mask = self.test_dataset.sensors_dict[sensor_name].mask.detach().clone().reshape(H,W) # (H, W)
         if sensor_name == "USS":
             scan_pix_h = H//2
         elif sensor_name == "ToF":
             sensor_mask_height = (torch.sum(sensor_mask, dim=1) > 0)
-            scan_pix_h = torch.arange(H)[sensor_mask_height][3]
+            scan_pix_h = torch.arange(H, device=self.args.device)[sensor_mask_height][3]
         else:
             self.args.logger.error(f"sensor_name {sensor_name} not implemented")
 
         # get pixel indices of sensor
-        scan_mask = torch.zeros_like(sensor_mask, dtype=torch.bool) # (H, W)
+        scan_mask = torch.zeros_like(sensor_mask, dtype=torch.bool, device=self.args.device) # (H, W)
         scan_mask[scan_pix_h, :] = sensor_mask[scan_pix_h, :] # (H, W)
         scan_mask = scan_mask.reshape(-1) # (H*W,)
-        pix_idxs = torch.arange(H*W)[scan_mask] # (M,)
+        pix_idxs = torch.arange(H*W, dtype=torch.int32, device=self.args.device) # (H*W,)
+        pix_idxs = pix_idxs[scan_mask]
 
         # get positions, directions and depths of sensor
         img_idxs, pix_idxs = torch.meshgrid(img_idxs, pix_idxs, indexing="ij") # (N,M), (N,M)

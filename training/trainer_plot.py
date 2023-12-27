@@ -9,7 +9,8 @@ from modules.distortion import distortion_loss
 from modules.rendering import MAX_SAMPLES, render
 from modules.utils import depth2img, save_deployment_model
 from helpers.geometric_fcts import findNearestNeighbour,  createScanPos
-from helpers.data_fcts import linInterpolateArray, convolveIgnorNans, dataConverged
+from helpers.data_fcts import linInterpolateArray, convolveIgnorNans, dataConverged, downsampleData
+from helpers.plotting_fcts import combineImgs
 from training.metrics_rh import MetricsRH
 
 from modules.occupancy_grid import OccupancyGrid
@@ -142,133 +143,132 @@ class TrainerPlot(TrainerBase):
             self,
             data_w:dict,
             metrics_dict:dict,
+            num_imgs:int,
     ):
         """
         Plot scan and density maps.
         Args:
             data_w: data dictionary in world coordinates
             metrics_dict: metrics dictionary
+            num_imgs: number of images to plot
         """
         if not self.args.eval.plot_results:
             return
         
-        M = self.args.eval.res_angular
-        N = data_w['depth'].shape[0] // M
-        if data_w['depth'].shape[0] % M != 0:
-            self.args.logger.error(f"ERROR: trainer_RH.evaluatePlot(): data_w['depth'].shape[0]={data_w['depth'].shape[0]} "
-                                    + f"should be a multiple of M={M}")
+        N = num_imgs
+        N_down = self.args.eval.num_plot_pts
+
+        # downsample data   
+        rays_o_w_nerf, rays_o_w_tof, rays_o_w_uss, depth_w_nerf, depth_w_tof, depth_w_uss, \
+            scan_angles_nerf, scan_angles_tof, scan_angles_uss, nn_dists_nerf, nn_dists_tof, nn_dists_uss = downsampleData(
+            datas=[
+                data_w['rays_o_nerf'], 
+                data_w['rays_o_tof'],
+                data_w['rays_o_uss'],
+                data_w['depth_nerf'], 
+                data_w['depth_tof'], 
+                data_w['depth_uss'], 
+                data_w['scan_angles_nerf'], 
+                data_w['scan_angles_tof'], 
+                data_w['scan_angles_uss'], 
+                metrics_dict['NeRF']['nn_dists'], 
+                metrics_dict['NeRF']['nn_dists'], 
+                metrics_dict['NeRF']['nn_dists']
+            ],
+            num_imgs=N,
+            num_imgs_downsampled=N_down,
+        )
         
-        # downsample data
-        depth_w = data_w['depth'].reshape((N, M)) # (N, M)
-        rays_o_w = data_w['rays_o'].reshape((N, M, 3)) # (N, M, 3)
-        scan_angles = data_w['scan_angles'].reshape((N, M)) # (N, M)
-        nn_dists = metrics_dict['nn_dists'] # (N, M)
-        if self.args.eval.num_plot_pts > N:
-            self.args.logger.warning(f"trainer_RH.evaluatePlot(): num_plot_pts={self.args.eval.num_plot_pts} "
-                                        f"should be smaller or equal than N={N}")
-            self.args.eval.num_plot_pts = N
-        elif self.args.eval.num_plot_pts < N:
-            idxs_temp = np.linspace(0, depth_w.shape[0]-1, self.args.eval.num_plot_pts, dtype=int)
-            depth_w = depth_w[idxs_temp]
-            rays_o_w = rays_o_w[idxs_temp]
-            scan_angles = scan_angles[idxs_temp]
-            nn_dists = nn_dists[idxs_temp]  
-        depth_w = depth_w.flatten() # (N*M,)
-        rays_o_w = rays_o_w.reshape((-1, 3)) # (N*M, 3)
-        scan_angles = scan_angles.flatten() # (N*M,)
 
         # create scan maps
-        scan_maps = self._scanRays2scanMap(
-            rays_o_w=rays_o_w,
-            depth=depth_w,
-            scan_angles=scan_angles,
+        scan_maps_nerf = self._scanRays2scanMap(
+            rays_o_w=rays_o_w_nerf,
+            depth=depth_w_nerf,
+            scan_angles=scan_angles_nerf,
+            num_imgs=N_down,
+        ) # (N, L, L)
+        scan_maps_uss = self._scanRays2scanMap(
+            rays_o_w=rays_o_w_uss,
+            depth=depth_w_uss,
+            scan_angles=scan_angles_uss,
+            num_imgs=N_down,
+        ) # (N, L, L)
+        scan_maps_tof = self._scanRays2scanMap(
+            rays_o_w=rays_o_w_tof,
+            depth=depth_w_tof,
+            scan_angles=scan_angles_tof,
+            num_imgs=N_down,
         ) # (N, L, L)
         scan_map_gt = data_w['scan_map_gt'] # (L, L)
 
-        # create density maps
-        density_map_gt = self.test_dataset.scene.getSliceMap(
-            height=np.mean(rays_o_w[:,2]), 
-            res=self.args.eval.res_map, 
-            height_tolerance=self.args.eval.height_tolerance, 
-            height_in_world_coord=True
-        ) # (L, L)
-        _, density_map = self.interfereDensityMap(
-            res_map=self.args.eval.res_map,
-            height_w=np.mean(rays_o_w[:,2]),
-            num_avg_heights=self.args.eval.num_avg_heights,
-            tolerance_w=self.args.eval.height_tolerance,
-            threshold=self.args.eval.density_map_thr,
-        ) # (L, L)
-
-        # create combined maps
-        scan_maps_comb = np.zeros((self.args.eval.num_plot_pts,self.args.eval.res_map,self.args.eval.res_map))
-        for i in range(self.args.eval.num_plot_pts):
-            scan_maps_comb[i] = scan_map_gt + 2*scan_maps[i]
-        density_map_comb = density_map_gt + 2*density_map
+        # create scan images by overlaying scan maps with ground truth
+        scan_imgs_nerf = []
+        scan_imgs_uss = []
+        scan_imgs_tof = []
+        for i in range(N_down):
+            img = combineImgs(
+                bool_imgs=[scan_map_gt, scan_maps_nerf[i]],
+                colors=['black', 'orange'],
+            )
+            scan_imgs_nerf.append(img)
+            img = combineImgs(
+                bool_imgs=[scan_map_gt, scan_maps_uss[i]],
+                colors=['black', 'blue'],
+            )
+            scan_imgs_uss.append(img)
+            img = combineImgs(
+                bool_imgs=[scan_map_gt, scan_maps_tof[i]],
+                colors=['black', 'lime'],
+            )
+            scan_imgs_tof.append(img)
 
         # plot
-        fig, axes = plt.subplots(ncols=1+self.args.eval.num_plot_pts, nrows=4, figsize=(9,9))
+        fig, axes = plt.subplots(ncols=N, nrows=4, figsize=(9,9))
 
         scale = self.args.model.scale
         extent = self.test_dataset.scene.c2w(pos=np.array([[-scale,-scale],[scale,scale]]), copy=False)
         extent = extent.T.flatten()
-
-        ax = axes[0,0]
-        ax.imshow(density_map_gt.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(density_map_comb))
-        ax.set_ylabel(f'GT', weight='bold')
-        ax.set_title(f'Density', weight='bold')
-        ax.set_xlabel(f'x [m]')
-
-        ax = axes[1,0]
-        ax.imshow(2*density_map.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(density_map_comb))
-        ax.set_ylabel(f'NeRF', weight='bold')
-        ax.set_xlabel(f'x [m]')
-
-        ax = axes[2,0]
-        ax.imshow(density_map_comb.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(density_map_comb))
-        ax.set_ylabel(f'GT + NeRF', weight='bold')
-        ax.set_xlabel(f'x [m]')
-
-        fig.delaxes(axes[3,0])
         
-        rays_o_w = rays_o_w.reshape((-1, self.args.eval.res_angular, 3))
-        for i in range(self.args.eval.num_plot_pts):
-            ax = axes[0,i+1]
-            ax.imshow(scan_map_gt.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(scan_maps_comb[i]))
-            ax.scatter(rays_o_w[i,0,0], rays_o_w[i,0,1], c='w', s=5)
-            ax.scatter(rays_o_w[:,0,0], rays_o_w[:,0,1], c='w', s=5, alpha=0.1)
+        rays_o_w_nerf = rays_o_w_nerf.reshape(N_down, -1, 3)
+        rays_o_w_uss = rays_o_w_uss.reshape(N_down, -1, 3)
+        rays_o_w_tof = rays_o_w_tof.reshape(N_down, -1, 3)
+        for i in range(N_down):
+            ax = axes[0,i]
+            ax.imshow(scan_imgs_uss[i].swapaxes(0,1), origin='lower', extent=extent)
+            ax.scatter(rays_o_w_uss[i,0,0], rays_o_w_uss[i,0,1], c='w', s=5)
+            ax.scatter(rays_o_w_uss[:,0,0], rays_o_w_uss[:,0,1], c='w', s=5, alpha=0.1)
             ax.set_title(f'Scan {i+1}', weight='bold')
             ax.set_xlabel(f'x [m]')
             ax.set_ylabel(f'y [m]')
 
-            ax = axes[1,i+1]
-            ax.imshow(2*scan_maps[i].T,origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(scan_maps_comb[i]))
-            # for i in range(0, rays_o_w.shape[0], nb_pts_step):
+            ax = axes[1,i]
+            ax.imshow(scan_imgs_tof[i].swapaxes(0,1), origin='lower', extent=extent)
+            # for i in range(0, rays_o_w_tof.shape[0], nb_pts_step):
             #     for j in range(depth_pos_w.shape[1]):
-            #         ax.plot([rays_o_w[i,j,0], depth_pos_w[i,j,0]], [rays_o_w[i,j,1], depth_pos_w[i,j,1]], c='w', linewidth=0.1)
-            ax.scatter(rays_o_w[i,0,0], rays_o_w[i,0,1], c='w', s=5)
-            ax.scatter(rays_o_w[:,0,0], rays_o_w[:,0,1], c='w', s=5, alpha=0.1)
+            #         ax.plot([rays_o_w_tof[i,j,0], depth_pos_w[i,j,0]], [rays_o_w_tof[i,j,1], depth_pos_w[i,j,1]], c='w', linewidth=0.1)
+            ax.scatter(rays_o_w_tof[i,0,0], rays_o_w_tof[i,0,1], c='w', s=5)
+            ax.scatter(rays_o_w_tof[:,0,0], rays_o_w_tof[:,0,1], c='w', s=5, alpha=0.1)
             ax.set_xlabel(f'x [m]')
             ax.set_ylabel(f'y [m]')
             
-            ax = axes[2,i+1]
-            ax.imshow(scan_maps_comb[i].T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(scan_maps_comb[i]))
-            # for i in range(0, rays_o_w.shape[0], nb_pts_step):
+            ax = axes[2,i]
+            ax.imshow(scan_imgs_nerf[i].swapaxes(0,1), origin='lower', extent=extent)
+            # for i in range(0, rays_o_w_nerf.shape[0], nb_pts_step):
             #     for j in range(depth_pos_w.shape[1]):
-            #         ax.plot([rays_o_w[i,j,0], depth_pos_w[i,j,0]], [rays_o_w[i,j,1], depth_pos_w[i,j,1]], c='w', linewidth=0.1)
-            ax.scatter(rays_o_w[i,0,0], rays_o_w[i,0,1], c='w', s=5)
-            ax.scatter(rays_o_w[:,0,0], rays_o_w[:,0,1], c='w', s=5, alpha=0.1)
+            #         ax.plot([rays_o_w_nerf[i,j,0], depth_pos_w[i,j,0]], [rays_o_w_nerf[i,j,1], depth_pos_w[i,j,1]], c='w', linewidth=0.1)
+            ax.scatter(rays_o_w_nerf[i,0,0], rays_o_w_nerf[i,0,1], c='w', s=5)
+            ax.scatter(rays_o_w_nerf[:,0,0], rays_o_w_nerf[:,0,1], c='w', s=5, alpha=0.1)
             ax.set_xlabel(f'x [m]')
             ax.set_ylabel(f'y [m]')
 
-            ax = axes[3,i+1]
-            ax.hist(nn_dists[i], bins=50)
-            ax.vlines(np.nanmean(nn_dists[i]), ymin=0, ymax=20, colors='r', linestyles='dashed', label=f'avg.={np.nanmean(nn_dists[i]):.2f}')
+            ax = axes[3,i]
+            ax.hist(nn_dists_nerf[i], bins=50)
+            ax.vlines(np.nanmean(nn_dists_nerf[i]), ymin=0, ymax=20, colors='r', linestyles='dashed', label=f'avg.={np.nanmean(nn_dists_nerf[i]):.2f}')
             if i == 0:
                 ax.set_ylabel(f'Nearest Neighbour', weight='bold')
             else:
                 ax.set_ylabel(f'# elements')
-            ax.set_xlim([0, np.nanmax(nn_dists)])
+            ax.set_xlim([0, np.nanmax(nn_dists_nerf)])
             ax.set_ylim([0, 25])
             ax.set_xlabel(f'distance [m]')
             ax.legend()

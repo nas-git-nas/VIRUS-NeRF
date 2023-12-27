@@ -21,27 +21,27 @@
     "training":
     {
         "distortion_loss_w": 0.0,
-        "batch_size": 8192,
+        "batch_size": 4096,
         "sampling_strategy": 
         {
             "imgs": "all", 
             "pixs": {"closest":0.05, "valid_uss":0.4, "valid_tof":0.4}
         },
         "sensors": ["USS", "ToF"],
-        "max_steps": 2,
+        "max_steps": 1,
         "lr": 1e-2,
-        "depth_loss_w": 1.0,
+        "depth_loss_w": 100.0,
         "random_bg": false
     },
     "evaluation":
     {
-        "batch_size": 16384,
+        "batch_size": 8192,
         "res_map": 256,
         "res_angular": 256,
         "eval_every_n_steps": 1,
-        "num_color_pts": 1,
+        "num_color_pts": 0,
         "num_depth_pts": 4,
-        "num_plot_pts": 3,
+        "num_plot_pts": 2,
         "num_avg_heights": 5,
         "height_tolerance": 0.05,
         "density_map_thr": 10,

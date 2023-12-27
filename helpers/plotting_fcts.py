@@ -12,10 +12,18 @@ def combineImgs(
     Args:
         bool_imgs: list of boolean images; list of numpy arrays
         colors: list of colors; list of strings
+    Returns:
+        rgb_img: combined image; numpy array of shape (height, width, 4)
     """
     rgb_img = np.zeros((bool_imgs[0].shape[0], bool_imgs[0].shape[1], 4), dtype=float)
-    for i in range(len(bool_imgs)):
-        rgb_img[bool_imgs[i]] = matplotlib.colors.to_rgba(colors[i])
+    for i, img in enumerate(bool_imgs):
+        # check if img is boolean or can be converted to boolean
+        if img.dtype != bool:
+            if not np.all(np.isin(img, [0, 1])):
+                print(f"plotting_fcts.combineImgs: img {i} is not boolean and cannot be converted to boolean")
+            img = img.astype(bool)
+
+        rgb_img[img] = matplotlib.colors.to_rgba(colors[i])
 
     rgb_img = (255 * rgb_img).astype(np.uint8)
     return rgb_img

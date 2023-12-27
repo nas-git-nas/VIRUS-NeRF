@@ -261,6 +261,7 @@ class TrainerBase():
             rays_o_w:np.array,
             depth:np.array,
             scan_angles:np.array,
+            num_imgs:int,
     ):
         """
         Create scan maps for given rays and depths.
@@ -268,12 +269,13 @@ class TrainerBase():
             rays_o_w: ray origins in world coordinates (meters); numpy array of shape (N*M, 3)
             depth: depths in wolrd coordinates (meters); numpy array of shape (N*M,)
             scan_angles: scan angles; numpy array of shape (N*M,)
+            num_imgs: number of images N; int
         Returns:
             scan_maps: scan maps; numpy array of shape (N, L, L)
         """
-        M = self.args.eval.res_angular
         L = self.args.eval.res_map
-        N = rays_o_w.shape[0] // M
+        N = num_imgs
+        M = rays_o_w.shape[0] // N
         if rays_o_w.shape[0] % M != 0:
             self.args.logger.error(f"rays_o_w.shape[0]={rays_o_w.shape[0]} % M={M} != 0")
         
