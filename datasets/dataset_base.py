@@ -3,6 +3,7 @@ import torch
 from torch.utils.data import Dataset
 import os
 import pandas as pd
+import sys
 
 from datasets.ray_utils import get_rays
 
@@ -58,6 +59,9 @@ class DatasetBase(Dataset):
                 sampling_strategy=sampling_strategy,
                 origin=origin,
             )
+
+        pass
+        sys.exit()      
 
         # calculate ray origins and directions
         rays_o, rays_d = self._calcRayPoses(
