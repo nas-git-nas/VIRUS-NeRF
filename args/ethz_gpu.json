@@ -23,10 +23,10 @@
         "distortion_loss_w": 0.0,
         "batch_size": 4096,
         "sampling_strategy": {"imgs": "all", "rays": "random"},
-        "sensors": ["RGBD"],
+        "sensors": ["USS", "ToF"],
         "max_steps": 700,
         "lr": 1e-2,
-        "depth_loss_w": 100.0,
+        "depth_loss_w": 1.0,
         "random_bg": false
     },
     "evaluation":
@@ -38,8 +38,8 @@
         "num_color_pts": 10,
         "num_depth_pts": "all",
         "num_plot_pts": 3,
-        "num_avg_heights": 10,
-        "height_tolerance": 0.005,
+        "num_avg_heights": 5,
+        "height_tolerance": 0.1,
         "density_map_thr": 10,
         "plot_results": true
     },
@@ -73,15 +73,15 @@
     },
     "RGBD":
     {
-        "angle_of_view": [45, 58]
+        "angle_of_view": [90, 65]
     },
     "USS":
     {
-        "angle_of_view": [30, 30]
+        "angle_of_view": [55, 35]
     },
     "ToF":
     {
-        "angle_of_view": [42.4, 42.4],
+        "angle_of_view": [45, 45],
         "matrix": [8, 8],
         "sensor_calibration_error": 0.0,
         "sensor_random_error": 0.0
