@@ -246,7 +246,7 @@ class Sampler():
         Returns:
             pix_idxs: pixel indices of batch; torch.tensor (B,)
         """
-        mask = torch.tensor(self.sensors_dict[sensor_type].mask, device=self.args.device, dtype=torch.bool)
+        mask = self.sensors_dict[sensor_type].mask
         mask_idxs = torch.where(mask)[0]
         rand_ints = torch.randint(0, mask_idxs.shape[0], (B,), device=self.args.device, dtype=torch.int32)
         pix_idxs = mask_idxs[rand_ints]
