@@ -54,7 +54,7 @@ def test_ToFModel():
     print(f"ToF-RGBD Depths are at most 1cm apart per image: {(same_depths/num_imgs):.3} / {(np.sum(valid_depth)/num_imgs):.3}")
 
     # get masks for visualization
-    mask = dataset.sensors_dict['ToF1'].mask.astype(int)
+    mask = dataset.sensors_dict['ToF1'].mask.cpu().numpy().astype(int)
     error_mask = dataset.sensors_dict['ToF1'].error_mask.astype(int)
     mask_comb = np.zeros_like(mask, dtype=int)
     mask_comb[mask == 1] = 1
@@ -138,7 +138,7 @@ def test_USSModel():
         depths_uss[i] = data['depth']['USS'].detach().cpu().numpy()
         depths_rgbd[i] = data['depth']['RGBD'].detach().cpu().numpy()
         
-    mask = dataset.sensors_dict['USS1'].mask.astype(int)
+    mask = dataset.sensors_dict['USS1'].mask.cpu().numpy().astype(int)
 
     # plot
     fig, axes = plt.subplots(ncols=num_imgs, nrows=3, figsize=(12,8))

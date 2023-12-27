@@ -116,7 +116,7 @@ class ToFModel(SensorModel):
 
         self.mask = self._createMask() # (H*W,)
         self.error_mask = self._createErrorMask(
-            mask=self.mask
+            mask=self.mask.detach().clone().cpu().numpy(),
         ) # (H*W,)
         
 
@@ -137,11 +137,13 @@ class ToFModel(SensorModel):
         """
         depths = np.copy(depths) # (N, H*W)
         depths_out = np.full((depths.shape[0], self.H*self.W), np.nan) # (N, H*W)
+        fov_mask = self.mask.detach().clone().cpu().numpy() # (H*W,)
+        error_mask = self.error_mask.detach().clone().cpu().numpy() # (H*W,)
 
         if format == "img":
-            depths_out[:, self.mask] = depths[:,self.error_mask] 
+            depths_out[:, fov_mask] = depths[:,error_mask] 
         elif format == "sensor":
-            depths_out[:, self.mask] = depths
+            depths_out[:, fov_mask] = depths
         else:
             self.args.logger.error(f"Unknown depth format: {format}")
 
@@ -161,7 +163,7 @@ class ToFModel(SensorModel):
         """
         Create mask for ToF sensor.
         Returns:
-            mask: mask for ToF sensor; array of shape (H*W,)
+            mask: mask for ToF sensor; tensor of shape (H*W,)
         """
         # calculate indices of ToF sensor array
         pix_wh = self.AoV2pixel(aov_sensor=self.args.tof.angle_of_view)
@@ -183,11 +185,12 @@ class ToFModel(SensorModel):
         # create mask
         mask = np.zeros((self.H, self.W), dtype=bool) # (H, W)
         mask[idxs_h, idxs_w] = True
-        return mask.flatten() # (H*W,)
+        mask = torch.tensor(mask.flatten(), dtype=torch.bool).to(self.args.device) # (H*W,)
+        return mask # (H*W,)
     
     def _createErrorMask(
         self,
-        mask:np.array,
+        mask:torch.Tensor,
     ):
         """
         Create error mask for ToF sensor. If the calibration error is equal to 0.0, 
@@ -195,11 +198,11 @@ class ToFModel(SensorModel):
         in a random direction by the calibration error. In this case, the ToF-depth is
         evaluated by using the error mask and assigned to the pixel in the mask.
         Args:
-            error_mask: error mask for ToF sensor; array of shape (H*W,)
+            error_mask: error mask for ToF sensor; tensor of shape (H*W,)
         """
         mask = np.copy(mask) # (H*W,)
         if self.args.tof.sensor_calibration_error == 0.0:
-            return mask
+            return torch.tensor(mask, dtype=torch.bool).to(self.args.device)
 
         # determine error in degrees
         direction = 0.0
@@ -219,7 +222,8 @@ class ToFModel(SensorModel):
         # apply error to mask
         error_mask = np.zeros((self.H, self.W), dtype=bool)
         error_mask[idxs[:,0], idxs[:,1]] = True
-        return error_mask.flatten() # (H*W,)
+        error_mask = torch.tensor(error_mask.flatten(), dtype=torch.bool).to(self.args.device)
+        return error_mask # (H*W,)
 
 
 class USSModel(SensorModel):
@@ -314,15 +318,16 @@ class USSModel(SensorModel):
         """
         depths = np.copy(depths) # (N, H*W) or (N,)
         depths_out = np.full((depths.shape[0], self.W*self.H), np.nan) # (N, H*W)
+        fov_mask = self.mask.detach().clone().cpu().numpy() # (H*W,)
 
         if format == "img":
-            d_min = np.nanmin(depths[:, self.mask], axis=1) # (N,)
+            d_min = np.nanmin(depths[:, fov_mask], axis=1) # (N,)
         elif format == "sensor":
             d_min = depths # (N,)
         else:
             self.args.logger.error(f"Unknown depth format: {format}")
 
-        depths_out[:, self.mask] = d_min[:,None] # (N, H*W)
+        depths_out[:, fov_mask] = d_min[:,None] # (N, H*W)
         return depths_out   
 
     def updateStats( 
@@ -433,11 +438,11 @@ class USSModel(SensorModel):
 
     def _createMask(
         self,
-    ) -> np.array:
+    ) -> torch.Tensor:
         """
         Create mask for ToF sensor.
         Returns:
-            mask: mask for ToF sensor; array of shape (H*W,)
+            mask: mask for ToF sensor; tensor of shape (H*W,)
         """
         # define USS opening angle
         pix_wh = self.AoV2pixel(
@@ -450,7 +455,8 @@ class USSModel(SensorModel):
         m1 = m1 - self.H/2 
         m2 = m2 - self.W/2
         mask = (m1/pix_wh[1])**2 + (m2/pix_wh[0])**2 < 1 # (H, W), ellipse
-        return mask.flatten() # (H*W,)  
+        mask = torch.tensor(mask.flatten(), dtype=torch.bool).to(self.args.device) # (H*W,)
+        return mask # (H*W,)  
     
 
 
