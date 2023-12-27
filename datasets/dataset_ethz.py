@@ -357,15 +357,14 @@ class DatasetETHZ(DatasetBase):
             if self.args.model.debug_mode and not np.all(sensor_ids == rgbs_sensor_ids):
                 self.args.logger.error(f"DatasetETHZ::read_meta: stack ids do not match")
 
-            rs_depths, rs_sensors_dict = self._convertDepthImgs(
+            rs_depths, rs_sensor_model = self._convertDepthImgs(
                 depths=depths,
                 directions_dict=directions_dict,
                 sensor_ids=sensor_ids,
                 img_wh=img_wh,
             )
             depths_dict["RGBD"] = rs_depths
-            sensors_dict.update(rs_sensors_dict)
-
+            sensors_dict["RGBD"] = rs_sensor_model
         
         if "USS" in self.args.training.sensors:
             uss_meass, uss_sensor_ids = self._readUSS(
