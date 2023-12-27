@@ -53,7 +53,7 @@ class TrainerBase():
         ti.init(**taichi_init_args)
 
         # datasets   
-        if self.args.dataset.name == 'robot_at_home':
+        if self.args.dataset.name == 'RH2':
             dataset = DatasetRH 
         elif self.args.dataset.name == 'ETHZ':   
             dataset = DatasetETHZ

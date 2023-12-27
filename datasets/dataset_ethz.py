@@ -19,16 +19,16 @@ from robotathome import logger, log
 from robotathome import time_win2unixepoch, time_unixepoch2win
 
 from datasets.sensor_model import RGBDModel, ToFModel, USSModel
-
 from args.args import Args
 from training.sampler import Sampler
+from helpers.data_fcts import sensorName2ID, sensorID2Name
 
 # try:
 #     from .ray_utils import get_rays
 #     from .base import DatasetBase
 #     from .color_utils import read_image
 #     from .ray_utils import get_ray_directions
-#     from .robot_at_home_scene import RobotAtHomeScene
+#     from .RH2_scene import RobotAtHomeScene
 # except:
 
 from datasets.ray_utils import get_rays, get_ray_directions
@@ -83,7 +83,7 @@ class DatasetETHZ(DatasetBase):
         )
 
         # load samples
-        poses, rgbs, depths_dict, sensors_dict, stack_ids = self.readMetas(
+        poses, rgbs, depths_dict, sensors_dict, sensor_ids = self.readMetas(
             data_dir=data_dir,
             cam_ids=self.args.ethz.cam_ids,
             img_wh=img_wh,
@@ -107,7 +107,7 @@ class DatasetETHZ(DatasetBase):
         self.rgbs = rgbs
         self.depths_dict = depths_dict
         self.sensors_dict = sensors_dict
-        self.stack_ids = stack_ids
+        self.sensor_ids = sensor_ids
         self.times = torch.zeros(10)
 
         # TODO: move to base class
@@ -134,8 +134,13 @@ class DatasetETHZ(DatasetBase):
         Returns:
             idxs: indices of the dataset that belong to the sensor
         """
-        stack_id = self.stack_ids.detach().clone().cpu().numpy()
-        mask = (stack_id == int(sensor_name[-1]))
+        stack_id = self.sensor_ids.detach().clone().cpu().numpy()
+        id = sensorName2ID(
+            sensor_name=sensor_name,
+            dataset=self.args.dataset.name,
+        )
+
+        mask = (stack_id == id)
         idxs = np.where(mask)[0]
         return idxs
 
@@ -287,7 +292,8 @@ class DatasetETHZ(DatasetBase):
         # convert numpy arrays to tensors
         for cam_id in cam_ids:
             K_dict[cam_id] = torch.tensor(K_dict[cam_id], dtype=torch.float32, requires_grad=False)
-            directions_dict[cam_id] = torch.tensor(directions_dict[cam_id], dtype=torch.float32, requires_grad=False)
+            directions_dict[cam_id] = directions_dict[cam_id].to(dtype=torch.float32)
+            directions_dict[cam_id].requires_grad = False
 
         return img_wh, K_dict, directions_dict
 
@@ -312,10 +318,10 @@ class DatasetETHZ(DatasetBase):
             rgbs: ray origins; array of shape (N_images, H*W, 3)
             depths_dict: dictionary of depth samples; dict of { sensor type: array of shape (N_images, H*W) }
             sensors_dict: dictionary of sensor models; dict of { sensor: sensor model }
-            stack_ids: stack identity number of sample; array of shape (N_images,)
+            sensor_ids: stack identity number of sample; array of shape (N_images,)
         """
         # pose data
-        poses, stack_ids = self._readPoses(
+        poses, sensor_ids = self._readPoses(
             data_dir=data_dir,
             cam_ids=cam_ids,
             split_mask=split_mask,
@@ -325,13 +331,13 @@ class DatasetETHZ(DatasetBase):
         ) # (N, 3, 4)
 
         # image color data
-        rgbs, rgbs_stack_ids = self._readColorImgs(
+        rgbs, rgbs_sensor_ids = self._readColorImgs(
             data_dir=data_dir,
             cam_ids=cam_ids,
             img_wh=img_wh,
             split_mask=split_mask,
         ) # (N, H*W, 3), (N,)
-        if self.args.model.debug_mode and not np.all(stack_ids == rgbs_stack_ids):
+        if self.args.model.debug_mode and not np.all(sensor_ids == rgbs_sensor_ids):
             self.args.logger.error(f"DatasetETHZ::read_meta: stack ids do not match")
         rgbs = self._convertColorImgs(
             rgbs=rgbs,
@@ -342,19 +348,19 @@ class DatasetETHZ(DatasetBase):
         sensors_dict = {}
 
         if "RGBD" in self.args.training.sensors:
-            depths, stack_ids = self._readDepthImgs(
+            depths, sensor_ids = self._readDepthImgs(
                 data_dir=data_dir,
                 cam_ids=cam_ids,
                 img_wh=img_wh,
                 split_mask=split_mask,
             )
-            if self.args.model.debug_mode and not np.all(stack_ids == rgbs_stack_ids):
+            if self.args.model.debug_mode and not np.all(sensor_ids == rgbs_sensor_ids):
                 self.args.logger.error(f"DatasetETHZ::read_meta: stack ids do not match")
 
             rs_depths, rs_sensors_dict = self._convertDepthImgs(
                 depths=depths,
                 directions_dict=directions_dict,
-                stack_ids=stack_ids,
+                sensor_ids=sensor_ids,
                 img_wh=img_wh,
             )
             depths_dict["RGBD"] = rs_depths
@@ -362,44 +368,44 @@ class DatasetETHZ(DatasetBase):
 
         
         if "USS" in self.args.training.sensors:
-            uss_meass, uss_stack_ids = self._readUSS(
+            uss_meass, uss_sensor_ids = self._readUSS(
                 data_dir=data_dir,
                 cam_ids=cam_ids,
                 split_mask=split_mask,
             ) # (N,), (N,)
-            if self.args.model.debug_mode and not np.all(stack_ids == uss_stack_ids):
-                self.args.logger.error(f"DatasetETHZ::read_meta: uss_stack_ids ids do not match")
+            if self.args.model.debug_mode and not np.all(sensor_ids == uss_sensor_ids):
+                self.args.logger.error(f"DatasetETHZ::read_meta: uss_sensor_ids ids do not match")
 
-            uss_depths, uss_sensors_dict = self._convertUSS(
+            uss_depths, uss_sensors_model = self._convertUSS(
                 meass=uss_meass,
-                stack_ids=uss_stack_ids,
+                sensor_ids=uss_sensor_ids,
                 img_wh=img_wh,
             ) # (N, H*W), dict { cam_id : USSModel }
             depths_dict["USS"] = uss_depths
-            sensors_dict.update(uss_sensors_dict)
+            sensors_dict["USS"] = uss_sensors_model
 
         if "ToF" in self.args.training.sensors:
-            tof_meass, tof_meas_stds, tof_stack_ids = self._readToF(
+            tof_meass, tof_meas_stds, tof_sensor_ids = self._readToF(
                 data_dir=data_dir,
                 cam_ids=cam_ids,
                 split_mask=split_mask,
             ) # (N, 64), (N, 64), (N,)
-            if self.args.model.debug_mode and not np.all(stack_ids == tof_stack_ids):
-                self.args.logger.error(f"DatasetETHZ::read_meta: tof_stack_ids ids do not match")
+            if self.args.model.debug_mode and not np.all(sensor_ids == tof_sensor_ids):
+                self.args.logger.error(f"DatasetETHZ::read_meta: tof_sensor_ids ids do not match")
 
-            tof_depths, tof_stds, tof_sensors_dict = self._convertToF(
+            tof_depths, tof_stds, tof_sensors_model = self._convertToF(
                 meass=tof_meass,
                 meas_stds=tof_meas_stds,
-                stack_ids=tof_stack_ids,
+                sensor_ids=tof_sensor_ids,
                 img_wh=img_wh,
             ) # (N, H*W), (N, H*W), dict { cam_id : ToFModel }
             depths_dict["ToF"] = tof_depths
-            sensors_dict.update(tof_sensors_dict)
+            sensors_dict["ToF"] = tof_sensors_model
 
         # convert stack ids to tensor
-        stack_ids = torch.tensor(stack_ids, dtype=torch.int32, requires_grad=False)
+        sensor_ids = torch.tensor(sensor_ids, dtype=torch.uint8, requires_grad=False)
 
-        return poses, rgbs, depths_dict, sensors_dict, stack_ids
+        return poses, rgbs, depths_dict, sensors_dict, sensor_ids
     
     def _readPoses(
         self,
@@ -415,13 +421,17 @@ class DatasetETHZ(DatasetBase):
             split_mask: mask of split; bool array of shape (N_all_splits,)
         Returns:
             poses: camera poses; array of shape (N, 3, 4)
-            stack_ids: stack identity number of sample; array of shape (N,)
+            sensor_ids: stack identity number of sample; array of shape (N,)
         """
         poses = np.zeros((0, 3, 4))
-        stack_ids = np.zeros((0))
+        sensor_ids = np.zeros((0))
         for cam_id in cam_ids:
+            id = sensorName2ID(
+                sensor_name=cam_id,
+                dataset=self.args.dataset.name,
+            )
             df = pd.read_csv(
-                filepath_or_buffer=os.path.join(data_dir, 'poses', 'poses_sync'+cam_id[-1]+'_cam_robot.csv'),
+                filepath_or_buffer=os.path.join(data_dir, 'poses', 'poses_sync'+str(id)+'_cam_robot.csv'),
                 dtype=np.float64,
             )
 
@@ -437,9 +447,9 @@ class DatasetETHZ(DatasetBase):
                 pose[i] = T[:3,:] # (3, 4)
 
             poses = np.concatenate((poses, pose), axis=0) # (N, 3, 4)
-            stack_ids = np.concatenate((stack_ids, np.ones((pose.shape[0]))*int(cam_id[-1])), axis=0) # (N,)
+            sensor_ids = np.concatenate((sensor_ids, np.ones((pose.shape[0]))*int(cam_id[-1])), axis=0) # (N,)
 
-        return poses, stack_ids
+        return poses, sensor_ids
     
     def _readColorImgs(
         self,
@@ -457,12 +467,12 @@ class DatasetETHZ(DatasetBase):
             split_mask: mask of split; bool array of shape (N_all_splits,)
         Returns:
             rgbs_dict: color images; array of shape (N, H*W, 3)
-            stack_ids: stack identity number of sample; array of shape (N,)
+            sensor_ids: stack identity number of sample; array of shape (N,)
         """
         W, H = img_wh
 
         rgbs = np.zeros((0, H*W, 3))
-        stack_ids = np.zeros((0))
+        sensor_ids = np.zeros((0))
         for cam_id in cam_ids:
             rgb_path = os.path.join(data_dir, 'measurements/'+cam_id+'_color_image_raw') 
             rgb_files = np.array(['img'+str(i)+'.png' for i in range(split_mask.shape[0])])
@@ -474,10 +484,15 @@ class DatasetETHZ(DatasetBase):
                 rgb = cv.imread(rgb_file, cv.IMREAD_COLOR) # (H, W, 3)
                 rgbs_temp[i] = rgb.reshape(H*W, 3) # (H*W, 3)
 
-            rgbs = np.concatenate((rgbs, rgbs_temp), axis=0) # (N, H*W, 3)
-            stack_ids = np.concatenate((stack_ids, np.ones((rgbs_temp.shape[0]))*int(cam_id[-1])), axis=0) # (N,)
+            id = sensorName2ID(
+                sensor_name=cam_id,
+                dataset=self.args.dataset.name,
+            )
 
-        return rgbs, stack_ids
+            rgbs = np.concatenate((rgbs, rgbs_temp), axis=0) # (N, H*W, 3)
+            sensor_ids = np.concatenate((sensor_ids, id*np.ones((rgbs_temp.shape[0]))), axis=0) # (N,)
+
+        return rgbs, sensor_ids
 
     def _readDepthImgs(
         self,
@@ -495,12 +510,12 @@ class DatasetETHZ(DatasetBase):
             split_mask: mask of split; bool array of shape (N_all_splits,)
         Returns:
             depths: depth images; array of shape (N, H*W)
-            stack_ids: stack identity number of sample; array of shape (N,)
+            sensor_ids: stack identity number of sample; array of shape (N,)
         """
         W, H = img_wh
 
         depths = np.zeros((0, H*W))
-        stack_ids = np.zeros((0))
+        sensor_ids = np.zeros((0))
         for cam_id in cam_ids:
             depth_path = os.path.join(data_dir, 'measurements/'+cam_id+'_aligned_depth_to_color_image_raw')
             depth_files = np.array(['img'+str(i)+'.npy' for i in range(split_mask.shape[0])])
@@ -518,9 +533,9 @@ class DatasetETHZ(DatasetBase):
                 depths_temp[i] = depth.flatten() # (H*W)
 
             depths = np.concatenate((depths, depths_temp), axis=0) # (N, H*W)
-            stack_ids = np.concatenate((stack_ids, np.ones((depths_temp.shape[0]))*int(cam_id[-1])), axis=0) # (N,)
+            sensor_ids = np.concatenate((sensor_ids, np.ones((depths_temp.shape[0]))*int(cam_id[-1])), axis=0) # (N,)
 
-        return depths, stack_ids
+        return depths, sensor_ids
     
     def _readUSS(
         self,
@@ -536,22 +551,26 @@ class DatasetETHZ(DatasetBase):
             split_mask: mask of split; bool array of shape (N_all_splits,)
         Returns:
             meass: USS measurements; array of shape (N_images,)
-            stack_ids: stack identity number of sample; array of shape (N_images,)
+            sensor_ids: stack identity number of sample; array of shape (N_images,)
         """
         meass = np.zeros((0))
-        stack_ids = np.zeros((0))
+        sensor_ids = np.zeros((0))
         for cam_id in cam_ids:
+            id = sensorName2ID(
+                sensor_name=cam_id,
+                dataset=self.args.dataset.name,
+            )
             df = pd.read_csv(
-                filepath_or_buffer=os.path.join(data_dir, 'measurements/USS'+cam_id[-1]+'.csv'),
+                filepath_or_buffer=os.path.join(data_dir, 'measurements/USS'+str(id)+'.csv'),
                 dtype=np.float32,
             )
             meass_temp = df["meas"].to_numpy()
             meass_temp = meass_temp[split_mask]
 
             meass = np.concatenate((meass, meass_temp), axis=0) # (N,)
-            stack_ids = np.concatenate((stack_ids, np.ones((meass_temp.shape[0]))*int(cam_id[-1])), axis=0) # (N,)
+            sensor_ids = np.concatenate((sensor_ids, np.ones((meass_temp.shape[0]))*int(cam_id[-1])), axis=0) # (N,)
 
-        return meass, stack_ids
+        return meass, sensor_ids
     
     def _readToF(
         self,
@@ -568,31 +587,35 @@ class DatasetETHZ(DatasetBase):
         Returns:
             meass: USS measurements; array of shape (N_images, 64)
             meas_stds: USS measurements; array of shape (N_images, 64)
-            stack_ids: stack ids; array of shape (N_images,)
+            sensor_ids: stack ids; array of shape (N_images,)
         """
         meass = np.zeros((0, 64))
         meas_stds = np.zeros((0, 64))
-        stack_ids = np.zeros((0))
+        sensor_ids = np.zeros((0))
         for cam_id in cam_ids:
+            id = sensorName2ID(
+                sensor_name=cam_id,
+                dataset=self.args.dataset.name,
+            )
             df = pd.read_csv(
-                filepath_or_buffer=os.path.join(data_dir, 'measurements/USS'+cam_id[-1]+'.csv'),
+                filepath_or_buffer=os.path.join(data_dir, 'measurements/ToF'+str(id)+'.csv'),
                 dtype=np.float32,
             )
 
             meass_temp = np.zeros((df.shape[0], 64))
             stds = np.zeros((df.shape[0], 64))
-            for i in range(df.shape[0]):
+            for i in range(64):
                 meass_temp[:,i] = df["meas_"+str(i)].to_numpy()
-                stds[:,i] = df["std_"+str(i)].to_numpy()
+                stds[:,i] = df["stds_"+str(i)].to_numpy()
             
             meass_temp = meass_temp[split_mask]
             stds = stds[split_mask]
 
             meass = np.concatenate((meass, meass_temp), axis=0) # (N, 64)
             meas_stds = np.concatenate((meas_stds, stds), axis=0)
-            stack_ids = np.concatenate((stack_ids, np.ones((meass_temp.shape[0]))*int(cam_id[-1])), axis=0) # (N,)
+            sensor_ids = np.concatenate((sensor_ids, np.ones((meass_temp.shape[0]))*int(cam_id[-1])), axis=0) # (N,)
 
-        return meass, meas_stds, stack_ids
+        return meass, meas_stds, sensor_ids
     
     def _convertPoses(
         self,
@@ -637,7 +660,7 @@ class DatasetETHZ(DatasetBase):
         self,
         depths:np.ndarray,
         directions_dict:np.ndarray,
-        stack_ids:np.ndarray,
+        sensor_ids:np.ndarray,
         img_wh:tuple,
     ):
         """
@@ -645,11 +668,11 @@ class DatasetETHZ(DatasetBase):
         Args:
             depths: depth images; array of shape (N_images, H*W)
             directions_dict: ray directions; dict { cam_id: tensor of shape (H*W, 3) }
-            stack_ids: id of the stack; int
+            sensor_ids: id of the stack; int
             img_wh: image width and height; tuple of ints
         Returns:
             depths: depth images in cube coordinates; array of shape (N_images, H*W)
-            sensors_dict: dictionary of sensor models; dict of { sensor: sensor model }
+            sensors_model: RGBD sensor models; RGBDModel
         """
         # convert depth to meters
         depths = 0.001 * depths # (N, H*W)
@@ -659,7 +682,12 @@ class DatasetETHZ(DatasetBase):
         for cam_id, directions in directions_dict.items():
             directions = directions.detach().clone().cpu().numpy() # (H*W, 3)
 
-            sensor_mask = (int(cam_id[-1]) == stack_ids) # (N,)
+            id = sensorName2ID(
+                sensor_name=cam_id,
+                dataset=self.args.dataset.name,
+            )
+
+            sensor_mask = (id == sensor_ids) # (N,)
 
             depths_temp = depths / directions[:,2].reshape(1,-1) # (N, H*W)
             depths_scan[sensor_mask,:] = depths_temp[sensor_mask,:] # (N, H*W)
@@ -681,77 +709,70 @@ class DatasetETHZ(DatasetBase):
         # convert to tensor
         depths = torch.tensor(depths, dtype=torch.float32, requires_grad=False)
 
-        # create sensor model dictionary: {sensor id: sensor model}
-        sensors_dict = {}
-        for cam_id in directions_dict.keys():
-            sensors_dict[cam_id] = RGBDModel(
-                args=self.args, 
-                img_wh=img_wh,
-            )
-        return depths, sensors_dict
+        # create sensor model 
+        sensors_model = RGBDModel(
+            args=self.args, 
+            img_wh=img_wh,
+        )
+        return depths, sensors_model
     
     def _convertUSS(
         self,
         meass:dict,
-        stack_ids:np.array,
+        sensor_ids:np.array,
         img_wh:tuple,
     ):
         """
         Convert USS measurement to depth in cube coordinates.
         Args:
             meass: dictionary containing USS measurements; array of shape (N_images,)
-            stack_ids: stack identity number of sample; array of shape (N_images,)
+            sensor_ids: stack identity number of sample; array of shape (N_images,)
             img_wh: image width and height; tuple of ints
         Returns:
             depths: converted depths; array of shape (N_images, H*W)
-            sensors_dict: dictionary containing sensor models; dict { cam_id : USSModel }
+            sensors_model: USS sensor model; USSModel
         """
         pcl_creator = PCLCreatorUSS(
-                W=1,
-                H=1,
-            )
+            W=1,
+            H=1,
+        )
         
         # convert USS measurements to depth in meters
-        depths = np.zeros((meass.shape[0])) # (N)
+        depths_sensor = np.zeros((meass.shape[0])) # (N)
         for i, meas in enumerate(meass):
-            depths[i] = pcl_creator.meas2depth(
+            depths_sensor[i] = pcl_creator.meas2depth(
                 meas=meas,
             )
 
         # convert depth in meters to cube coordinates [-0.5, 0.5]
-        depths = self.scene.w2c(depths.flatten(), only_scale=True) # (N,)
+        depths_sensor = self.scene.w2c(depths_sensor.flatten(), only_scale=True) # (N,)
 
-        sensors_dict = {} 
-        for id in np.unique(stack_ids):
-            sensor_maks = (stack_ids == id)
-            sensor_id = "USS"+str(id)
+        # create sensor model
+        sensors_model = USSModel(
+            args=self.args, 
+            img_wh=img_wh,
+            sensor_ids=sensor_ids,
+        )
 
-            # create sensor model
-            sensors_dict[sensor_id] = USSModel(
-                args=self.args, 
-                img_wh=img_wh,
-                num_imgs=np.sum(sensor_maks),
-            )
-
-            # mask pixels that are outside of the field of view
-            depths[sensor_maks] = sensors_dict[sensor_id].convertDepth(
-                depths=depths[sensor_maks],
-                format="sensor",
-            ) # (N, H*W)
+        # convert depth
+        depths_sensor = sensors_model.convertDepth(
+            depths=depths_sensor,
+            format="sensor",
+        ) # (N, H*W)
 
         # convert depth to tensor
         depths =  torch.tensor(
-            data=depths,
+            data=depths_sensor,
             dtype=torch.float32,
             requires_grad=False,
         )
-        return depths, sensors_dict
+        return depths, sensors_model
 
     def _convertToF(
         self,
         meass:np.array,
         meas_stds:np.array,
-        stack_ids:np.array,
+        sensor_ids:np.array,
         img_wh:tuple,
     ):
         """
@@ -759,12 +780,12 @@ class DatasetETHZ(DatasetBase):
         Args:
             meass: dictionary containing ToF measurements; array of shape (N_images, 64,)
             meas_stds: dictionary containing ToF measurement standard deviations; array of shape (N_images, 64,)
-            stack_ids: stack identity number of sample; array of shape (N_images,)
+            sensor_ids: stack identity number of sample; array of shape (N_images,)
             img_wh: image width and height; tuple of ints
         Returns:
             depths: converted depths; array of shape (N_images, H*W)
             stds: converted standard deviations; array of shape (N_images, H*W)
-            sensors_dict: dictionary containing sensor models; dict { cam_id : ToFModel }
+            sensor_model: ToF sensor model; ToFModel
         """
         pcl_creator = PCLCreatorToF(
             W=8,
@@ -772,54 +793,48 @@ class DatasetETHZ(DatasetBase):
         )
         
         # convert ToF measurements to depth in meters
-        depths = np.zeros((meass.shape[0], 8, 8)) # (N, 8, 8)
-        stds = np.zeros((meas_stds.shape[0], 8, 8)) # (N, 8, 8)
+        depths_sensor = np.zeros((meass.shape[0], 8, 8)) # (N, 8, 8)
+        stds_sensor = np.zeros((meas_stds.shape[0], 8, 8)) # (N, 8, 8)
         for i in range(meass.shape[0]):
-            depths[i] = pcl_creator.meas2depth(
+            depths_sensor[i] = pcl_creator.meas2depth(
                 meas=meass[i],
             ) # (8, 8)
-            stds[i] = pcl_creator.meas2depth(
+            stds_sensor[i] = pcl_creator.meas2depth(
                 meas=meas_stds[i],
             ) # (8, 8)
 
         # convert depth in meters to cube coordinates [-0.5, 0.5]
-        depths = self.scene.w2c(depths.flatten(), only_scale=True).reshape(-1, 64) # (N, 8*8)
-        stds = self.scene.w2c(stds.flatten(), only_scale=True).reshape(-1, 64) # (N, 8*8)
+        depths_sensor = self.scene.w2c(depths_sensor.flatten(), only_scale=True).reshape(-1, 64) # (N, 8*8)
+        stds_sensor = self.scene.w2c(stds_sensor.flatten(), only_scale=True).reshape(-1, 64) # (N, 8*8)
 
-        sensors_dict = {} 
-        for id in np.unique(stack_ids):
-            sensor_maks = (stack_ids == id)
-            sensor_id = "ToF"+str(id)
+        # create sensor model
+        sensor_model = ToFModel(
+            args=self.args, 
+            img_wh=img_wh,
+        )
 
-            # create sensor model
-            sensors_dict[sensor_id] = ToFModel(
-                args=self.args, 
-                img_wh=img_wh,
-            )
-
-            # mask pixels that are outside of the field of view
-            depths[sensor_maks] = sensors_dict[sensor_id].convertDepth(
-                depths=depths[sensor_maks],
-                format="sensor",
-            ) # (N, H*W)
-            # mask pixels that are outside of the field of view
-            stds[sensor_maks] = sensors_dict[sensor_id].convertDepth(
-                depths=stds[sensor_maks],
-                format="sensor",
-            ) # (N, H*W)
+        # mask pixels that are outside of the field of view
+        depths_img = sensor_model.convertDepth(
+            depths=depths_sensor,
+            format="sensor",
+        ) # (N, H*W)
+        stds_img = sensor_model.convertDepth(
+            depths=stds_sensor,
+            format="sensor",
+        ) # (N, H*W)
 
         # convert depth to tensor
         depths =  torch.tensor(
-            data=depths,
+            data=depths_img,
             dtype=torch.float32,
             requires_grad=False,
         )
         stds =  torch.tensor(
-            data=stds,
+            data=stds_img,
             dtype=torch.float32,
             requires_grad=False,
             )
-        return depths, stds, sensors_dict
+        return depths, stds, sensor_model
     
     def _verifyDatasetLength(
         self,

@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 from alive_progress import alive_bar
 
-from datasets.robot_at_home import RobotAtHomeDataset
+from datasets.RH2 import RobotAtHomeDataset
 from datasets.ray_utils import get_rays
 
 

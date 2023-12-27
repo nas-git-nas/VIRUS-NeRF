@@ -1,4 +1,19 @@
 import numpy as np
+import torch
+
+"""
+CONSTANTS
+"""
+ETHZ_SENSORS = {
+    "RGBD": ["CAM1", "CAM3"],
+    "USS": ["USS1", "USS3"],
+    "ToF": ["TOF1", "TOF3"],
+}
+RH2_SENSORS = {
+    "RGBD": ["RGBD_1", "RGBD_2", "RGBD_3", "RGBD_4"],
+    "USS": ["USS1", "USS2", "USS3", "USS4"],
+    "ToF": ["ToF1", "ToF2", "ToF3", "ToF4"],
+}
 
 def linInterpolateArray(
     x1:np.array,
@@ -169,6 +184,103 @@ def dataConverged(
     if not np.any(arr_binary):
         return -1 # data has not converged
     return np.argmax(arr_binary)
+
+def sensorName2ID(
+    sensor_name:str|np.ndarray,
+    dataset:str,
+):
+    """
+    Convert sensor name to sensor stack identity.
+    Args:
+        sensor_name: sensor name or names; str|np.ndarray
+        dataset: dataset name; str
+    Returns:
+        sensor_idx: sensor index or indices; int|np.ndarray
+    """
+    if dataset == "ETHZ":
+        sensors_types = ETHZ_SENSORS
+    elif dataset == "RH2":
+        sensors_types = RH2_SENSORS
+    else:
+        print(f"ERROR: data_fcts.sensorName2Idx: dataset = {dataset} not implemented")
+        return None
+
+    possible_sensors = []
+    for sensors in sensors_types.values():
+        possible_sensors += sensors
+    
+    # convert to tensor
+    return_int = False
+    if not isinstance(sensor_name, np.ndarray):
+        sensor_name = np.array([str(sensor_name)])
+        return_int = True
+
+    # check that sensor_name is valid
+    check_bool = np.zeros(sensor_name.shape, dtype=np.bool_)
+    for s in possible_sensors:
+        check_bool = check_bool | (sensor_name == s)
+    if not np.all(check_bool):
+        print(f"ERROR: data_fcts.sensorName2Idx: sensor_name not in {possible_sensors}")
+        return None
+    
+    # convert sensor_name to sensor_idx
+    sensor_idx = np.zeros(sensor_name.shape, dtype=np.uint8)
+    for s in possible_sensors:
+        sensor_idx[sensor_name == s] = s[-1]
+
+    # convert back to original type
+    if return_int:
+        sensor_idx = int(sensor_idx[0].item())
+    return sensor_idx
+
+def sensorID2Name(
+    sensor_id:int|np.ndarray,
+    sensor_type:str,
+    dataset:str,
+):
+    """
+    Convert sensor stack identity to name.
+    Args:
+        sensor_id: sensor identity; int|np.ndarray
+        sensor_type: sensor type; str
+        dataset: dataset name; str
+    Returns:
+        sensor_name: sensor name or names; str|np.ndarray
+    """
+    if dataset == "ETHZ":
+        sensors_types = ETHZ_SENSORS
+    elif dataset == "RH2":
+        sensors_types = RH2_SENSORS
+    else:
+        print(f"ERROR: data_fcts.sensorName2Idx: dataset = {dataset} not implemented")
+        return None
+    
+    possible_sensors = sensors_types[sensor_type]
+
+    # convert to tensor
+    return_int = False
+    if not isinstance(sensor_id, np.ndarray):
+        sensor_id = np.array([int(sensor_id)], dtype=np.uint8)
+        return_int = True
+
+    # check that sensor_idx is valid
+    check_bool = np.zeros(sensor_id.shape, dtype=np.bool_)
+    for s in possible_sensors:
+        check_bool = check_bool | (sensor_id == int(s[-1]))
+    if not np.all(check_bool):
+        print(f"ERROR: data_fcts.sensorIdx2Name: sensor_idx not in {possible_sensors}")
+        return None
+    
+    # convert sensor_idx to sensor_name
+    sensor_name = np.full(sensor_id.shape, 'None')
+    for s in possible_sensors:
+        sensor_name[sensor_id == int(s[-1])] = s
+
+    # convert back to original type
+    if return_int:
+        sensor_name = str(sensor_name[0].item())
+    return sensor_name
+
 
 
 

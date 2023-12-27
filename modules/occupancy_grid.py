@@ -127,24 +127,26 @@ class OccupancyGrid(Grid):
         B_nerf = B - B_ray  
         
         # sample data for ray and nerf updates 
-        # if self.args.occ_grid.sampling_strategy['rays'] == "rgbd":
         if "RGBD" in self.args.training.sensors:
             ray_update = self._sampleBatch(
                 B=B_ray,
+                pixel_strategy="random",  
                 sensor="RGBD",
             )
             nerf_update = self._sampleBatch(
                 B=B_nerf,
+                pixel_strategy="random",
                 sensor="RGBD",
             )
         elif ("ToF" in self.args.training.sensors) and ("USS" in self.args.training.sensors):
-        # elif self.args.occ_grid.sampling_strategy['rays'] == "uss_tof": 
             ray_update = self._sampleBatch(
                 B=B_ray,
+                pixel_strategy="valid_tof",
                 sensor="ToF",
             )
             nerf_update = self._sampleBatch(
                 B=B_nerf,
+                pixel_strategy="valid_uss",
                 sensor="USS",
             )
         else:
@@ -156,12 +158,14 @@ class OccupancyGrid(Grid):
     def _sampleBatch(
         self,
         B:int,
+        pixel_strategy:str,
         sensor:str,
     ):
         """
         Sample a batch of data from particular sensor.
         Args:
             B: batch size; int
+            pixel_strategy: sampling strategy for pixels; str
             sensor: sensor name; str
         Returns:
             update_dict: measurements; dict
@@ -173,10 +177,10 @@ class OccupancyGrid(Grid):
         data = self.dataset(
             batch_size=B,
             sampling_strategy={ 
-                "imgs": "all", #self.args.occ_grid.sampling_strategy['imgs'], 
-                "rays": "valid_"+sensor.lower() 
-            },
-            origin="occ"
+                    "imgs": "all",
+                    "pixs": pixel_strategy,
+                },
+            origin="occ",
         )
 
         rays_o = data['rays_o']
