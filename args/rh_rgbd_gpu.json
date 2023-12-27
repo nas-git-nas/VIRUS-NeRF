@@ -1,8 +1,8 @@
 {
     "dataset":
     {
-        "path": "",
-        "name": "ETHZ",
+        "path": "/media/scratch1/schmin/data/robot_at_home",
+        "name": "RH2",
         "split_ratio": {"train": 0.8, "val": 0.1, "test": 0.1},
         "downsample": 1.0,
         "keep_N_observations": "all",
@@ -25,12 +25,12 @@
         "sampling_strategy": 
         {
             "imgs": "all", 
-            "pixs": {"closest":0.05, "valid_uss":0.4, "valid_tof":0.4}
+            "pixs": "random"
         },
         "sensors": ["RGBD"],
         "max_steps": 700,
         "lr": 1e-2,
-        "depth_loss_w": 1.0,
+        "depth_loss_w": 100.0,
         "random_bg": false
     },
     "evaluation":
@@ -42,8 +42,8 @@
         "num_color_pts": 10,
         "num_depth_pts": "all",
         "num_plot_pts": 3,
-        "num_avg_heights": 5,
-        "height_tolerance": 0.1,
+        "num_avg_heights": 10,
+        "height_tolerance": 0.005,
         "density_map_thr": 10,
         "plot_results": true
     },
@@ -52,7 +52,7 @@
         "grid_type": "occ",
         "warmup_steps": 256,
         "batch_size": 1024,
-        "sampling_strategy": {"imgs": "all", "rays": "uss_tof"},
+        "sampling_strategy": {"imgs": "None", "rays": "None"},
         "update_interval": 8,
         "decay_warmup_steps": 80,
         "batch_ratio_ray_update": 0.5,
@@ -60,12 +60,6 @@
         "std_every_m": 0.2,
         "nerf_threshold_max": 5.91,
         "nerf_threshold_slope": 0.01
-    },
-    "ethz":
-    {
-        "dataset_dir": "/media/scratch1/schmin/data/ETHZDataset",
-        "room": "office_2",
-        "cam_ids": ["CAM1", "CAM3"]
     },
     "RH2":
     {
@@ -77,15 +71,15 @@
     },
     "RGBD":
     {
-        "angle_of_view": [90, 65]
+        "angle_of_view": [45, 58]
     },
     "USS":
     {
-        "angle_of_view": [55, 35]
+        "angle_of_view": [30, 30]
     },
     "ToF":
     {
-        "angle_of_view": [45, 45],
+        "angle_of_view": [42.4, 42.4],
         "matrix": [8, 8],
         "sensor_calibration_error": 0.0,
         "sensor_random_error": 0.0
