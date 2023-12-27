@@ -1,8 +1,8 @@
 {
     "dataset":
     {
-        "path": "/media/scratch1/schmin/data/RH2",
-        "name": "RH2",
+        "path": "",
+        "name": "ETHZ",
         "split_ratio": {"train": 0.8, "val": 0.1, "test": 0.1},
         "downsample": 1.0,
         "keep_N_observations": "all",
@@ -25,12 +25,12 @@
         "sampling_strategy": 
         {
             "imgs": "all", 
-            "pixs": {"closest":0.05, "valid_uss":0.4, "valid_tof":0.4}
+            "pixs": "random"
         },
         "sensors": ["RGBD"],
         "max_steps": 700,
         "lr": 1e-2,
-        "depth_loss_w": 100.0,
+        "depth_loss_w": 1.0,
         "random_bg": false
     },
     "evaluation":
@@ -42,8 +42,8 @@
         "num_color_pts": 10,
         "num_depth_pts": "all",
         "num_plot_pts": 3,
-        "num_avg_heights": 10,
-        "height_tolerance": 0.005,
+        "num_avg_heights": 5,
+        "height_tolerance": 0.1,
         "density_map_thr": 10,
         "plot_results": true
     },
@@ -61,6 +61,12 @@
         "nerf_threshold_max": 5.91,
         "nerf_threshold_slope": 0.01
     },
+    "ethz":
+    {
+        "dataset_dir": "/media/scratch1/schmin/data/ETHZDataset",
+        "room": "office_2",
+        "cam_ids": ["CAM1", "CAM3"]
+    },
     "RH2":
     {
         "session": "session_2",
@@ -71,15 +77,15 @@
     },
     "RGBD":
     {
-        "angle_of_view": [45, 58]
+        "angle_of_view": [90, 65]
     },
     "USS":
     {
-        "angle_of_view": [30, 30]
+        "angle_of_view": [55, 35]
     },
     "ToF":
     {
-        "angle_of_view": [42.4, 42.4],
+        "angle_of_view": [45, 45],
         "matrix": [8, 8],
         "sensor_calibration_error": 0.0,
         "sensor_random_error": 0.0

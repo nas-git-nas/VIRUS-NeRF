@@ -112,7 +112,7 @@ class Sampler():
 
     def _pixIdxs(
             self,
-            pix_strategy:str|dict,
+            pix_strategy:dict,
             img_idxs:torch.Tensor=None,
     ):
         """

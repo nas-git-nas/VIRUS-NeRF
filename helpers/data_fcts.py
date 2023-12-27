@@ -186,7 +186,7 @@ def dataConverged(
     return np.argmax(arr_binary)
 
 def sensorName2ID(
-    sensor_name:str|np.ndarray,
+    sensor_name:str,
     dataset:str,
 ):
     """
@@ -234,7 +234,7 @@ def sensorName2ID(
     return sensor_idx
 
 def sensorID2Name(
-    sensor_id:int|np.ndarray,
+    sensor_id:int,
     sensor_type:str,
     dataset:str,
 ):
