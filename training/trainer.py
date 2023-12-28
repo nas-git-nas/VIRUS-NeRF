@@ -16,6 +16,7 @@ from abc import abstractmethod
 
 from alive_progress import alive_bar
 from contextlib import nullcontext
+import matplotlib.pyplot as plt
 
 # from gui import NGPGUI
 # from opt import get_opts
@@ -504,6 +505,19 @@ class Trainer(TrainerPlot):
         """
         # get positions of image indices
         rays_o_img_idxs = self.test_dataset.poses[img_idxs, :3, 3].detach().clone() # (N, 3)
+        sensor_ids = self.test_dataset.sensor_ids[img_idxs].detach().clone() # (N,)
+
+        print(f"before: {rays_o_img_idxs[:5]}")
+
+        # convert positions from camera to lidar coordinate frame
+        rays_o_img_idxs = self.test_dataset.camera2lidarPosition(
+            xyz=rays_o_img_idxs.cpu().numpy(),
+            sensor_ids=sensor_ids.cpu().numpy(),
+            pose_given_in_world_coord=False,
+        )
+        rays_o_img_idxs = torch.tensor(rays_o_img_idxs, device=self.args.device, dtype=torch.float32) # (N, 3)
+
+        print(f"before: {rays_o_img_idxs[:5]}")
 
         # convert height tolerance to cube coordinates
         h_tol_c = self.test_dataset.scene.w2c(pos=self.args.eval.height_tolerance, only_scale=True, copy=True)
@@ -565,6 +579,12 @@ class Trainer(TrainerPlot):
         img_idxs = torch.tensor(img_idxs, dtype=torch.int32, device=self.args.device) # (N,)
         W, H = self.test_dataset.img_wh
 
+        # add synchrone samples from other sensor stack
+        sync_idxs = self.test_dataset.getSyncIdxs(
+            img_idxs=img_idxs,
+        )
+        img_idxs = sync_idxs.flatten() # N->2*N
+
         # determine scan pixel height
         sensor_mask = self.test_dataset.sensors_dict[sensor_name].mask.detach().clone().reshape(H,W) # (H, W)
         if sensor_name == "USS":
@@ -583,15 +603,15 @@ class Trainer(TrainerPlot):
         pix_idxs = pix_idxs[scan_mask]
 
         # get positions, directions and depths of sensor
-        img_idxs, pix_idxs = torch.meshgrid(img_idxs, pix_idxs, indexing="ij") # (N,M), (N,M)
+        img_idxs, pix_idxs = torch.meshgrid(img_idxs, pix_idxs, indexing="ij") # (2*N,M), (2*N,M)
         data = self.test_dataset(
             img_idxs=img_idxs.flatten(),
             pix_idxs=pix_idxs.flatten(),
         )
 
         metrics_dict, data_w = self._evaluateDepthMetric(
-            rays_o=data['rays_o'].detach().cpu().numpy(), # (N*M, 3),
-            rays_d=data['rays_d'].detach().cpu().numpy(), # (N*M, 3),
+            rays_o=data['rays_o'].detach().cpu().numpy(), # (N*2*M, 3),
+            rays_d=data['rays_d'].detach().cpu().numpy(), # (N*2*M, 3),
             depth=data['depth'][sensor_name].detach().cpu().numpy(), # (N*M,),
             num_test_pts=len(img_idxs),
         )
@@ -641,7 +661,7 @@ class Trainer(TrainerPlot):
         # calculate mean squared depth error
         metrics_dict = self.metrics.evaluate(
             data=data_w,
-            eval_metrics=['rmse', 'mae', 'mare', 'nn'],
+            eval_metrics=['rmse', 'mae', 'mare', 'nn', 'nn_inv'],
             convert_to_world_coords=False,
             copy=True,
             num_test_pts=num_test_pts,

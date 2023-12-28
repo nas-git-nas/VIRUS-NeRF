@@ -17,12 +17,12 @@ def test_ToFModel():
 
     # create dataset
     args = Args(
-        file_name="ethz_windows.json"
+        file_name="ethz_usstof_win.json"
     )
     args.dataset.keep_N_observations = num_imgs
     args.training.sampling_strategy = {
         "imgs": "same",
-        "rays": "entire_img",
+        "pixs": "entire_img",
     } 
     args.training.sensors = ["ToF", "RGBD"]
 
@@ -49,13 +49,15 @@ def test_ToFModel():
         depths_tof[i] = data['depth']['ToF'].detach().cpu().numpy()
 
     # verify if ToF and RGBD depths are different
-    valid_depth = ~np.isnan(depths_tof)
-    same_depths = np.sum(np.abs(depths_rgbd[valid_depth] - depths_tof[valid_depth]) < 1e-2)
-    print(f"ToF-RGBD Depths are at most 1cm apart per image: {(same_depths/num_imgs):.3} / {(np.sum(valid_depth)/num_imgs):.3}")
+    valid_depth_tof = ~np.isnan(depths_tof)
+    valid_depth_rgbd = ~np.isnan(depths_rgbd)
+    valid_depth = valid_depth_tof & valid_depth_rgbd
+    same_depths = np.sum(np.abs(depths_rgbd[valid_depth] - depths_tof[valid_depth]) < 0.05)
+    print(f"ToF-RGBD Depths are at most 5cm apart per image: {same_depths} / {np.sum(valid_depth)} = {(same_depths/np.sum(valid_depth)):.3}%")
 
     # get masks for visualization
-    mask = dataset.sensors_dict['ToF1'].mask.cpu().numpy().astype(int)
-    error_mask = dataset.sensors_dict['ToF1'].error_mask.astype(int)
+    mask = dataset.sensors_dict['ToF'].mask.cpu().numpy().astype(int)
+    error_mask = dataset.sensors_dict['ToF'].error_mask.cpu().numpy().astype(int)
     mask_comb = np.zeros_like(mask, dtype=int)
     mask_comb[mask == 1] = 1
     mask_comb[error_mask == 1] = 2
@@ -63,12 +65,16 @@ def test_ToFModel():
     error_mask[error_mask == 1] = 2
 
     # plot
-    fig, axes = plt.subplots(ncols=num_imgs, nrows=3, figsize=(12,8))
+    fig, axes = plt.subplots(ncols=num_imgs, nrows=3, figsize=(15,8))
     depths_rgbd = depths_rgbd.reshape(num_imgs, H, W)
     depths_tof = depths_tof.reshape(num_imgs, H, W)
     mask = mask.reshape(H, W)
     error_mask = error_mask.reshape(H, W)
     mask_comb = mask_comb.reshape(H, W)
+
+    # determine max depth for colorbar
+    vmax = np.nanmax([depths_rgbd,depths_tof])
+    vmin = 0
 
     # make single pixels visible
     depths_tof = skimage.measure.block_reduce(depths_tof, (1,8,8), np.nanmax) # (N, H, W)
@@ -78,11 +84,11 @@ def test_ToFModel():
 
     for i in range(num_imgs):
         ax = axes[0,i]
-        ax.imshow(depths_rgbd[i])
+        im = ax.imshow(depths_rgbd[i], vmin=vmin, vmax=vmax, cmap='jet')
         ax.set_title(f'Depth Map GT: {i}')
 
         ax = axes[1,i]
-        ax.imshow(depths_tof[i])
+        im = ax.imshow(depths_tof[i], vmin=vmin, vmax=vmax, cmap='jet')
         ax.set_title(f'Depth Map ToF: {i}')
 
         if i == 0:
@@ -98,7 +104,12 @@ def test_ToFModel():
             ax.imshow(mask_comb, vmin=0, vmax=2)
             ax.set_title(f'Both Masks')
     
-    plt.tight_layout()
+    # add colorbar
+    fig.subplots_adjust(right=0.8)
+    cbar_ax = fig.add_axes([0.85, 0.1, 0.05, 0.8]) # [left, bottom, width, height]
+    fig.colorbar(im, cax=cbar_ax)
+
+    # plt.tight_layout()
     plt.show()
 
 
@@ -107,7 +118,7 @@ def test_USSModel():
     
     # create dataset
     args = Args(
-        file_name="ethz_windows.json"
+        file_name="ethz_usstof_win.json"
     )
     args.dataset.keep_N_observations = num_imgs
     args.training.sampling_strategy = {
@@ -177,8 +188,8 @@ def test_USSModel():
     plt.show()
 
 if __name__ == "__main__":
-    # test_ToFModel()
-    test_USSModel()
+    test_ToFModel()
+    # test_USSModel()
 
 
 

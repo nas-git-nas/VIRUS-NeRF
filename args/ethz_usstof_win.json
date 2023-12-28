@@ -5,7 +5,7 @@
         "name": "ETHZ",
         "split_ratio": {"train": 0.8, "val": 0.1, "test": 0.1},
         "downsample": 1.0,
-        "keep_N_observations": 50,
+        "keep_N_observations": 60,
         "keep_sensor": "all",
         "keep_pixels_in_angle_range": "all"
     },
@@ -28,7 +28,7 @@
             "pixs": {"closest":0.05, "valid_uss":0.4, "valid_tof":0.4}
         },
         "sensors": ["USS", "ToF"],
-        "max_steps": 1,
+        "max_steps": 0,
         "lr": 1e-2,
         "depth_loss_w": 100.0,
         "random_bg": false
@@ -40,8 +40,8 @@
         "res_angular": 256,
         "eval_every_n_steps": 1,
         "num_color_pts": 0,
-        "num_depth_pts": 4,
-        "num_plot_pts": 2,
+        "num_depth_pts": 5,
+        "num_plot_pts": 3,
         "num_avg_heights": 5,
         "height_tolerance": 0.05,
         "density_map_thr": 10,

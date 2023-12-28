@@ -89,6 +89,10 @@ class Metrics():
                 nn_dists, mnn = self._nn(pos=data['pos'], pos_gt=data['pos_gt'], num_test_pts=num_test_pts)
                 dict['nn_dists'] = nn_dists
                 dict['mnn'] = mnn
+            elif metric == 'nn_inv':
+                nn_dists_inv, mnn_inv = self._nn(pos=data['pos_gt'], pos_gt=data['pos'], num_test_pts=num_test_pts)
+                dict['nn_dists_inv'] = nn_dists_inv
+                dict['mnn_inv'] = mnn_inv
             elif metric == 'psnr':
                 dict['psnr'] = self._psnr(rgb=data['rgb'], rgb_gt=data['rgb_gt'])
             elif metric == 'ssim':
@@ -220,8 +224,8 @@ class Metrics():
         nn_dists = np.zeros((num_test_pts, pos.shape[1]))
         for i in range(num_test_pts):
             _, dists = findNearestNeighbour(
-                array1=pos_gt[i], 
-                array2=pos[i],
+                array1=pos[i], 
+                array2=pos_gt[i],
                 ignore_nan=True,
             )
             nn_dists[i] = dists
