@@ -149,3 +149,11 @@ class HParamsToF(HParams):
         self.sensor_random_error = None
 
         HParams.__init__(self, name="ToF")
+
+
+class HParamsLiDAR(HParams):
+    def __init__(self):
+        # hyper parameters
+        self.height_offset = None
+
+        HParams.__init__(self, name="LiDAR")

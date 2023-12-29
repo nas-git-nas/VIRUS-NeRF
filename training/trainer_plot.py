@@ -160,25 +160,32 @@ class TrainerPlot(TrainerBase):
         N_down = self.args.eval.num_plot_pts
 
         # downsample data   
-        rays_o_w_nerf, rays_o_w_tof, rays_o_w_uss, depth_w_nerf, depth_w_tof, depth_w_uss, \
-            scan_angles_nerf, scan_angles_tof, scan_angles_uss, nn_dists_nerf, nn_dists_tof, nn_dists_uss, \
-            nn_dists_inv_nerf, nn_dists_inv_tof, nn_dists_inv_uss = downsampleData(
+        rays_o_w_nerf, rays_o_w_tof, rays_o_w_uss, rays_o_w_lidar, \
+            depth_w_nerf, depth_w_tof, depth_w_uss, depth_w_lidar, \
+            scan_angles_nerf, scan_angles_tof, scan_angles_uss, scan_angles_lidar, \
+            nn_dists_nerf, nn_dists_tof, nn_dists_uss, nn_dists_lidar, \
+            nn_dists_inv_nerf, nn_dists_inv_tof, nn_dists_inv_uss, nn_dists_inv_lidar = downsampleData(
             datas=[
                 data_w['rays_o_nerf'], 
                 data_w['rays_o_tof'],
                 data_w['rays_o_uss'],
+                data_w['rays_o_lidar'],
                 data_w['depth_nerf'], 
                 data_w['depth_tof'], 
                 data_w['depth_uss'], 
+                data_w['depth_lidar'],
                 data_w['scan_angles_nerf'], 
                 data_w['scan_angles_tof'], 
                 data_w['scan_angles_uss'], 
+                data_w['scan_angles_lidar'],
                 metrics_dict['NeRF']['nn_dists'].flatten(), 
                 metrics_dict['ToF']['nn_dists'].flatten(),
                 metrics_dict['USS']['nn_dists'].flatten(),
+                metrics_dict['LiDAR']['nn_dists'].flatten(),
                 metrics_dict['NeRF']['nn_dists_inv'].flatten(),
                 metrics_dict['ToF']['nn_dists_inv'].flatten(),
                 metrics_dict['USS']['nn_dists_inv'].flatten(),
+                metrics_dict['LiDAR']['nn_dists_inv'].flatten(),
             ],
             num_imgs=N,
             num_imgs_downsampled=N_down,
@@ -204,12 +211,19 @@ class TrainerPlot(TrainerBase):
             scan_angles=scan_angles_tof,
             num_imgs=N_down,
         ) # (N, L, L)
+        scan_map_lidar = self._scanRays2scanMap(
+            rays_o_w=rays_o_w_lidar,
+            depth=depth_w_lidar,
+            scan_angles=scan_angles_lidar,
+            num_imgs=N_down,
+        ) # (N, L, L)
         scan_map_gt = data_w['scan_map_gt'] # (L, L)
 
         # create scan images by overlaying scan maps with ground truth
         scan_imgs_nerf = []
         scan_imgs_uss = []
         scan_imgs_tof = []
+        scan_imgs_lidar = []
         for i in range(N_down):
             img = combineImgs(
                 bool_imgs=[scan_map_gt, scan_maps_nerf[i]],
@@ -226,6 +240,11 @@ class TrainerPlot(TrainerBase):
                 colors=['grey', 'lime'],
             )
             scan_imgs_tof.append(img)
+            img = combineImgs(
+                bool_imgs=[scan_map_gt, scan_map_lidar[i]],
+                colors=['grey', 'magenta'],
+            )
+            scan_imgs_lidar.append(img)
 
         # dilate scan images for better visualization
         kernel = np.ones((3,3),np.uint8)
@@ -233,6 +252,7 @@ class TrainerPlot(TrainerBase):
             scan_imgs_nerf[i] = cv.dilate(scan_imgs_nerf[i].astype(np.uint8), kernel, iterations=1)
             scan_imgs_uss[i] = cv.dilate(scan_imgs_uss[i].astype(np.uint8), kernel, iterations=1)
             scan_imgs_tof[i] = cv.dilate(scan_imgs_tof[i].astype(np.uint8), kernel, iterations=1)
+            scan_imgs_lidar[i] = cv.dilate(scan_imgs_lidar[i].astype(np.uint8), kernel, iterations=1)
 
         # save folder
         save_dir = os.path.join(self.args.save_dir, "maps")
@@ -245,24 +265,30 @@ class TrainerPlot(TrainerBase):
         extent = extent.T.flatten()
         num_ray_steps = 16
         inlier_thr = 0.1
+        num_bins = 10
         
         rays_o_w_nerf = rays_o_w_nerf.reshape(N_down, -1, 3)
         rays_o_w_uss = rays_o_w_uss.reshape(N_down, -1, 3)
         rays_o_w_tof = rays_o_w_tof.reshape(N_down, -1, 3)
+        rays_o_w_lidar = rays_o_w_lidar.reshape(N_down, -1, 3)
         depth_w_uss = depth_w_uss.reshape(N_down, -1)
         depth_w_tof = depth_w_tof.reshape(N_down, -1)
         depth_w_nerf = depth_w_nerf.reshape(N_down, -1)
+        depth_w_lidar = depth_w_lidar.reshape(N_down, -1)
         scan_angles_uss = scan_angles_uss.reshape(N_down, -1)
         scan_angles_tof = scan_angles_tof.reshape(N_down, -1)
         scan_angles_nerf = scan_angles_nerf.reshape(N_down, -1)
+        scan_angles_lidar = scan_angles_lidar.reshape(N_down, -1)
         nn_dists_uss = nn_dists_uss.reshape(N_down, -1)
         nn_dists_tof = nn_dists_tof.reshape(N_down, -1)
         nn_dists_nerf = nn_dists_nerf.reshape(N_down, -1)
+        nn_dists_lidar = nn_dists_lidar.reshape(N_down, -1)
         nn_dists_inv_uss = nn_dists_inv_uss.reshape(N_down, -1)
         nn_dists_inv_tof = nn_dists_inv_tof.reshape(N_down, -1)
         nn_dists_inv_nerf = nn_dists_inv_nerf.reshape(N_down, -1)
+        nn_dists_inv_lidar = nn_dists_inv_lidar.reshape(N_down, -1)
         for i in range(N_down):
-            fig, axes = plt.subplots(ncols=3, nrows=3, figsize=(9,9))
+            fig, axes = plt.subplots(ncols=3, nrows=4, figsize=(9,10))
 
             ax = axes[0,0]
             ax.imshow(scan_imgs_uss[i].swapaxes(0,1), origin='lower', extent=extent)
@@ -289,8 +315,20 @@ class TrainerPlot(TrainerBase):
             ax.set_xlabel(f'x [m]')
             ax.set_ylabel('ToF', fontsize=15, weight='bold', labelpad=20)
             ax.text(-0.15, 0.5, 'y [m]', fontsize=10, va='center', rotation='vertical', transform=ax.transAxes)
-            
+
             ax = axes[2,0]
+            ax.imshow(scan_imgs_lidar[i].swapaxes(0,1), origin='lower', extent=extent)
+            for j in np.linspace(0, rays_o_w_lidar.shape[1]-1, num_ray_steps, dtype=int):
+                xs = [rays_o_w_lidar[i,j,0], rays_o_w_lidar[i,j,0] + depth_w_lidar[i,j] * np.cos(scan_angles_lidar[i,j])]
+                ys = [rays_o_w_lidar[i,j,1], rays_o_w_lidar[i,j,1] + depth_w_lidar[i,j] * np.sin(scan_angles_lidar[i,j])]
+                ax.plot(xs, ys, c='cyan', linewidth=0.1)
+            ax.scatter(rays_o_w_lidar[i,0,0], rays_o_w_lidar[i,0,1], c='red', s=5)
+            ax.scatter(rays_o_w_lidar[i,-1,0], rays_o_w_lidar[i,-1,1], c='red', s=5)
+            ax.set_xlabel(f'x [m]')
+            ax.set_ylabel('Lidar', fontsize=15, weight='bold', labelpad=20)
+            ax.text(-0.15, 0.5, 'y [m]', fontsize=10, va='center', rotation='vertical', transform=ax.transAxes)
+            
+            ax = axes[3,0]
             ax.imshow(scan_imgs_nerf[i].swapaxes(0,1), origin='lower', extent=extent)
             for j in np.linspace(0, rays_o_w_nerf.shape[1]-1, num_ray_steps, dtype=int):
                 xs = [rays_o_w_nerf[i,j,0], rays_o_w_nerf[i,j,0] + depth_w_nerf[i,j] * np.cos(scan_angles_nerf[i,j])]
@@ -304,7 +342,7 @@ class TrainerPlot(TrainerBase):
 
             ax = axes[0,1]
             val_idxs = ~np.isnan(nn_dists_uss[i])
-            n_uss, _, _ = ax.hist(nn_dists_uss[i][val_idxs], bins=50)
+            n_uss, _, _ = ax.hist(nn_dists_uss[i][val_idxs], bins=num_bins)
             ax.vlines(np.nanmean(nn_dists_uss[i]), ymin=0, ymax=2000, colors='r', linestyles='dashed', 
                       label=f'MNNE={np.nanmean(nn_dists_uss[i]):.2f}m')
             ax.set_title(f'NNE Sensor->GT', weight='bold')
@@ -315,7 +353,7 @@ class TrainerPlot(TrainerBase):
 
             ax = axes[1,1]
             val_idxs = ~np.isnan(nn_dists_tof[i])
-            n_tof, _, _ = ax.hist(nn_dists_tof[i][val_idxs], bins=50)
+            n_tof, _, _ = ax.hist(nn_dists_tof[i][val_idxs], bins=num_bins)
             ax.vlines(np.nanmean(nn_dists_tof[i]), ymin=0, ymax=2000, colors='r', linestyles='dashed', 
                       label=f'MNNE={np.nanmean(nn_dists_tof[i]):.2f}m')
             ax.set_ylabel(f'# elements')
@@ -324,8 +362,18 @@ class TrainerPlot(TrainerBase):
             ax.set_box_aspect(1)
 
             ax = axes[2,1]
+            val_idxs = ~np.isnan(nn_dists_lidar[i])
+            n_lidar, _, _ = ax.hist(nn_dists_lidar[i][val_idxs], bins=num_bins)
+            ax.vlines(np.nanmean(nn_dists_lidar[i]), ymin=0, ymax=2000, colors='r', linestyles='dashed',
+                        label=f'MNNE={np.nanmean(nn_dists_lidar[i]):.2f}m')
+            ax.set_ylabel(f'# elements')
+            ax.set_xlabel(f'NNE [m]')
+            ax.legend()
+            ax.set_box_aspect(1)
+
+            ax = axes[3,1]
             val_idxs = ~np.isnan(nn_dists_nerf[i])
-            n_nerf, _, _ = ax.hist(nn_dists_nerf[i][val_idxs], bins=50)
+            n_nerf, _, _ = ax.hist(nn_dists_nerf[i][val_idxs], bins=num_bins)
             ax.vlines(np.nanmean(nn_dists_nerf[i]), ymin=0, ymax=2000, colors='r', linestyles='dashed', 
                       label=f'MNNE={np.nanmean(nn_dists_nerf[i]):.2f}m')
             ax.set_ylabel(f'# elements')
@@ -335,7 +383,7 @@ class TrainerPlot(TrainerBase):
 
             ax = axes[0,2]
             val_idxs = ~np.isnan(nn_dists_inv_uss[i])
-            n_uss_inv, _, _ = ax.hist(nn_dists_inv_uss[i][val_idxs], bins=50)
+            n_uss_inv, _, _ = ax.hist(nn_dists_inv_uss[i][val_idxs], bins=num_bins)
             ax.vlines(inlier_thr, ymin=0, ymax=2000, colors='r', linestyles='dashed', 
                       label=f'Inliers={(np.nansum(nn_dists_inv_uss[i]<inlier_thr)/nn_dists_inv_uss.shape[1]):.2f}%')
             ax.set_title(f'NNE GT->Sensor', weight='bold')
@@ -346,7 +394,7 @@ class TrainerPlot(TrainerBase):
 
             ax = axes[1,2]
             val_idxs = ~np.isnan(nn_dists_inv_tof[i])
-            n_tof_inv, _, _ = ax.hist(nn_dists_inv_tof[i][val_idxs], bins=50)
+            n_tof_inv, _, _ = ax.hist(nn_dists_inv_tof[i][val_idxs], bins=num_bins)
             ax.vlines(inlier_thr, ymin=0, ymax=2000, colors='r', linestyles='dashed', 
                       label=f'Inliers={(np.nansum(nn_dists_inv_tof[i]<inlier_thr)/nn_dists_inv_tof.shape[1]):.2f}%')
             ax.set_ylabel(f'# elements')
@@ -355,8 +403,18 @@ class TrainerPlot(TrainerBase):
             ax.set_box_aspect(1)
 
             ax = axes[2,2]
+            val_idxs = ~np.isnan(nn_dists_inv_lidar[i])
+            n_lidar_inv, _, _ = ax.hist(nn_dists_inv_lidar[i][val_idxs], bins=num_bins)
+            ax.vlines(inlier_thr, ymin=0, ymax=2000, colors='r', linestyles='dashed',
+                        label=f'Inliers={(np.nansum(nn_dists_inv_lidar[i]<inlier_thr)/nn_dists_inv_lidar.shape[1]):.2f}%')
+            ax.set_ylabel(f'# elements')
+            ax.set_xlabel(f'NNE [m]')
+            ax.legend()
+            ax.set_box_aspect(1)
+
+            ax = axes[3,2]
             val_idxs = ~np.isnan(nn_dists_inv_nerf[i])
-            n_nerf_inv, _, _ = ax.hist(nn_dists_inv_nerf[i][val_idxs], bins=50)
+            n_nerf_inv, _, _ = ax.hist(nn_dists_inv_nerf[i][val_idxs], bins=num_bins)
             ax.vlines(inlier_thr, ymin=0, ymax=2000, colors='r', linestyles='dashed', 
                       label=f'Inliers={(np.nansum(nn_dists_inv_nerf[i]<inlier_thr)/nn_dists_inv_nerf.shape[1]):.2f}%')
             ax.set_ylabel(f'# elements')
@@ -364,25 +422,29 @@ class TrainerPlot(TrainerBase):
             ax.legend()
             ax.set_box_aspect(1)
 
-            x_max = np.nanmax(np.concatenate((depth_w_uss[i], depth_w_tof[i], depth_w_nerf[i])))
-            x_max_inv = np.nanmax(np.concatenate((nn_dists_inv_uss[i], nn_dists_inv_tof[i], nn_dists_inv_nerf[i])))
+            x_max = np.nanmax(np.concatenate((depth_w_uss[i], depth_w_tof[i], depth_w_nerf[i], depth_w_lidar[i])))
+            x_max_inv = np.nanmax(np.concatenate((nn_dists_inv_uss[i], nn_dists_inv_tof[i], nn_dists_inv_nerf[i], nn_dists_inv_lidar[i])))
             y_max_uss = np.nanmax((n_uss, n_uss_inv))
             y_max_tof = np.nanmax((n_tof, n_tof_inv))
             y_max_nerf = np.nanmax((n_nerf, n_nerf_inv))
+            y_max_lidar = np.nanmax((n_lidar, n_lidar_inv))
 
             axes[0,1].set_xlim([0, x_max])
             axes[0,1].set_ylim([0, y_max_uss])
             axes[1,1].set_xlim([0, x_max])
             axes[1,1].set_ylim([0, y_max_tof])
             axes[2,1].set_xlim([0, x_max])
-            axes[2,1].set_ylim([0, y_max_nerf])
+            axes[2,1].set_ylim([0, y_max_lidar])
+            axes[3,1].set_xlim([0, x_max])
+            axes[3,1].set_ylim([0, y_max_nerf])
             axes[0,2].set_xlim([0, x_max_inv])
             axes[0,2].set_ylim([0, y_max_uss])
             axes[1,2].set_xlim([0, x_max_inv])
             axes[1,2].set_ylim([0, y_max_tof])
             axes[2,2].set_xlim([0, x_max_inv])
-            axes[2,2].set_ylim([0, y_max_nerf])
-
+            axes[2,2].set_ylim([0, y_max_lidar])
+            axes[3,2].set_xlim([0, x_max_inv])
+            axes[3,2].set_ylim([0, y_max_nerf])
         
             plt.tight_layout()
             plt.savefig(os.path.join(save_dir, f"map{i}.pdf"))

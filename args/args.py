@@ -9,7 +9,7 @@ import logging
 
 from args.h_params import HParamsDataset, HParamsModel, HParamsTraining, \
                             HParamsEvaluation, HParamsOccGrid, HParamsRobotAtHome, \
-                            HParamsRGBD, HParamsUSS, HParamsToF, HParamsETHZ
+                            HParamsRGBD, HParamsUSS, HParamsToF, HParamsETHZ, HParamsLiDAR
 from args.custom_formatter import FileFormatter, TerminalFormatter
 
 
@@ -48,7 +48,9 @@ class Args():
         self.uss = HParamsUSS()
         self.uss.setHParams(hparams)
         self.tof = HParamsToF()
-        self.tof.setHParams(hparams)            
+        self.tof.setHParams(hparams)    
+        self.lidar = HParamsLiDAR()
+        self.lidar.setHParams(hparams)        
 
         # device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -132,6 +134,7 @@ class Args():
         hparams["RGBD"] = self.rgbd.getHParams()
         hparams["USS"] = self.uss.getHParams()
         hparams["ToF"] = self.tof.getHParams()
+        hparams["LiDAR"] = self.lidar.getHParams()
 
         if self.dataset.name == "RH2":
             hparams["RH2"] = self.rh.getHParams()
