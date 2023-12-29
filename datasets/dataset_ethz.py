@@ -165,26 +165,25 @@ class DatasetETHZ(DatasetBase):
             )
 
         # create for every sensor a coordinate transformer
-        pcl_coords = {}
-        for id in np.unique(sensor_ids):
-            sensor_name = sensorID2Name(
-                sensor_id=id,
-                sensor_type="RGBD",
-                dataset=self.args.dataset.name,
-            )
-            pcl_coords[id] = PCLCoordinator(
-                source=sensor_name,
-                target="robot",
-            )
+        t_cam1_robot = [0.36199, -0.15161, 0.0]
+        t_cam3_cam1 = [0.27075537, 0.00205705, 0.0]
+        t_cam3_robot = t_cam3_cam1 + t_cam1_robot
+        ts = {
+            1: t_cam1_robot,
+            3: t_cam3_robot,
+        }
 
         # transform position to lidar coordinate system
         xyz_lidar = np.full_like(xyz, np.nan)
-        for id, pcl_coord in pcl_coords.items():
-            xyz_lidar_temp =pcl_coord.transformCoordinateSystem(
-                xyz=xyz,
-            )
+        for id in np.unique(sensor_ids):
+            xyz_lidar_temp = xyz + ts[id]
+
             id_mask = (sensor_ids == id)
             xyz_lidar[id_mask] = xyz_lidar_temp[id_mask]
+
+        if self.args.model.debug_mode:
+            if np.isnan(xyz_lidar).any():
+                self.args.logger.error("xyz transform not completly updated!")
 
         if not pose_given_in_world_coord:
             xyz_lidar = self.scene.w2c(

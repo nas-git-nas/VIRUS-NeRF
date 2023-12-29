@@ -507,17 +507,25 @@ class Trainer(TrainerPlot):
         rays_o_img_idxs = self.test_dataset.poses[img_idxs, :3, 3].detach().clone() # (N, 3)
         sensor_ids = self.test_dataset.sensor_ids[img_idxs].detach().clone() # (N,)
 
-        print(f"before: {rays_o_img_idxs[:5]}")
+        # print(f"before: {rays_o_img_idxs[:5]}")
 
-        # convert positions from camera to lidar coordinate frame
-        rays_o_img_idxs = self.test_dataset.camera2lidarPosition(
-            xyz=rays_o_img_idxs.cpu().numpy(),
-            sensor_ids=sensor_ids.cpu().numpy(),
-            pose_given_in_world_coord=False,
-        )
-        rays_o_img_idxs = torch.tensor(rays_o_img_idxs, device=self.args.device, dtype=torch.float32) # (N, 3)
+        # rays_o_before = rays_o_img_idxs.detach().clone().cpu().numpy()
 
-        print(f"before: {rays_o_img_idxs[:5]}")
+        # # convert positions from camera to lidar coordinate frame
+        # rays_o_img_idxs = self.test_dataset.camera2lidarPosition(
+        #     xyz=rays_o_img_idxs.cpu().numpy(),
+        #     sensor_ids=sensor_ids.cpu().numpy(),
+        #     pose_given_in_world_coord=False,
+        # )
+        # rays_o_after = np.copy(rays_o_img_idxs)
+        # rays_o_img_idxs = torch.tensor(rays_o_img_idxs, device=self.args.device, dtype=torch.float32) # (N, 3)
+
+        # print(f"before: {rays_o_img_idxs[:5]}")
+
+        # for i in range(rays_o_before.shape[0]):
+        #     plt.scatter(rays_o_before[i,0], rays_o_before[i,1], c='r')
+        #     plt.scatter(rays_o_after[i,0], rays_o_after[i,1], c='b')
+        #     plt.show()
 
         # convert height tolerance to cube coordinates
         h_tol_c = self.test_dataset.scene.w2c(pos=self.args.eval.height_tolerance, only_scale=True, copy=True)
