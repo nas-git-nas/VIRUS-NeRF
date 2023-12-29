@@ -684,7 +684,7 @@ class DatasetETHZ(DatasetBase):
                 dataset=self.args.dataset.name,
             )
             df = pd.read_csv(
-                filepath_or_buffer=os.path.join(data_dir, 'measurements/ToF'+str(id)+'.csv'),
+                filepath_or_buffer=os.path.join(data_dir, 'measurements/TOF'+str(id)+'.csv'),
                 dtype=np.float64,
             )
 
