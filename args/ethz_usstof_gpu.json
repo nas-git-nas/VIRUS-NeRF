@@ -21,7 +21,7 @@
     "training":
     {
         "distortion_loss_w": 0.0,
-        "batch_size": 4096,
+        "batch_size": 8192,
         "sampling_strategy": 
         {
             "imgs": "all", 
@@ -30,12 +30,12 @@
         "sensors": ["USS", "ToF"],
         "max_steps": 700,
         "lr": 1e-2,
-        "depth_loss_w": 1.0,
+        "depth_loss_w": 100.0,
         "random_bg": false
     },
     "evaluation":
     {
-        "batch_size": 4096,
+        "batch_size": 16384,
         "res_map": 256,
         "res_angular": 256,
         "eval_every_n_steps": 25,
@@ -49,7 +49,7 @@
     },
     "occ_grid":
     {
-        "grid_type": "occ",
+        "grid_type": "nerf",
         "warmup_steps": 256,
         "batch_size": 1024,
         "sampling_strategy": {"imgs": "all", "rays": "uss_tof"},
