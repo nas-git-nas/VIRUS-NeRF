@@ -28,6 +28,7 @@ class HParamsDataset(HParams):
         self.keep_N_observations = None
         self.keep_sensor = None
         self.keep_pixels_in_angle_range = None
+        self.sensors = None
 
         HParams.__init__(self, name="dataset")
 

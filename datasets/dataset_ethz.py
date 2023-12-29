@@ -402,7 +402,7 @@ class DatasetETHZ(DatasetBase):
         depths_dict = {}
         sensors_dict = {}
 
-        if "RGBD" in self.args.training.sensors:
+        if "RGBD" in self.args.dataset.sensors:
             depths, sensor_ids = self._readDepthImgs(
                 data_dir=data_dir,
                 cam_ids=cam_ids,
@@ -421,7 +421,7 @@ class DatasetETHZ(DatasetBase):
             depths_dict["RGBD"] = rs_depths
             sensors_dict["RGBD"] = rs_sensor_model
         
-        if "USS" in self.args.training.sensors:
+        if "USS" in self.args.dataset.sensors:
             uss_meass, uss_sensor_ids, times = self._readUSS(
                 data_dir=data_dir,
                 cam_ids=cam_ids,
@@ -441,7 +441,7 @@ class DatasetETHZ(DatasetBase):
             depths_dict["USS"] = uss_depths
             sensors_dict["USS"] = uss_sensors_model
 
-        if "ToF" in self.args.training.sensors:
+        if "ToF" in self.args.dataset.sensors:
             tof_meass, tof_meas_stds, tof_sensor_ids, times = self._readToF(
                 data_dir=data_dir,
                 cam_ids=cam_ids,

@@ -129,17 +129,15 @@ class Args():
         hparams["model"] = self.model.getHParams()
         hparams["training"] = self.training.getHParams()
         hparams["occ_grid"] = self.occ_grid.getHParams()
+        hparams["RGBD"] = self.rgbd.getHParams()
+        hparams["USS"] = self.uss.getHParams()
+        hparams["ToF"] = self.tof.getHParams()
 
         if self.dataset.name == "RH2":
             hparams["RH2"] = self.rh.getHParams()
-
-            for sensor_name in self.training.sensors:
-                if sensor_name == "RGBD":
-                    hparams["RGBD"] = self.rgbd.getHParams()
-                elif sensor_name == "USS":
-                    hparams["USS"] = self.uss.getHParams()
-                elif sensor_name == "ToF":
-                    hparams["ToF"] = self.tof.getHParams()
+        elif self.dataset.name == "ETHZ":
+            hparams["ETHZ"] = self.ethz.getHParams()
+                    
         
         # Serializing json
         json_object = json.dumps(hparams, indent=4)

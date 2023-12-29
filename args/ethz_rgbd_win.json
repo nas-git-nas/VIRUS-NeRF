@@ -7,7 +7,8 @@
         "downsample": 1.0,
         "keep_N_observations": 50,
         "keep_sensor": "all",
-        "keep_pixels_in_angle_range": "all"
+        "keep_pixels_in_angle_range": "all",
+        "sensors": ["RGBD", "USS", "ToF"]
     },
     "model":
     {
@@ -30,7 +31,7 @@
         "sensors": ["RGBD"],
         "max_steps": 2,
         "lr": 1e-2,
-        "depth_loss_w": 1.0,
+        "depth_loss_w": 100.0,
         "random_bg": false
     },
     "evaluation":
@@ -49,7 +50,7 @@
     },
     "occ_grid":
     {
-        "grid_type": "occ",
+        "grid_type": "nerf",
         "warmup_steps": 256,
         "batch_size": 64,
         "sampling_strategy": {"imgs": "None", "pixs": "None"},  

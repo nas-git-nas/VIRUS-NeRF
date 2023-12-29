@@ -49,10 +49,10 @@
     },
     "occ_grid":
     {
-        "grid_type": "nerf",
+        "grid_type": "occ",
         "warmup_steps": 256,
         "batch_size": 1024,
-        "sampling_strategy": {"imgs": "all", "rays": "uss_tof"},
+        "sampling_strategy": {"imgs": "None", "rays": "None"},
         "update_interval": 8,
         "decay_warmup_steps": 80,
         "batch_ratio_ray_update": 0.5,
