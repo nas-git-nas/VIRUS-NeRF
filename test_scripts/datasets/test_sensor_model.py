@@ -25,6 +25,7 @@ def test_ToFModel():
         "pixs": "entire_img",
     } 
     args.training.sensors = ["ToF", "RGBD"]
+    args.dataset.sensors = ["ToF", "RGBD"]
 
     if args.dataset.name == "RH2":
         dataset_class = DatasetRH
@@ -126,6 +127,7 @@ def test_USSModel():
         "rays": "entire_img",
     } 
     args.training.sensors = ["USS", "RGBD"]
+    args.dataset.sensors = ["USS", "RGBD"]
 
     if args.dataset.name == "RH2":
         dataset_class = DatasetRH

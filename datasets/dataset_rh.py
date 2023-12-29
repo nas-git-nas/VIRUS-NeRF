@@ -496,7 +496,7 @@ class DatasetRH(DatasetBase):
         depths = depths.detach().clone().to("cpu").numpy() # (N, H*W)
 
         sensors_dict = {} 
-        for sensor_name in self.args.training.sensors:
+        for sensor_name in self.args.dataset.sensors:
 
             if sensor_name == "RGBD":
                 sensors_dict["RGBD"] = RGBDModel(
@@ -518,7 +518,7 @@ class DatasetRH(DatasetBase):
                 self.args.logger.error(f"ERROR: robot_at_home.__init__: sensor model {sensor_name} not implemented")
 
         depths_dict = {}
-        for sensor_name in self.args.training.sensors:
+        for sensor_name in self.args.dataset.sensors:
             # convert depth with one sensor model
             depths_temp = sensors_dict[sensor_name].convertDepth(
                 depths=depths,
