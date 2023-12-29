@@ -6,6 +6,7 @@ import torch
 from tqdm import tqdm
 import pandas as pd
 import cv2 as cv
+import skimage
 
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
@@ -22,6 +23,7 @@ from datasets.sensor_model import RGBDModel, ToFModel, USSModel
 from args.args import Args
 from training.sampler import Sampler
 from helpers.data_fcts import sensorName2ID, sensorID2Name
+from ROS1.src.sensors.src.pcl_tools.pcl_coordinator import PCLCoordinator
 
 # try:
 #     from .ray_utils import get_rays
@@ -83,7 +85,7 @@ class DatasetETHZ(DatasetBase):
         )
 
         # load samples
-        poses, rgbs, depths_dict, sensors_dict, sensor_ids = self.readMetas(
+        poses, rgbs, depths_dict, sensors_dict, sensor_ids, times = self.readMetas(
             data_dir=data_dir,
             cam_ids=self.args.ethz.cam_ids,
             img_wh=img_wh,
@@ -108,7 +110,7 @@ class DatasetETHZ(DatasetBase):
         self.depths_dict = depths_dict
         self.sensors_dict = sensors_dict
         self.sensor_ids = sensor_ids
-        self.times = torch.zeros(10)
+        self.times = times
 
         # TODO: move to base class
         self.sampler = Sampler(
@@ -123,14 +125,12 @@ class DatasetETHZ(DatasetBase):
     def getIdxFromSensorName(
         self, 
         sensor_name:str,
-        df:pd.DataFrame=None, 
         
     ):
         """
         Get the indices of the dataset that belong to a particular sensor.
         Args:
             sensor_name: name of the sensor, str
-            df: robot@home dataframe, pandas df
         Returns:
             idxs: indices of the dataset that belong to the sensor
         """
@@ -143,6 +143,59 @@ class DatasetETHZ(DatasetBase):
         mask = (stack_id == id)
         idxs = np.where(mask)[0]
         return idxs
+    
+    def camera2lidarPosition(
+        self,
+        xyz:np.ndarray,
+        sensor_ids:np.ndarray,
+        pose_given_in_world_coord:bool,
+    ):
+        """
+        Convert camera position to lidar position.
+        Args:
+            xyz: camera position; array of shape (N, 3)
+            sensor_ids: sensor ids; array of shape (N,)
+        Returns:
+            xyz_lidar: lidar position; array of shape (N, 3)
+        """
+        if not pose_given_in_world_coord:
+            xyz = self.scene.c2w(
+                pos=xyz,
+                copy=False,
+            )
+
+        # create for every sensor a coordinate transformer
+        t_cam1_robot = [0.36199, -0.15161, 0.0]
+        t_cam3_cam1 = [0.27075537, 0.00205705, 0.0]
+        t_cam3_robot = t_cam3_cam1 + t_cam1_robot
+        ts = {
+            1: t_cam1_robot,
+            3: t_cam3_robot,
+        }
+
+        # transform position to lidar coordinate system
+        xyz_lidar = np.full_like(xyz, np.nan)
+        for id in np.unique(sensor_ids):
+            xyz_lidar_temp = xyz + ts[id]
+
+            id_mask = (sensor_ids == id)
+            xyz_lidar[id_mask] = xyz_lidar_temp[id_mask]
+
+        if self.args.model.debug_mode:
+            if np.isnan(xyz_lidar).any():
+                self.args.logger.error("xyz transform not completly updated!")
+
+        if not pose_given_in_world_coord:
+            xyz_lidar = self.scene.w2c(
+                pos=xyz_lidar,
+                copy=False,
+            )
+        return xyz_lidar
+            
+
+
+        
+        
 
     def splitDataset(
         self,
@@ -318,10 +371,11 @@ class DatasetETHZ(DatasetBase):
             rgbs: ray origins; array of shape (N_images, H*W, 3)
             depths_dict: dictionary of depth samples; dict of { sensor type: array of shape (N_images, H*W) }
             sensors_dict: dictionary of sensor models; dict of { sensor: sensor model }
-            sensor_ids: stack identity number of sample; array of shape (N_images,)
+            sensor_ids: stack identity number of sample; tensor of shape (N_images,)
+            times: time of sample in seconds starting at 0; tensor of shape (N_images,)
         """
         # pose data
-        poses, sensor_ids = self._readPoses(
+        poses, sensor_ids, times = self._readPoses(
             data_dir=data_dir,
             cam_ids=cam_ids,
             split_mask=split_mask,
@@ -337,8 +391,9 @@ class DatasetETHZ(DatasetBase):
             img_wh=img_wh,
             split_mask=split_mask,
         ) # (N, H*W, 3), (N,)
-        if self.args.model.debug_mode and not np.all(sensor_ids == rgbs_sensor_ids):
-            self.args.logger.error(f"DatasetETHZ::read_meta: stack ids do not match")
+        if self.args.model.debug_mode:
+            if not np.all(sensor_ids == rgbs_sensor_ids):
+                self.args.logger.error(f"DatasetETHZ::read_meta: stack ids do not match")
         rgbs = self._convertColorImgs(
             rgbs=rgbs,
         )
@@ -367,13 +422,16 @@ class DatasetETHZ(DatasetBase):
             sensors_dict["RGBD"] = rs_sensor_model
         
         if "USS" in self.args.training.sensors:
-            uss_meass, uss_sensor_ids = self._readUSS(
+            uss_meass, uss_sensor_ids, times = self._readUSS(
                 data_dir=data_dir,
                 cam_ids=cam_ids,
                 split_mask=split_mask,
             ) # (N,), (N,)
-            if self.args.model.debug_mode and not np.all(sensor_ids == uss_sensor_ids):
-                self.args.logger.error(f"DatasetETHZ::read_meta: uss_sensor_ids ids do not match")
+            if self.args.model.debug_mode:
+                if not np.all(sensor_ids == uss_sensor_ids):
+                    self.args.logger.error(f"DatasetETHZ::read_meta: uss_sensor_ids ids do not match")
+                if not np.allclose(times, times):
+                    self.args.logger.error(f"DatasetETHZ::read_meta: times do not match")
 
             uss_depths, uss_sensors_model = self._convertUSS(
                 meass=uss_meass,
@@ -384,14 +442,17 @@ class DatasetETHZ(DatasetBase):
             sensors_dict["USS"] = uss_sensors_model
 
         if "ToF" in self.args.training.sensors:
-            tof_meass, tof_meas_stds, tof_sensor_ids = self._readToF(
+            tof_meass, tof_meas_stds, tof_sensor_ids, times = self._readToF(
                 data_dir=data_dir,
                 cam_ids=cam_ids,
                 split_mask=split_mask,
             ) # (N, 64), (N, 64), (N,)
-            if self.args.model.debug_mode and not np.all(sensor_ids == tof_sensor_ids):
-                self.args.logger.error(f"DatasetETHZ::read_meta: tof_sensor_ids ids do not match")
-
+            if self.args.model.debug_mode:
+                if not np.all(sensor_ids == tof_sensor_ids):
+                    self.args.logger.error(f"DatasetETHZ::read_meta: tof_sensor_ids ids do not match")
+                if not np.allclose(times, times):
+                    self.args.logger.error(f"DatasetETHZ::read_meta: times do not match")
+            
             tof_depths, tof_stds, tof_sensors_model = self._convertToF(
                 meass=tof_meass,
                 meas_stds=tof_meas_stds,
@@ -401,10 +462,14 @@ class DatasetETHZ(DatasetBase):
             depths_dict["ToF"] = tof_depths
             sensors_dict["ToF"] = tof_sensors_model
 
-        # convert stack ids to tensor
-        sensor_ids = torch.tensor(sensor_ids, dtype=torch.uint8, requires_grad=False)
+            # m_error = torch.nanmean(torch.abs(tof_depths - rs_depths))
+            # print(f"mean error: {m_error}")
 
-        return poses, rgbs, depths_dict, sensors_dict, sensor_ids
+        # convert stack ids and times to tensor
+        sensor_ids = torch.tensor(sensor_ids, dtype=torch.uint8, requires_grad=False)
+        times = torch.tensor(times, dtype=torch.float64, requires_grad=False)
+
+        return poses, rgbs, depths_dict, sensors_dict, sensor_ids, times
     
     def _readPoses(
         self,
@@ -421,9 +486,11 @@ class DatasetETHZ(DatasetBase):
         Returns:
             poses: camera poses; array of shape (N, 3, 4)
             sensor_ids: stack identity number of sample; array of shape (N,)
+            times: time of sample in seconds starting at 0; array of shape (N,)
         """
         poses = np.zeros((0, 3, 4))
         sensor_ids = np.zeros((0))
+        times = np.zeros((0))
         for cam_id in cam_ids:
             id = sensorName2ID(
                 sensor_name=cam_id,
@@ -433,6 +500,17 @@ class DatasetETHZ(DatasetBase):
                 filepath_or_buffer=os.path.join(data_dir, 'poses', 'poses_sync'+str(id)+'_cam_robot.csv'),
                 dtype=np.float64,
             )
+
+            time = df["time"].to_numpy()
+            time -= time[0]
+            time = time[split_mask]
+
+            # verify time
+            if self.args.model.debug_mode:
+                if (times.shape[0] > 0) and (not np.allclose(time, times[:len(time)], atol=1e-1)):
+                    self.args.logger.error(f"DatasetETHZ::_readPoses: time is not consistent")
+                    print(f"time: {time}")
+                    print(f"times: {times[:]}")
 
             pose = np.zeros((np.sum(split_mask), 3, 4))
             for i, pose_i in enumerate(np.arange(df.shape[0])[split_mask]):
@@ -447,8 +525,9 @@ class DatasetETHZ(DatasetBase):
 
             poses = np.concatenate((poses, pose), axis=0) # (N, 3, 4)
             sensor_ids = np.concatenate((sensor_ids, np.ones((pose.shape[0]))*int(cam_id[-1])), axis=0) # (N,)
+            times = np.concatenate((times, time), axis=0) # (N,)
 
-        return poses, sensor_ids
+        return poses, sensor_ids, times
     
     def _readColorImgs(
         self,
@@ -554,6 +633,7 @@ class DatasetETHZ(DatasetBase):
         """
         meass = np.zeros((0))
         sensor_ids = np.zeros((0))
+        times = np.zeros((0))
         for cam_id in cam_ids:
             id = sensorName2ID(
                 sensor_name=cam_id,
@@ -561,15 +641,20 @@ class DatasetETHZ(DatasetBase):
             )
             df = pd.read_csv(
                 filepath_or_buffer=os.path.join(data_dir, 'measurements/USS'+str(id)+'.csv'),
-                dtype=np.float32,
+                dtype=np.float64,
             )
             meass_temp = df["meas"].to_numpy()
             meass_temp = meass_temp[split_mask]
 
+            time = df["time"].to_numpy()
+            time -= time[0]
+            time = time[split_mask]
+
             meass = np.concatenate((meass, meass_temp), axis=0) # (N,)
             sensor_ids = np.concatenate((sensor_ids, np.ones((meass_temp.shape[0]))*int(cam_id[-1])), axis=0) # (N,)
+            times = np.concatenate((times, time), axis=0) # (N,)
 
-        return meass, sensor_ids
+        return meass, sensor_ids, times
     
     def _readToF(
         self,
@@ -587,19 +672,25 @@ class DatasetETHZ(DatasetBase):
             meass: USS measurements; array of shape (N_images, 64)
             meas_stds: USS measurements; array of shape (N_images, 64)
             sensor_ids: stack ids; array of shape (N_images,)
+            times: time of sample in seconds starting at 0; array of shape (N,)
         """
         meass = np.zeros((0, 64))
         meas_stds = np.zeros((0, 64))
         sensor_ids = np.zeros((0))
+        times = np.zeros((0))
         for cam_id in cam_ids:
             id = sensorName2ID(
                 sensor_name=cam_id,
                 dataset=self.args.dataset.name,
             )
             df = pd.read_csv(
-                filepath_or_buffer=os.path.join(data_dir, 'measurements/TOF'+str(id)+'.csv'),
-                dtype=np.float32,
+                filepath_or_buffer=os.path.join(data_dir, 'measurements/ToF'+str(id)+'.csv'),
+                dtype=np.float64,
             )
+
+            time = df["time"].to_numpy()
+            time -= time[0]
+            time = time[split_mask]
 
             meass_temp = np.zeros((df.shape[0], 64))
             stds = np.zeros((df.shape[0], 64))
@@ -613,8 +704,21 @@ class DatasetETHZ(DatasetBase):
             meass = np.concatenate((meass, meass_temp), axis=0) # (N, 64)
             meas_stds = np.concatenate((meas_stds, stds), axis=0)
             sensor_ids = np.concatenate((sensor_ids, np.ones((meass_temp.shape[0]))*int(cam_id[-1])), axis=0) # (N,)
+            times = np.concatenate((times, time), axis=0) # (N,)
 
-        return meass, meas_stds, sensor_ids
+        # img = meass[0].reshape(8,8)
+        # img2 = meass[1].reshape(8,8)
+        # img3 = meass[2].reshape(8,8)
+        # fig, axs = plt.subplots(1,3)
+        # im = axs[0].imshow(img, cmap='jet')
+        # fig.colorbar(im, ax=axs[0])
+        # im = axs[1].imshow(img2, cmap='jet')
+        # fig.colorbar(im, ax=axs[1])
+        # im = axs[2].imshow(img3, cmap='jet')
+        # fig.colorbar(im, ax=axs[2])
+        # plt.show()
+
+        return meass, meas_stds, sensor_ids, times
     
     def _convertPoses(
         self,
@@ -802,9 +906,23 @@ class DatasetETHZ(DatasetBase):
                 meas=meas_stds[i],
             ) # (8, 8)
 
+        # depths_sensor_w = np.copy(depths_sensor)
+
         # convert depth in meters to cube coordinates [-0.5, 0.5]
         depths_sensor = self.scene.w2c(depths_sensor.flatten(), only_scale=True).reshape(-1, 64) # (N, 8*8)
         stds_sensor = self.scene.w2c(stds_sensor.flatten(), only_scale=True).reshape(-1, 64) # (N, 8*8)
+
+        # img = depths_sensor[0].reshape(8,8)
+        # img2 = depths_sensor[1].reshape(8,8)
+        # img3 = depths_sensor[2].reshape(8,8)
+        # fig, axs = plt.subplots(1,3)
+        # im = axs[0].imshow(img, cmap='jet')
+        # fig.colorbar(im, ax=axs[0])
+        # im = axs[1].imshow(img2, cmap='jet')
+        # fig.colorbar(im, ax=axs[1])
+        # im = axs[2].imshow(img3, cmap='jet')
+        # fig.colorbar(im, ax=axs[2])
+        # plt.show()
 
         # create sensor model
         sensor_model = ToFModel(
@@ -821,6 +939,42 @@ class DatasetETHZ(DatasetBase):
             depths=stds_sensor,
             format="sensor",
         ) # (N, H*W)
+
+        # for i in range(depths_img.shape[0]):
+        #     img = depths_img[i].reshape(img_wh[1], img_wh[0])
+        #     img = skimage.measure.block_reduce(img, (8,8), np.nanmax) # (H, W)
+        #     img2 = depths_sensor[i].reshape(8, 8)
+        #     img3 = depths_sensor_w[i].reshape(8, 8)
+            
+        #     if np.all(np.isnan(img)):
+        #         continue
+        #     print(f"not nan: {np.sum(~np.isnan(img))}")
+
+        #     vmax = np.nanmax(np.concatenate((img.flatten(), img2.flatten())))
+        #     fig, axes = plt.subplots(1, 3, figsize=(12, 5))
+        #     im = axes[0].imshow(img, cmap='jet', vmin=0.0, vmax=vmax)
+        #     im = axes[1].imshow(img2, cmap='jet', vmin=0.0, vmax=vmax)
+        #     im = axes[2].imshow(img3, cmap='jet')
+
+        #     fig.subplots_adjust(right=0.8)
+        #     cbar_ax = fig.add_axes([0.85, 0.1, 0.05, 0.8]) # [left, bottom, width, height]
+        #     fig.colorbar(im, cax=cbar_ax)
+        #     plt.show()
+
+        # img = depths_img[0].reshape(img_wh[1], img_wh[0])
+        # img = skimage.measure.block_reduce(img, (8,8), np.nanmax) # (H, W)
+        # img2 = depths_img[1].reshape(img_wh[1], img_wh[0])
+        # img2 = skimage.measure.block_reduce(img2, (8,8), np.nanmax) # (H, W)
+        # img3 = depths_img[2].reshape(img_wh[1], img_wh[0])
+        # img3 = skimage.measure.block_reduce(img3, (8,8), np.nanmax) # (H, W)
+        # fig, axs = plt.subplots(1,3)
+        # im = axs[0].imshow(img, cmap='jet')
+        # fig.colorbar(im, ax=axs[0])
+        # im = axs[1].imshow(img2, cmap='jet')
+        # fig.colorbar(im, ax=axs[1])
+        # im = axs[2].imshow(img3, cmap='jet')
+        # fig.colorbar(im, ax=axs[2])
+        # plt.show()
 
         # convert depth to tensor
         depths =  torch.tensor(

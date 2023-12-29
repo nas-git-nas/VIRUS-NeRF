@@ -72,11 +72,13 @@ class DatasetBase(Dataset):
         # sample data
         ids = self.sensor_ids[img_idxs]
         rgbs = self.rgbs[img_idxs, pix_idxs, :3]
+        time = self.times[img_idxs]
         samples = {
             'img_idxs': img_idxs,
             'pix_idxs': pix_idxs,
             # 'sample_count': count.detach().clone(),
             'sensor_ids': ids.detach().clone().requires_grad_(False),
+            'time': time.detach().clone().requires_grad_(False),
             'rays_o': rays_o.detach().clone().requires_grad_(True),
             'rays_d': rays_d.detach().clone().requires_grad_(True),
             'rgb': rgbs.detach().clone().requires_grad_(True),
@@ -124,6 +126,39 @@ class DatasetBase(Dataset):
         for sensor, sensor_depths in self.depths_dict.items():
             val_depth_masks[sensor] = ~torch.isnan(sensor_depths[img_idxs])
         return val_depth_masks
+    
+    def getSyncIdxs(
+        self,
+        img_idxs:torch.Tensor,
+    ):
+        """
+        Get samples that are synchrone in time.
+        Args:
+            img_idxs: indices of images; tensor of int64 (batch_size,)
+        Returns:
+            sync_idxs: synchronized samples w.r.t. time of img_idxs; tensor of int64 (batch_size, sync_size)
+        """
+        time_thr = 0.1
+
+        # determine how many samples are synchrone
+        sync_size = torch.sum(torch.abs(self.times[img_idxs[0]] - self.times) < time_thr).item()
+
+        # # get indices of synchrone samples
+        # m1, m2 = torch.meshgrid(self.times[img_idxs], self.times)
+        # sync_idxs_i, sync_idxs_j = torch.where((m1 - m2)<1e-1)
+        # sync_idxs = -1 * torch.ones((len(img_idxs), sync_size), dtype=torch.int32, device=self.args.device)
+        # sync_idxs[sync_idxs_i, sync_idxs_j] = sync_idxs_j.to(torch.int32)
+
+        sync_idxs = -1 * torch.ones((len(img_idxs), sync_size), dtype=torch.int32, device=self.args.device)
+        for i, idx in enumerate(img_idxs):
+            mask = torch.abs(self.times[idx] - self.times) < time_thr
+            sync_idxs[i, :] = torch.where(mask)[0]
+
+        # verify that all samples were updated
+        if self.args.model.debug_mode:
+            if torch.any(sync_idxs == -1):
+                self.args.logger.error(f"DatasetBase:getSynchroneSamples: some samples were not updated correctly")
+        return sync_idxs
     
     def reduceImgHeight(
         self,

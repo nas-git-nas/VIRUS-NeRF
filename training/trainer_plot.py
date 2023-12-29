@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 import os
+import cv2 as cv
 
 from args.args import Args
 from modules.networks import NGP
@@ -9,7 +10,8 @@ from modules.distortion import distortion_loss
 from modules.rendering import MAX_SAMPLES, render
 from modules.utils import depth2img, save_deployment_model
 from helpers.geometric_fcts import findNearestNeighbour,  createScanPos
-from helpers.data_fcts import linInterpolateArray, convolveIgnorNans, dataConverged
+from helpers.data_fcts import linInterpolateArray, convolveIgnorNans, dataConverged, downsampleData
+from helpers.plotting_fcts import combineImgs
 from training.metrics_rh import MetricsRH
 
 from modules.occupancy_grid import OccupancyGrid
@@ -142,141 +144,249 @@ class TrainerPlot(TrainerBase):
             self,
             data_w:dict,
             metrics_dict:dict,
+            num_imgs:int,
     ):
         """
         Plot scan and density maps.
         Args:
             data_w: data dictionary in world coordinates
             metrics_dict: metrics dictionary
+            num_imgs: number of images to plot
         """
         if not self.args.eval.plot_results:
             return
         
-        M = self.args.eval.res_angular
-        N = data_w['depth'].shape[0] // M
-        if data_w['depth'].shape[0] % M != 0:
-            self.args.logger.error(f"ERROR: trainer_RH.evaluatePlot(): data_w['depth'].shape[0]={data_w['depth'].shape[0]} "
-                                    + f"should be a multiple of M={M}")
+        N = num_imgs
+        N_down = self.args.eval.num_plot_pts
+
+        # downsample data   
+        rays_o_w_nerf, rays_o_w_tof, rays_o_w_uss, depth_w_nerf, depth_w_tof, depth_w_uss, \
+            scan_angles_nerf, scan_angles_tof, scan_angles_uss, nn_dists_nerf, nn_dists_tof, nn_dists_uss, \
+            nn_dists_inv_nerf, nn_dists_inv_tof, nn_dists_inv_uss = downsampleData(
+            datas=[
+                data_w['rays_o_nerf'], 
+                data_w['rays_o_tof'],
+                data_w['rays_o_uss'],
+                data_w['depth_nerf'], 
+                data_w['depth_tof'], 
+                data_w['depth_uss'], 
+                data_w['scan_angles_nerf'], 
+                data_w['scan_angles_tof'], 
+                data_w['scan_angles_uss'], 
+                metrics_dict['NeRF']['nn_dists'].flatten(), 
+                metrics_dict['ToF']['nn_dists'].flatten(),
+                metrics_dict['USS']['nn_dists'].flatten(),
+                metrics_dict['NeRF']['nn_dists_inv'].flatten(),
+                metrics_dict['ToF']['nn_dists_inv'].flatten(),
+                metrics_dict['USS']['nn_dists_inv'].flatten(),
+            ],
+            num_imgs=N,
+            num_imgs_downsampled=N_down,
+        )
         
-        # downsample data
-        depth_w = data_w['depth'].reshape((N, M)) # (N, M)
-        rays_o_w = data_w['rays_o'].reshape((N, M, 3)) # (N, M, 3)
-        scan_angles = data_w['scan_angles'].reshape((N, M)) # (N, M)
-        nn_dists = metrics_dict['nn_dists'] # (N, M)
-        if self.args.eval.num_plot_pts > N:
-            self.args.logger.warning(f"trainer_RH.evaluatePlot(): num_plot_pts={self.args.eval.num_plot_pts} "
-                                        f"should be smaller or equal than N={N}")
-            self.args.eval.num_plot_pts = N
-        elif self.args.eval.num_plot_pts < N:
-            idxs_temp = np.linspace(0, depth_w.shape[0]-1, self.args.eval.num_plot_pts, dtype=int)
-            depth_w = depth_w[idxs_temp]
-            rays_o_w = rays_o_w[idxs_temp]
-            scan_angles = scan_angles[idxs_temp]
-            nn_dists = nn_dists[idxs_temp]  
-        depth_w = depth_w.flatten() # (N*M,)
-        rays_o_w = rays_o_w.reshape((-1, 3)) # (N*M, 3)
-        scan_angles = scan_angles.flatten() # (N*M,)
 
         # create scan maps
-        scan_maps = self._scanRays2scanMap(
-            rays_o_w=rays_o_w,
-            depth=depth_w,
-            scan_angles=scan_angles,
+        scan_maps_nerf = self._scanRays2scanMap(
+            rays_o_w=rays_o_w_nerf,
+            depth=depth_w_nerf,
+            scan_angles=scan_angles_nerf,
+            num_imgs=N_down,
+        ) # (N, L, L)
+        scan_maps_uss = self._scanRays2scanMap(
+            rays_o_w=rays_o_w_uss,
+            depth=depth_w_uss,
+            scan_angles=scan_angles_uss,
+            num_imgs=N_down,
+        ) # (N, L, L)
+        scan_maps_tof = self._scanRays2scanMap(
+            rays_o_w=rays_o_w_tof,
+            depth=depth_w_tof,
+            scan_angles=scan_angles_tof,
+            num_imgs=N_down,
         ) # (N, L, L)
         scan_map_gt = data_w['scan_map_gt'] # (L, L)
 
-        # create density maps
-        density_map_gt = self.test_dataset.scene.getSliceMap(
-            height=np.mean(rays_o_w[:,2]), 
-            res=self.args.eval.res_map, 
-            height_tolerance=self.args.eval.height_tolerance, 
-            height_in_world_coord=True
-        ) # (L, L)
-        _, density_map = self.interfereDensityMap(
-            res_map=self.args.eval.res_map,
-            height_w=np.mean(rays_o_w[:,2]),
-            num_avg_heights=self.args.eval.num_avg_heights,
-            tolerance_w=self.args.eval.height_tolerance,
-            threshold=self.args.eval.density_map_thr,
-        ) # (L, L)
+        # create scan images by overlaying scan maps with ground truth
+        scan_imgs_nerf = []
+        scan_imgs_uss = []
+        scan_imgs_tof = []
+        for i in range(N_down):
+            img = combineImgs(
+                bool_imgs=[scan_map_gt, scan_maps_nerf[i]],
+                colors=['grey', 'orange'],
+            )
+            scan_imgs_nerf.append(img)
+            img = combineImgs(
+                bool_imgs=[scan_map_gt, scan_maps_uss[i]],
+                colors=['grey', 'blue'],
+            )
+            scan_imgs_uss.append(img)
+            img = combineImgs(
+                bool_imgs=[scan_map_gt, scan_maps_tof[i]],
+                colors=['grey', 'lime'],
+            )
+            scan_imgs_tof.append(img)
 
-        # create combined maps
-        scan_maps_comb = np.zeros((self.args.eval.num_plot_pts,self.args.eval.res_map,self.args.eval.res_map))
-        for i in range(self.args.eval.num_plot_pts):
-            scan_maps_comb[i] = scan_map_gt + 2*scan_maps[i]
-        density_map_comb = density_map_gt + 2*density_map
+        # dilate scan images for better visualization
+        kernel = np.ones((3,3),np.uint8)
+        for i in range(N_down):
+            scan_imgs_nerf[i] = cv.dilate(scan_imgs_nerf[i].astype(np.uint8), kernel, iterations=1)
+            scan_imgs_uss[i] = cv.dilate(scan_imgs_uss[i].astype(np.uint8), kernel, iterations=1)
+            scan_imgs_tof[i] = cv.dilate(scan_imgs_tof[i].astype(np.uint8), kernel, iterations=1)
+
+        # save folder
+        save_dir = os.path.join(self.args.save_dir, "maps")
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
 
         # plot
-        fig, axes = plt.subplots(ncols=1+self.args.eval.num_plot_pts, nrows=4, figsize=(9,9))
-
         scale = self.args.model.scale
         extent = self.test_dataset.scene.c2w(pos=np.array([[-scale,-scale],[scale,scale]]), copy=False)
         extent = extent.T.flatten()
-
-        ax = axes[0,0]
-        ax.imshow(density_map_gt.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(density_map_comb))
-        ax.set_ylabel(f'GT', weight='bold')
-        ax.set_title(f'Density', weight='bold')
-        ax.set_xlabel(f'x [m]')
-
-        ax = axes[1,0]
-        ax.imshow(2*density_map.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(density_map_comb))
-        ax.set_ylabel(f'NeRF', weight='bold')
-        ax.set_xlabel(f'x [m]')
-
-        ax = axes[2,0]
-        ax.imshow(density_map_comb.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(density_map_comb))
-        ax.set_ylabel(f'GT + NeRF', weight='bold')
-        ax.set_xlabel(f'x [m]')
-
-        fig.delaxes(axes[3,0])
+        num_ray_steps = 16
+        inlier_thr = 0.1
         
-        rays_o_w = rays_o_w.reshape((-1, self.args.eval.res_angular, 3))
-        for i in range(self.args.eval.num_plot_pts):
-            ax = axes[0,i+1]
-            ax.imshow(scan_map_gt.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(scan_maps_comb[i]))
-            ax.scatter(rays_o_w[i,0,0], rays_o_w[i,0,1], c='w', s=5)
-            ax.scatter(rays_o_w[:,0,0], rays_o_w[:,0,1], c='w', s=5, alpha=0.1)
-            ax.set_title(f'Scan {i+1}', weight='bold')
-            ax.set_xlabel(f'x [m]')
-            ax.set_ylabel(f'y [m]')
+        rays_o_w_nerf = rays_o_w_nerf.reshape(N_down, -1, 3)
+        rays_o_w_uss = rays_o_w_uss.reshape(N_down, -1, 3)
+        rays_o_w_tof = rays_o_w_tof.reshape(N_down, -1, 3)
+        depth_w_uss = depth_w_uss.reshape(N_down, -1)
+        depth_w_tof = depth_w_tof.reshape(N_down, -1)
+        depth_w_nerf = depth_w_nerf.reshape(N_down, -1)
+        scan_angles_uss = scan_angles_uss.reshape(N_down, -1)
+        scan_angles_tof = scan_angles_tof.reshape(N_down, -1)
+        scan_angles_nerf = scan_angles_nerf.reshape(N_down, -1)
+        nn_dists_uss = nn_dists_uss.reshape(N_down, -1)
+        nn_dists_tof = nn_dists_tof.reshape(N_down, -1)
+        nn_dists_nerf = nn_dists_nerf.reshape(N_down, -1)
+        nn_dists_inv_uss = nn_dists_inv_uss.reshape(N_down, -1)
+        nn_dists_inv_tof = nn_dists_inv_tof.reshape(N_down, -1)
+        nn_dists_inv_nerf = nn_dists_inv_nerf.reshape(N_down, -1)
+        for i in range(N_down):
+            fig, axes = plt.subplots(ncols=3, nrows=3, figsize=(9,9))
 
-            ax = axes[1,i+1]
-            ax.imshow(2*scan_maps[i].T,origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(scan_maps_comb[i]))
-            # for i in range(0, rays_o_w.shape[0], nb_pts_step):
-            #     for j in range(depth_pos_w.shape[1]):
-            #         ax.plot([rays_o_w[i,j,0], depth_pos_w[i,j,0]], [rays_o_w[i,j,1], depth_pos_w[i,j,1]], c='w', linewidth=0.1)
-            ax.scatter(rays_o_w[i,0,0], rays_o_w[i,0,1], c='w', s=5)
-            ax.scatter(rays_o_w[:,0,0], rays_o_w[:,0,1], c='w', s=5, alpha=0.1)
+            ax = axes[0,0]
+            ax.imshow(scan_imgs_uss[i].swapaxes(0,1), origin='lower', extent=extent)
+            for j in np.linspace(0, rays_o_w_uss.shape[1]-1, num_ray_steps, dtype=int):
+                xs = [rays_o_w_uss[i,j,0], rays_o_w_uss[i,j,0] + depth_w_uss[i,j] * np.cos(scan_angles_uss[i,j])]
+                ys = [rays_o_w_uss[i,j,1], rays_o_w_uss[i,j,1] + depth_w_uss[i,j] * np.sin(scan_angles_uss[i,j])]
+                ax.plot(xs, ys, c='blue', linewidth=0.1)
+            ax.scatter(rays_o_w_uss[i,0,0], rays_o_w_uss[i,0,1], c='red', s=5)
+            ax.scatter(rays_o_w_uss[i,-1,0], rays_o_w_uss[i,-1,1], c='red', s=5)
+            ax.set_title(f'Scan', fontsize=15, weight='bold')
             ax.set_xlabel(f'x [m]')
-            ax.set_ylabel(f'y [m]')
+            ax.set_ylabel('USS', fontsize=15, weight='bold', labelpad=20)
+            ax.text(-0.15, 0.5, 'y [m]', fontsize=10, va='center', rotation='vertical', transform=ax.transAxes)
+
+
+            ax = axes[1,0]
+            ax.imshow(scan_imgs_tof[i].swapaxes(0,1), origin='lower', extent=extent)
+            for j in np.linspace(0, rays_o_w_tof.shape[1]-1, num_ray_steps, dtype=int):
+                xs = [rays_o_w_tof[i,j,0], rays_o_w_tof[i,j,0] + depth_w_tof[i,j] * np.cos(scan_angles_tof[i,j])]
+                ys = [rays_o_w_tof[i,j,1], rays_o_w_tof[i,j,1] + depth_w_tof[i,j] * np.sin(scan_angles_tof[i,j])]
+                ax.plot(xs,  ys, c='lime', linewidth=0.1)
+            ax.scatter(rays_o_w_tof[i,0,0], rays_o_w_tof[i,0,1], c='red', s=5)
+            ax.scatter(rays_o_w_tof[i,-1,0], rays_o_w_tof[i,-1,1], c='red', s=5)
+            ax.set_xlabel(f'x [m]')
+            ax.set_ylabel('ToF', fontsize=15, weight='bold', labelpad=20)
+            ax.text(-0.15, 0.5, 'y [m]', fontsize=10, va='center', rotation='vertical', transform=ax.transAxes)
             
-            ax = axes[2,i+1]
-            ax.imshow(scan_maps_comb[i].T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=np.max(scan_maps_comb[i]))
-            # for i in range(0, rays_o_w.shape[0], nb_pts_step):
-            #     for j in range(depth_pos_w.shape[1]):
-            #         ax.plot([rays_o_w[i,j,0], depth_pos_w[i,j,0]], [rays_o_w[i,j,1], depth_pos_w[i,j,1]], c='w', linewidth=0.1)
-            ax.scatter(rays_o_w[i,0,0], rays_o_w[i,0,1], c='w', s=5)
-            ax.scatter(rays_o_w[:,0,0], rays_o_w[:,0,1], c='w', s=5, alpha=0.1)
+            ax = axes[2,0]
+            ax.imshow(scan_imgs_nerf[i].swapaxes(0,1), origin='lower', extent=extent)
+            for j in np.linspace(0, rays_o_w_nerf.shape[1]-1, num_ray_steps, dtype=int):
+                xs = [rays_o_w_nerf[i,j,0], rays_o_w_nerf[i,j,0] + depth_w_nerf[i,j] * np.cos(scan_angles_nerf[i,j])]
+                ys = [rays_o_w_nerf[i,j,1], rays_o_w_nerf[i,j,1] + depth_w_nerf[i,j] * np.sin(scan_angles_nerf[i,j])]
+                ax.plot(xs, ys, c='deeppink', linewidth=0.1)
+            ax.scatter(rays_o_w_nerf[i,0,0], rays_o_w_nerf[i,0,1], c='red', s=5)
+            ax.scatter(rays_o_w_nerf[i,-1,0], rays_o_w_nerf[i,-1,1], c='red', s=5)
             ax.set_xlabel(f'x [m]')
-            ax.set_ylabel(f'y [m]')
+            ax.set_ylabel('NeRF', fontsize=15, weight='bold', labelpad=20)
+            ax.text(-0.15, 0.5, 'y [m]', fontsize=10, va='center', rotation='vertical', transform=ax.transAxes)
 
-            ax = axes[3,i+1]
-            ax.hist(nn_dists[i], bins=50)
-            ax.vlines(np.nanmean(nn_dists[i]), ymin=0, ymax=20, colors='r', linestyles='dashed', label=f'avg.={np.nanmean(nn_dists[i]):.2f}')
-            if i == 0:
-                ax.set_ylabel(f'Nearest Neighbour', weight='bold')
-            else:
-                ax.set_ylabel(f'# elements')
-            ax.set_xlim([0, np.nanmax(nn_dists)])
-            ax.set_ylim([0, 25])
-            ax.set_xlabel(f'distance [m]')
+            ax = axes[0,1]
+            val_idxs = ~np.isnan(nn_dists_uss[i])
+            n_uss, _, _ = ax.hist(nn_dists_uss[i][val_idxs], bins=50)
+            ax.vlines(np.nanmean(nn_dists_uss[i]), ymin=0, ymax=2000, colors='r', linestyles='dashed', 
+                      label=f'MNNE={np.nanmean(nn_dists_uss[i]):.2f}m')
+            ax.set_title(f'NNE Sensor->GT', weight='bold')
+            ax.set_ylabel(f'# elements')
+            ax.set_xlabel(f'NNE [m]')
             ax.legend()
             ax.set_box_aspect(1)
+
+            ax = axes[1,1]
+            val_idxs = ~np.isnan(nn_dists_tof[i])
+            n_tof, _, _ = ax.hist(nn_dists_tof[i][val_idxs], bins=50)
+            ax.vlines(np.nanmean(nn_dists_tof[i]), ymin=0, ymax=2000, colors='r', linestyles='dashed', 
+                      label=f'MNNE={np.nanmean(nn_dists_tof[i]):.2f}m')
+            ax.set_ylabel(f'# elements')
+            ax.set_xlabel(f'NNE [m]')
+            ax.legend()
+            ax.set_box_aspect(1)
+
+            ax = axes[2,1]
+            val_idxs = ~np.isnan(nn_dists_nerf[i])
+            n_nerf, _, _ = ax.hist(nn_dists_nerf[i][val_idxs], bins=50)
+            ax.vlines(np.nanmean(nn_dists_nerf[i]), ymin=0, ymax=2000, colors='r', linestyles='dashed', 
+                      label=f'MNNE={np.nanmean(nn_dists_nerf[i]):.2f}m')
+            ax.set_ylabel(f'# elements')
+            ax.set_xlabel(f'NNE [m]')
+            ax.legend()
+            ax.set_box_aspect(1)
+
+            ax = axes[0,2]
+            val_idxs = ~np.isnan(nn_dists_inv_uss[i])
+            n_uss_inv, _, _ = ax.hist(nn_dists_inv_uss[i][val_idxs], bins=50)
+            ax.vlines(inlier_thr, ymin=0, ymax=2000, colors='r', linestyles='dashed', 
+                      label=f'Inliers={(np.nansum(nn_dists_inv_uss[i]<inlier_thr)/nn_dists_inv_uss.shape[1]):.2f}%')
+            ax.set_title(f'NNE GT->Sensor', weight='bold')
+            ax.set_ylabel(f'# elements')
+            ax.set_xlabel(f'NNE [m]')
+            ax.legend()
+            ax.set_box_aspect(1)
+
+            ax = axes[1,2]
+            val_idxs = ~np.isnan(nn_dists_inv_tof[i])
+            n_tof_inv, _, _ = ax.hist(nn_dists_inv_tof[i][val_idxs], bins=50)
+            ax.vlines(inlier_thr, ymin=0, ymax=2000, colors='r', linestyles='dashed', 
+                      label=f'Inliers={(np.nansum(nn_dists_inv_tof[i]<inlier_thr)/nn_dists_inv_tof.shape[1]):.2f}%')
+            ax.set_ylabel(f'# elements')
+            ax.set_xlabel(f'NNE [m]')
+            ax.legend()
+            ax.set_box_aspect(1)
+
+            ax = axes[2,2]
+            val_idxs = ~np.isnan(nn_dists_inv_nerf[i])
+            n_nerf_inv, _, _ = ax.hist(nn_dists_inv_nerf[i][val_idxs], bins=50)
+            ax.vlines(inlier_thr, ymin=0, ymax=2000, colors='r', linestyles='dashed', 
+                      label=f'Inliers={(np.nansum(nn_dists_inv_nerf[i]<inlier_thr)/nn_dists_inv_nerf.shape[1]):.2f}%')
+            ax.set_ylabel(f'# elements')
+            ax.set_xlabel(f'NNE [m]')
+            ax.legend()
+            ax.set_box_aspect(1)
+
+            x_max = np.nanmax(np.concatenate((depth_w_uss[i], depth_w_tof[i], depth_w_nerf[i])))
+            x_max_inv = np.nanmax(np.concatenate((nn_dists_inv_uss[i], nn_dists_inv_tof[i], nn_dists_inv_nerf[i])))
+            y_max_uss = np.nanmax((n_uss, n_uss_inv))
+            y_max_tof = np.nanmax((n_tof, n_tof_inv))
+            y_max_nerf = np.nanmax((n_nerf, n_nerf_inv))
+
+            axes[0,1].set_xlim([0, x_max])
+            axes[0,1].set_ylim([0, y_max_uss])
+            axes[1,1].set_xlim([0, x_max])
+            axes[1,1].set_ylim([0, y_max_tof])
+            axes[2,1].set_xlim([0, x_max])
+            axes[2,1].set_ylim([0, y_max_nerf])
+            axes[0,2].set_xlim([0, x_max_inv])
+            axes[0,2].set_ylim([0, y_max_uss])
+            axes[1,2].set_xlim([0, x_max_inv])
+            axes[1,2].set_ylim([0, y_max_tof])
+            axes[2,2].set_xlim([0, x_max_inv])
+            axes[2,2].set_ylim([0, y_max_nerf])
+
         
-        plt.tight_layout()
-        plt.savefig(os.path.join(self.args.save_dir, "maps.pdf"))
-        plt.savefig(os.path.join(self.args.save_dir, "maps.png"))
+            plt.tight_layout()
+            plt.savefig(os.path.join(save_dir, f"map{i}.pdf"))
+            plt.savefig(os.path.join(save_dir, f"map{i}.png"))
 
     def _plotLosses(
         self,
