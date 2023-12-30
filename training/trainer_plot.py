@@ -511,7 +511,7 @@ class TrainerPlot(TrainerBase):
         Returns:
             metrics_dict: dict of metrics
         """
-        if not self.args.eval.plot_results:
+        if (not self.args.eval.plot_results) or (self.args.training.max_steps == 0):
             return metrics_dict
         
         fig, axes = plt.subplots(ncols=2, nrows=1, figsize=(12,8))
@@ -547,7 +547,7 @@ class TrainerPlot(TrainerBase):
             color = 'tab:blue'
             not_nan = ~np.isnan(logs['mnn'])
             lns1 = ax.plot(np.array(logs['step'])[not_nan], np.array(logs['mnn'])[not_nan], c=color, label='mnn')
-            hln1 = ax.axhline(metrics_dict['mnn'], linestyle="--", c=color, label='mnn final')
+            hln1 = ax.axhline(metrics_dict['NeRF']['mnn'], linestyle="--", c=color, label='mnn final')
             ax.set_ylabel('mnn')
             ax.set_ylim([0, 0.5])
             ax.yaxis.label.set_color('blue') 
@@ -555,37 +555,37 @@ class TrainerPlot(TrainerBase):
 
             idx1 = dataConverged(
                 arr=np.array(logs['mnn'])[not_nan],
-                threshold=1.5 * metrics_dict['mnn'],
+                threshold=1.5 * metrics_dict['NeRF']['mnn'],
                 data_increasing=False,
             )
             if idx1 != -1:
                 vln1 = ax.axvline(np.array(logs['step'])[not_nan][idx1], linestyle=(0, (1, 10)), c="black", label='converged 50%')
-                metrics_dict['mnn_converged_50'] = np.array(logs['time'])[not_nan][idx1]
-                # print(f"mnn converged 25% at step {logs['step'][idx1]}, idx1={idx1}, threshold={1.25 * metrics_dict['mnn']}")
+                metrics_dict['NeRF']['mnn_converged_50'] = np.array(logs['time'])[not_nan][idx1]
+                # print(f"mnn converged 25% at step {logs['step'][idx1]}, idx1={idx1}, threshold={1.25 * metrics_dict['NeRF']['mnn']}")
 
             idx2 = dataConverged(
                 arr=np.array(logs['mnn'])[not_nan],
-                threshold=1.25 * metrics_dict['mnn'],
+                threshold=1.25 * metrics_dict['NeRF']['mnn'],
                 data_increasing=False,
             )
             if idx2 != -1:
                 vln2 = ax.axvline(np.array(logs['step'])[not_nan][idx2], linestyle=(0, (1, 5)), c="black", label='converged 25%')
-                metrics_dict['mnn_converged_25'] = np.array(logs['time'])[not_nan][idx2]
+                metrics_dict['NeRF']['mnn_converged_25'] = np.array(logs['time'])[not_nan][idx2]
 
             idx3 = dataConverged(
                 arr=np.array(logs['mnn'])[not_nan],
-                threshold=1.1 * metrics_dict['mnn'],
+                threshold=1.1 * metrics_dict['NeRF']['mnn'],
                 data_increasing=False,
             )
             if idx3 != -1:
                 vln3 = ax.axvline(np.array(logs['step'])[not_nan][idx3], linestyle=(0, (1, 2)), c="black", label='converged 10%')
-                metrics_dict['mnn_converged_10'] = np.array(logs['time'])[not_nan][idx3]
+                metrics_dict['NeRF']['mnn_converged_10'] = np.array(logs['time'])[not_nan][idx3]
 
             ax2 = ax.twinx()
             color = 'tab:green'
             not_nan = ~np.isnan(logs['psnr'])
             lns2 = ax2.plot(np.array(logs['step'])[not_nan], np.array(logs['psnr'])[not_nan], label='psnr', c=color)
-            # ax.axhline(metrics_dict['psnr'], linestyle="--", c=color, label='psnr final')
+            # ax.axhline(metrics_dict['NeRF']['psnr'], linestyle="--", c=color, label='psnr final')
             ax2.set_ylabel('psnr')
             ax2.yaxis.label.set_color('green') 
             ax2.tick_params(axis='y', colors='green')

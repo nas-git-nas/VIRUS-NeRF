@@ -251,10 +251,10 @@ class Trainer(TrainerPlot):
             num_imgs=img_idxs_sensor.shape[0],
             use_relaative_mnn=True,
         )
-        # metrics_dict = self._plotLosses(
-        #     logs=self.logs,
-        #     metrics_dict=metrics_dict,
-        # )
+        metrics_dict = self._plotLosses(
+            logs=self.logs,
+            metrics_dict=metrics_dict,
+        )
 
         # print and save metrics
         print(
@@ -510,8 +510,8 @@ class Trainer(TrainerPlot):
 
     @torch.no_grad()
     def _evaluateDepthNeRF(
-            self, 
-            img_idxs:np.array,
+        self, 
+        img_idxs:np.array,
     ) -> dict:
         """
         Evaluate depth error.
@@ -521,36 +521,17 @@ class Trainer(TrainerPlot):
             metrics_dict: dict of metrics
             data_w: dict of data in world coordinates
         """
-        # get positions of image indices
-        rays_o_img_idxs = self.test_dataset.poses[img_idxs, :3, 3].detach().clone() # (N, 3)
-        sensor_ids = self.test_dataset.sensor_ids[img_idxs].detach().clone() # (N,)
-
-        # print(f"before: {rays_o_img_idxs[:5]}")
-
-        # rays_o_before = rays_o_img_idxs.detach().clone().cpu().numpy()
-
-        # # convert positions from camera to lidar coordinate frame
-        # rays_o_img_idxs = self.test_dataset.camera2lidarPosition(
-        #     xyz=rays_o_img_idxs.cpu().numpy(),
-        #     sensor_ids=sensor_ids.cpu().numpy(),
-        #     pose_given_in_world_coord=False,
-        # )
-        # rays_o_after = np.copy(rays_o_img_idxs)
-        # rays_o_img_idxs = torch.tensor(rays_o_img_idxs, device=self.args.device, dtype=torch.float32) # (N, 3)
-
-        # print(f"before: {rays_o_img_idxs[:5]}")
-
-        # for i in range(rays_o_before.shape[0]):
-        #     plt.scatter(rays_o_before[i,0], rays_o_before[i,1], c='r')
-        #     plt.scatter(rays_o_after[i,0], rays_o_after[i,1], c='b')
-        #     plt.show()
+        # use xy-positions of lidar, but height of camera
+        pos_cam_c = self.test_dataset.poses[img_idxs, :3, 3].detach().clone() # (N, 3)
+        pos_lidar_c = self.test_dataset.poses_lidar[img_idxs, :3, 3].detach().clone() # (N, 3)
+        pos_lidar_c[:,2] = pos_cam_c[:,2] # (N, 3)
 
         # convert height tolerance to cube coordinates
         h_tol_c = self.test_dataset.scene.w2c(pos=self.args.eval.height_tolerance, only_scale=True, copy=True)
 
         # create scan rays for averaging over different heights
         rays_o, rays_d = createScanRays(
-            rays_o=rays_o_img_idxs,
+            rays_o=pos_lidar_c,
             res_angular=self.args.eval.res_angular,
             h_tol_c=h_tol_c,
             num_avg_heights=self.args.eval.num_avg_heights,
@@ -573,7 +554,7 @@ class Trainer(TrainerPlot):
 
         # create scan rays for averaging over different heights
         rays_o, rays_d = createScanRays(
-            rays_o=rays_o_img_idxs,
+            rays_o=pos_lidar_c,
             res_angular=self.args.eval.res_angular,
             h_tol_c=0.0,
             num_avg_heights=1,
@@ -635,10 +616,18 @@ class Trainer(TrainerPlot):
             pix_idxs=pix_idxs.flatten(),
         )
 
+        rays_o = data['rays_o'].detach().cpu().numpy() # (2*N*M, 3)
+        rays_d = data['rays_d'].detach().cpu().numpy() # (2*N*M, 3)
+        depth = data['depth'][sensor_name].detach().cpu().numpy() # (2*N*M,)
+
+        # project depth on xy-plane
+        alpha = np.arctan2(rays_d[:,2], np.sqrt(rays_d[:,0]**2+rays_d[:,1]**2))
+        depth = depth * np.cos(alpha)
+
         metrics_dict, data_w = self._evaluateDepthMetric(
-            rays_o=data['rays_o'].detach().cpu().numpy(), # (N*2*M, 3),
-            rays_d=data['rays_d'].detach().cpu().numpy(), # (N*2*M, 3),
-            depth=data['depth'][sensor_name].detach().cpu().numpy(), # (N*M,),
+            rays_o=rays_o, # (N*M, 3),
+            rays_d=rays_d, # (N*M, 3),
+            depth=depth, # (N*M,)
             num_test_pts=len(img_idxs),
         )
         return metrics_dict, data_w
@@ -656,49 +645,62 @@ class Trainer(TrainerPlot):
             metrics_dict: dict of metrics
             data_w: dict of data in world coordinates
         """
-        xyzs, poses_w = self.test_dataset.getLidarMaps(
+        xyzs, poses_lidar_w = self.test_dataset.getLidarMaps(
             img_idxs=img_idxs,
         )
+
+        pos_cam_c = self.test_dataset.poses[img_idxs, :3, 3].detach().clone().cpu().numpy() # (N, 3)
+        pos_cam_w = self.test_dataset.scene.c2w(pos=pos_cam_c, copy=True) # (N, 3)
 
         depths = np.zeros((len(img_idxs), self.args.eval.res_angular)) # (N, M)
         rays_o = np.zeros((len(img_idxs), self.args.eval.res_angular, 3)) # (N, M, 3)
         rays_d = np.zeros((len(img_idxs), self.args.eval.res_angular, 3)) # (N, M, 3)
         for i, xyz in enumerate(xyzs):
-            pos_lidar_w = poses_w[i, :3, 3] # (3,)
-
+            pos_lidar_w = poses_lidar_w[i, :3, 3] # (3,)
+            
             # filter height slice from point cloud
-            h_min = - self.args.eval.height_tolerance - self.args.lidar.height_offset
-            h_max = self.args.eval.height_tolerance - self.args.lidar.height_offset
-            xyz = xyz[(xyz[:,2] >= h_min) & (xyz[:,2] <= h_max)] # (n, 3)
+            h_min = pos_cam_w[i,2] - self.args.eval.height_tolerance #- self.args.lidar.height_offset
+            h_max = pos_cam_w[i,2] + self.args.eval.height_tolerance #- self.args.lidar.height_offset
+            xyz_n = xyz[(xyz[:,2] >= h_min) & (xyz[:,2] <= h_max)] # (n, 3)
  
             # sample fixed number of points
-            scan_angle = np.arctan2(xyz[:,1]-pos_lidar_w[1], xyz[:,0]-pos_lidar_w[0]) # (n,)
+            pos_rel_n = xyz_n - pos_lidar_w[None,:] # (n, 3)
+            beta_n = np.arctan2(pos_rel_n[:,1], pos_rel_n[:,0]) # (n,)
             bins = np.linspace(-np.pi, np.pi, self.args.eval.res_angular+1) # (M+1,)
-            bin_idxs = np.digitize(scan_angle, bins) - 1 # (n,)
+            bin_idxs = np.digitize(beta_n, bins) - 1 # (n,), in range [0, M-1]
+            
+            depth_mn = np.full((self.args.eval.res_angular, bin_idxs.shape[0]), np.nan) # (M, n)
+            depth_mn[bin_idxs, np.arange(bin_idxs.shape[0])] = np.linalg.norm(pos_rel_n, axis=1) # (M, n)
+            sort_idxs = np.argsort(depth_mn, axis=1) # (M, n)
+            num_elements = np.sum(~np.isnan(depth_mn), axis=1) # (M,)
+            median_idxs = sort_idxs[np.arange(self.args.eval.res_angular), num_elements//2] # (M,) in range [0, n-1]
 
-            depth = np.linalg.norm(xyz-pos_lidar_w[None,:], axis=1) # (n,)
-            depth_all = np.full((self.args.eval.res_angular, bin_idxs.shape[0]), np.nan) # (M, n)
-            depth_all[bin_idxs, np.arange(bin_idxs.shape[0])] = depth # (M, n)
-            sort_idxs = np.argsort(depth_all, axis=1) # (M, n)
-            num_elements = np.sum(~np.isnan(depth_all), axis=1) # (M,)
-            median_idxs = sort_idxs[np.arange(self.args.eval.res_angular), num_elements//2] # (M,)
+            depth_m = depth_mn[np.arange(self.args.eval.res_angular), median_idxs] # (M,)
+            pos_rel_m = pos_rel_n[median_idxs] # (M, 3)
 
-            depth_bins = depth[median_idxs] # (M,)
-            xyz_bins = xyz[median_idxs] # (M, 3)
-                
-            # calculate depth and ray positions and directions
-            depth = depth_bins
-            ray_o = np.tile(pos_lidar_w, (self.args.eval.res_angular, 1)) # (M, 3)
-            ray_d = (xyz_bins-ray_o) / depth[:, None] # (M, 3)
+            # consider viewing direction in xy-plane to be equally spaced, but in z-direction to be proportional to sample
+            alpha_m = np.arctan2(pos_rel_m[:,2], np.sqrt(pos_rel_m[:,1]**2 + pos_rel_m[:,0]**2)) # (M,)
+            beta_m = np.linspace(
+                start=-np.pi + np.pi/self.args.eval.res_angular, 
+                stop=np.pi - np.pi/self.args.eval.res_angular, 
+                num=self.args.eval.res_angular,
+            ) # (M,)
+            ray_d_m = np.vstack((np.cos(beta_m)*np.cos(alpha_m), np.sin(beta_m)*np.cos(alpha_m), np.sin(alpha_m))).T # (M, 3)
+
+            # project depth on xy-plane
+            depth_m = depth_m * np.cos(alpha_m)
 
             # save data
-            depths[i] = depth
-            rays_o[i] = ray_o
-            rays_d[i] = ray_d
+            depths[i] = depth_m
+            rays_o[i] = np.tile(pos_lidar_w, (self.args.eval.res_angular, 1)) # (M, 3)
+            rays_d[i] = ray_d_m
             
             if self.args.model.debug_mode:
-                if not np.allclose(np.linalg.norm(ray_d, axis=1), 1.0):
+                if not np.allclose(np.linalg.norm(ray_d_m, axis=1), 1.0):
                     self.args.logger.error(f"----lidar rays not normalized: {np.linalg.norm(rays_d[i], axis=1).max()}")
+
+        # convert lidar height to camera height
+        rays_o[:,:,2] = pos_cam_w[:,2][:,None] # (N, M, 3)
 
         # convert depth an rays to cube coordinates
         depths_c = self.test_dataset.scene.w2c(pos=depths.reshape(-1), only_scale=True, copy=True) # (N*M,)
@@ -778,7 +780,7 @@ class Trainer(TrainerPlot):
             num_test_pts:int,
     ) -> dict:
         """
-        Evaluate depth error.
+        Evaluate depth error. The depth is assumed to be projected onto the xy-plane.
         Args:
             rays_o: ray origins; array of shape (N*M, 3)
             rays_d: ray directions; array of shape (N*M, 3)
@@ -788,11 +790,6 @@ class Trainer(TrainerPlot):
             metrics_dict: dict of metrics
             data_w: dict of data in world coordinates
         """
-
-        # calculate depth in xy-plane because z-axis is ignored
-        alpha = np.arctan2(rays_d[:,2], np.sqrt(rays_d[:,0]**2+rays_d[:,1]**2))
-        depth = depth * np.cos(alpha)
-
         # get ground truth depth
         scan_map_gt, depth_gt, scan_angles = self.test_dataset.scene.getSliceScan(
             res=self.args.eval.res_map, 
