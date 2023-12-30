@@ -243,6 +243,13 @@ class Trainer(TrainerPlot):
             data_w=data_w, 
             metrics_dict=metrics_dict,
             num_imgs=img_idxs_sensor.shape[0],
+            use_relaative_mnn=False,
+        )
+        self._plotEvaluation(
+            data_w=data_w, 
+            metrics_dict=metrics_dict,
+            num_imgs=img_idxs_sensor.shape[0],
+            use_relaative_mnn=True,
         )
         # metrics_dict = self._plotLosses(
         #     logs=self.logs,
@@ -261,11 +268,11 @@ class Trainer(TrainerPlot):
 
 
         metric_df = {key:[] for key in metrics_dict["NeRF"].keys()}
-        del metric_df['nn_dists']
+        del metric_df['nn_dists'], metric_df['nn_dists_inv'], metric_df['rnn_dists'], metric_df['rnn_dists_inv']
         metric_idxs = []
         for key in metrics_dict.keys():
             for metric, value in metrics_dict[key].items():
-                if metric == "nn_dists":
+                if "nn_dists" in metric:
                     continue
                 metric_df[metric].append(value)
             metric_idxs.append(key)
@@ -481,12 +488,15 @@ class Trainer(TrainerPlot):
         }
 
         data_w = { 
-            'depth_gt': data_w_nerf['depth_gt'],
             'rays_o_nerf': data_w_nerf['rays_o'],
             'rays_o_tof': data_w_tof['rays_o'],
             'rays_o_uss': data_w_uss['rays_o'],
             'rays_o_lidar': data_w_lidar['rays_o'],
             'scan_map_gt': data_w_nerf['scan_map_gt'],
+            'depth_gt_nerf': data_w_nerf['depth_gt'],
+            'depth_gt_tof': data_w_tof['depth_gt'],
+            'depth_gt_uss': data_w_uss['depth_gt'],
+            'depth_gt_lidar': data_w_lidar['depth_gt'],
             'depth_nerf': data_w_nerf['depth'],
             'depth_tof': data_w_tof['depth'],
             'depth_uss': data_w_uss['depth'],
@@ -650,42 +660,45 @@ class Trainer(TrainerPlot):
             img_idxs=img_idxs,
         )
 
-        positions_c_cam = self.test_dataset.poses[img_idxs, :3, 3].detach().clone().cpu().numpy() # (N, 3)
-        positions_w_cam = self.test_dataset.scene.c2w(pos=positions_c_cam, copy=True) # (N, 3)
-
         depths = np.zeros((len(img_idxs), self.args.eval.res_angular)) # (N, M)
         rays_o = np.zeros((len(img_idxs), self.args.eval.res_angular, 3)) # (N, M, 3)
         rays_d = np.zeros((len(img_idxs), self.args.eval.res_angular, 3)) # (N, M, 3)
         for i, xyz in enumerate(xyzs):
+            pos_lidar_w = poses_w[i, :3, 3] # (3,)
+
             # filter height slice from point cloud
             h_min = - self.args.eval.height_tolerance - self.args.lidar.height_offset
             h_max = self.args.eval.height_tolerance - self.args.lidar.height_offset
-            xyz = xyz[(xyz[:,2] >= h_min) & (xyz[:,2] <= h_max)] # (M, 3)
+            xyz = xyz[(xyz[:,2] >= h_min) & (xyz[:,2] <= h_max)] # (n, 3)
  
             # sample fixed number of points
-            scan_angle = np.arctan2(xyz[:,1]-poses_w[i,1,3], xyz[:,0]-poses_w[i,0,3]) # (M,)
-            sort_idxs = np.argsort(scan_angle)
-            xyz = xyz[sort_idxs]
+            scan_angle = np.arctan2(xyz[:,1]-pos_lidar_w[1], xyz[:,0]-pos_lidar_w[0]) # (n,)
+            bins = np.linspace(-np.pi, np.pi, self.args.eval.res_angular+1) # (M+1,)
+            bin_idxs = np.digitize(scan_angle, bins) - 1 # (n,)
 
-            sub_idxs = np.linspace(0, scan_angle.shape[0]-1, self.args.eval.res_angular, dtype=np.int32)
-            xyz = xyz[sub_idxs]
+            depth = np.linalg.norm(xyz-pos_lidar_w[None,:], axis=1) # (n,)
+            depth_all = np.full((self.args.eval.res_angular, bin_idxs.shape[0]), np.nan) # (M, n)
+            depth_all[bin_idxs, np.arange(bin_idxs.shape[0])] = depth # (M, n)
+            sort_idxs = np.argsort(depth_all, axis=1) # (M, n)
+            num_elements = np.sum(~np.isnan(depth_all), axis=1) # (M,)
+            median_idxs = sort_idxs[np.arange(self.args.eval.res_angular), num_elements//2] # (M,)
 
-            if self.args.model.debug_mode:
-                if self.args.eval.res_angular > scan_angle.shape[0]:
-                    self.args.logger.error(f"DatasetETHZ::getLidarMaps: not enough points in lidar map")
+            depth_bins = depth[median_idxs] # (M,)
+            xyz_bins = xyz[median_idxs] # (M, 3)
                 
             # calculate depth and ray positions and directions
-            depths[i] = np.linalg.norm(xyz, axis=1) # (M,)
-            rays_o[i] = np.tile(poses_w[i, :3, 3], (self.args.eval.res_angular, 1)) # (M, 3)
-            rays_d[i] = (xyz-rays_o[i]) / depths[i][:, None] # (M, 3)
+            depth = depth_bins
+            ray_o = np.tile(pos_lidar_w, (self.args.eval.res_angular, 1)) # (M, 3)
+            ray_d = (xyz_bins-ray_o) / depth[:, None] # (M, 3)
 
-            # # plot lidar map
-            # plt.scatter(positions_w_cam[i,0], positions_w_cam[i,1], c='b')
-            # plt.scatter(rays_o[i,0,0], rays_o[i,0,1], c='r')
-            # xs = [rays_o[i,:,0], rays_o[i,:,0]+rays_d[i,:,0]*depths[i]]
-            # ys = [rays_o[i,:,1], rays_o[i,:,1]+rays_d[i,:,1]*depths[i]]
-            # plt.plot(xs, ys, c='g')
-            # plt.show()
+            # save data
+            depths[i] = depth
+            rays_o[i] = ray_o
+            rays_d[i] = ray_d
+            
+            if self.args.model.debug_mode:
+                if not np.allclose(np.linalg.norm(ray_d, axis=1), 1.0):
+                    self.args.logger.error(f"----lidar rays not normalized: {np.linalg.norm(rays_d[i], axis=1).max()}")
 
         # convert depth an rays to cube coordinates
         depths_c = self.test_dataset.scene.w2c(pos=depths.reshape(-1), only_scale=True, copy=True) # (N*M,)
@@ -699,60 +712,60 @@ class Trainer(TrainerPlot):
             num_test_pts=len(img_idxs),
         )
 
-        N = len(img_idxs)
-        d_depth = data_w['depth'].reshape(N, self.args.eval.res_angular) # (N, M)
-        d_depth_gt = data_w['depth_gt'].reshape(N, self.args.eval.res_angular) # (N, M)
-        d_rays_o = data_w['rays_o'].reshape(N, self.args.eval.res_angular, 3) # (N, M, 3)
-        d_scan_angles = data_w['scan_angles'].reshape(N, self.args.eval.res_angular) # (N, M)
-        d_scan_map_gt = data_w['scan_map_gt'] # (L, L)
+        # N = len(img_idxs)
+        # d_depth = data_w['depth'].reshape(N, self.args.eval.res_angular) # (N, M)
+        # d_depth_gt = data_w['depth_gt'].reshape(N, self.args.eval.res_angular) # (N, M)
+        # d_rays_o = data_w['rays_o'].reshape(N, self.args.eval.res_angular, 3) # (N, M, 3)
+        # d_scan_angles = data_w['scan_angles'].reshape(N, self.args.eval.res_angular) # (N, M)
+        # d_scan_map_gt = data_w['scan_map_gt'] # (L, L)
 
-        scale = self.args.model.scale
-        extent = self.test_dataset.scene.c2w(pos=np.array([[-scale,-scale],[scale,scale]]), copy=False)
-        extent = extent.T.flatten()
+        # scale = self.args.model.scale
+        # extent = self.test_dataset.scene.c2w(pos=np.array([[-scale,-scale],[scale,scale]]), copy=False)
+        # extent = extent.T.flatten()
 
-        for i in range(N):
+        # for i in range(N):
 
-            fig, axs = plt.subplots(2, 2, figsize=(10,5))
+        #     fig, axs = plt.subplots(2, 2, figsize=(10,5))
 
-            # plot lidar map
-            ax = axs[0,0]
-            ax.imshow(d_scan_map_gt.swapaxes(0,1), origin='lower', extent=extent)
-            ax.scatter(positions_w_cam[i,0], positions_w_cam[i,1], c='b')
-            ax.scatter(rays_o[i,0,0], rays_o[i,0,1], c='r')
-            xs = [rays_o[i,:,0], rays_o[i,:,0]+rays_d[i,:,0]*depths[i]]
-            ys = [rays_o[i,:,1], rays_o[i,:,1]+rays_d[i,:,1]*depths[i]]
-            ax.plot(xs, ys, c='w', alpha=0.4)
-            ax.set_title(f"data in")
-            ax.set_xlim(extent[0], extent[1])
-            ax.set_ylim(extent[2], extent[3])
+        #     # plot lidar map
+        #     ax = axs[0,0]
+        #     ax.imshow(d_scan_map_gt.swapaxes(0,1), origin='lower', extent=extent)
+        #     ax.scatter(positions_w_cam[i,0], positions_w_cam[i,1], c='b')
+        #     ax.scatter(rays_o[i,0,0], rays_o[i,0,1], c='r')
+        #     xs = [rays_o[i,:,0], rays_o[i,:,0]+rays_d[i,:,0]*depths[i]]
+        #     ys = [rays_o[i,:,1], rays_o[i,:,1]+rays_d[i,:,1]*depths[i]]
+        #     ax.plot(xs, ys, c='w', alpha=0.4)
+        #     ax.set_title(f"data in")
+        #     ax.set_xlim(extent[0], extent[1])
+        #     ax.set_ylim(extent[2], extent[3])
 
-            ax = axs[0,1]
-            ax.imshow(d_scan_map_gt.swapaxes(0,1), origin='lower', extent=extent)
-            ax.scatter(d_rays_o[i,:,0], d_rays_o[i,:,1], c='r')
-            xs = [d_rays_o[i,:,0], d_depth[i,:]*np.cos(d_scan_angles[i,:])+d_rays_o[i,:,0]]
-            ys = [d_rays_o[i,:,1], d_depth[i,:]*np.sin(d_scan_angles[i,:])+d_rays_o[i,:,1]]
-            ax.plot(xs, ys, c='w', alpha=0.4)
-            ax.set_title(f"data out")
-            ax.set_xlim(extent[0], extent[1])
-            ax.set_ylim(extent[2], extent[3])
+        #     ax = axs[0,1]
+        #     ax.imshow(d_scan_map_gt.swapaxes(0,1), origin='lower', extent=extent)
+        #     ax.scatter(d_rays_o[i,0,0], d_rays_o[i,0,1], c='r')
+        #     xs3 = [d_rays_o[i,:,0], d_depth[i]*np.cos(d_scan_angles[i,:])+d_rays_o[i,:,0]]
+        #     ys3 = [d_rays_o[i,:,1], d_depth[i]*np.sin(d_scan_angles[i,:])+d_rays_o[i,:,1]]
+        #     ax.plot(xs3, ys3, c='w', alpha=0.4)
+        #     ax.set_title(f"data out")
+        #     ax.set_xlim(extent[0], extent[1])
+        #     ax.set_ylim(extent[2], extent[3])
 
-            ax = axs[1,0]
-            ax.imshow(d_scan_map_gt.swapaxes(0,1), origin='lower', extent=extent)
-            ax.scatter(d_rays_o[i,:,0], d_rays_o[i,:,1], c='r')
-            xs = [d_rays_o[i,:,0], d_depth_gt[i,:]*np.cos(d_scan_angles[i,:])+d_rays_o[i,:,0]]
-            ys = [d_rays_o[i,:,1], d_depth_gt[i,:]*np.sin(d_scan_angles[i,:])+d_rays_o[i,:,1]]
-            ax.plot(xs, ys, c='w', alpha=0.4)
-            ax.set_title(f"gt")
-            ax.set_xlim(extent[0], extent[1])
-            ax.set_ylim(extent[2], extent[3])
 
-            ax = axs[1,1]
-            ax.imshow(d_scan_map_gt.swapaxes(0,1), origin='lower', extent=extent)
-            ax.set_xlim(extent[0], extent[1])
-            ax.set_ylim(extent[2], extent[3])
+        #     ax = axs[1,0]
+        #     ax.imshow(d_scan_map_gt.swapaxes(0,1), origin='lower', extent=extent)
+        #     ax.scatter(d_rays_o[i,:,0], d_rays_o[i,:,1], c='r')
+        #     xs = [d_rays_o[i,:,0], d_depth_gt[i,:]*np.cos(d_scan_angles[i,:])+d_rays_o[i,:,0]]
+        #     ys = [d_rays_o[i,:,1], d_depth_gt[i,:]*np.sin(d_scan_angles[i,:])+d_rays_o[i,:,1]]
+        #     ax.plot(xs, ys, c='w', alpha=0.4)
+        #     ax.set_title(f"gt")
+        #     ax.set_xlim(extent[0], extent[1])
+        #     ax.set_ylim(extent[2], extent[3])
 
-            plt.show()
+        #     ax = axs[1,1]
+        #     ax.imshow(d_scan_map_gt.swapaxes(0,1), origin='lower', extent=extent)
+        #     ax.set_xlim(extent[0], extent[1])
+        #     ax.set_ylim(extent[2], extent[3])
 
+        #     plt.show()
 
         return metrics_dict, data_w
 
@@ -775,6 +788,10 @@ class Trainer(TrainerPlot):
             metrics_dict: dict of metrics
             data_w: dict of data in world coordinates
         """
+
+        # calculate depth in xy-plane because z-axis is ignored
+        alpha = np.arctan2(rays_d[:,2], np.sqrt(rays_d[:,0]**2+rays_d[:,1]**2))
+        depth = depth * np.cos(alpha)
 
         # get ground truth depth
         scan_map_gt, depth_gt, scan_angles = self.test_dataset.scene.getSliceScan(
@@ -800,7 +817,7 @@ class Trainer(TrainerPlot):
         # calculate mean squared depth error
         metrics_dict = self.metrics.evaluate(
             data=data_w,
-            eval_metrics=['rmse', 'mae', 'mare', 'nn', 'nn_inv'],
+            eval_metrics=['rmse', 'mae', 'mare', 'nn', 'nn_inv', 'rnn', 'rnn_inv'],
             convert_to_world_coords=False,
             copy=True,
             num_test_pts=num_test_pts,

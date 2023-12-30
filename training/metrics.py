@@ -86,13 +86,21 @@ class Metrics():
             elif metric == 'mare':
                 dict['mare'] = self._mare(depth=data['depth'], depth_gt=data['depth_gt'])
             elif metric == 'nn':
-                nn_dists, mnn = self._nn(pos=data['pos'], pos_gt=data['pos_gt'], num_test_pts=num_test_pts)
+                nn_dists, mnn = self._nn(pos=data['pos'], pos_gt=data['pos_gt'], num_test_pts=num_test_pts, depth_gt=data['depth_gt'])
                 dict['nn_dists'] = nn_dists
                 dict['mnn'] = mnn
             elif metric == 'nn_inv':
-                nn_dists_inv, mnn_inv = self._nn(pos=data['pos_gt'], pos_gt=data['pos'], num_test_pts=num_test_pts)
+                nn_dists_inv, mnn_inv = self._nn(pos=data['pos_gt'], pos_gt=data['pos'], num_test_pts=num_test_pts, depth_gt=data['depth_gt'])
                 dict['nn_dists_inv'] = nn_dists_inv
                 dict['mnn_inv'] = mnn_inv
+            elif metric == 'rnn':
+                rnn_dists, mrnn = self._rnn(pos=data['pos'], pos_gt=data['pos_gt'], num_test_pts=num_test_pts, depth_gt=data['depth_gt'])
+                dict['rnn_dists'] = rnn_dists
+                dict['mrnn'] = mrnn
+            elif metric == 'rnn_inv':
+                rnn_dists_inv, mrnn_inv = self._rnn(pos=data['pos_gt'], pos_gt=data['pos'], num_test_pts=num_test_pts, depth_gt=data['depth_gt'])
+                dict['rnn_dists_inv'] = rnn_dists_inv
+                dict['mrnn_inv'] = mrnn_inv
             elif metric == 'psnr':
                 dict['psnr'] = self._psnr(rgb=data['rgb'], rgb_gt=data['rgb_gt'])
             elif metric == 'ssim':
@@ -210,6 +218,7 @@ class Metrics():
             pos:np.array, 
             pos_gt:np.array,
             num_test_pts:int,
+            depth_gt:np.array,
         ):
         """
         Calculate nearest neighbour distance between pos_w and pos_w_gt
@@ -217,8 +226,9 @@ class Metrics():
             pos: predicted position in world coordinate system; either numpy array or torch tensor (N, M, 2)
             pos_gt: ground truth position in world coordinate system; either numpy array or torch tensor (N, M, 2)
             num_test_pts: number of test points (N); int
+            depth_gt: ground truth depth; either numpy array or torch tensor (N*M)
         Returns:
-            nn_dists: nearest neighbour distances; either numpy array or torch tensor (N,)
+            nn_dists: nearest neighbour distances; either numpy array or torch tensor (N,M)
             mnn: mean of nearest neighbour distances; float
         """
         nn_dists = np.zeros((num_test_pts, pos.shape[1]))
@@ -230,9 +240,47 @@ class Metrics():
             )
             nn_dists[i] = dists
 
+        depth_gt = depth_gt.reshape(num_test_pts, -1)
+        nn_dists[depth_gt < self.args.eval.min_valid_depth] = np.nan
+
         mnn = np.nanmean(nn_dists)
 
         return nn_dists, mnn
+    
+    def _rnn(
+            self, 
+            pos:np.array, 
+            pos_gt:np.array,
+            num_test_pts:int,
+            depth_gt:np.array,
+        ):
+        """
+        Calculate nearest neighbour distance between pos_w and pos_w_gt
+        Args:
+            pos: predicted position in world coordinate system; either numpy array or torch tensor (N, M, 2)
+            pos_gt: ground truth position in world coordinate system; either numpy array or torch tensor (N, M, 2)
+            num_test_pts: number of test points (N); int
+            depth_gt: ground truth depth; either numpy array or torch tensor (N*M)
+        Returns:
+            nn_dists: nearest neighbour distances; either numpy array or torch tensor (N,M)
+            mnn: mean of nearest neighbour distances; float
+        """
+        nn_dists = np.zeros((num_test_pts, pos.shape[1]))
+        for i in range(num_test_pts):
+            _, dists = findNearestNeighbour(
+                array1=pos[i], 
+                array2=pos_gt[i],
+                ignore_nan=True,
+            )
+            nn_dists[i] = dists
+
+        depth_gt = depth_gt.reshape(num_test_pts, -1)
+        nn_dists[depth_gt < self.args.eval.min_valid_depth] = np.nan
+
+        rnn_dists = nn_dists / depth_gt
+        mrnn = np.nanmean(nn_dists)
+
+        return rnn_dists, mrnn
     
 
     def _psnr(
