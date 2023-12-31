@@ -295,7 +295,7 @@ class TrainerPlot(TrainerBase):
         extent = extent.T.flatten()
         num_ray_steps = 64
         inlier_thr = 0.1
-        max_error_m = 10
+        max_error_m = 4.0
         bin_size = 0.2
         hist_bins = np.linspace(0, max_error_m, int(max_error_m/bin_size+1))
         
@@ -534,8 +534,14 @@ class TrainerPlot(TrainerBase):
             ax.legend()
             ax.set_box_aspect(1)
 
-            x_max = np.nanmax(np.concatenate((depth_w_uss[i], depth_w_tof[i], depth_w_nerf[i], depth_w_lidar[i])))
-            x_max_inv = np.nanmax(np.concatenate((nn_dists_inv_uss[i], nn_dists_inv_tof[i], nn_dists_inv_nerf[i], nn_dists_inv_lidar[i])))
+            x_max = min(
+                max_error_m, 
+                np.nanmax(np.concatenate((depth_w_uss[i], depth_w_tof[i], depth_w_nerf[i], depth_w_lidar[i])))
+            )
+            x_max_inv = min(
+                max_error_m, 
+                np.nanmax(np.concatenate((nn_dists_inv_uss[i], nn_dists_inv_tof[i], nn_dists_inv_nerf[i], nn_dists_inv_lidar[i])))
+            )
             y_max_uss = np.nanmax((n_uss, n_uss_inv, n_uss_error))
             y_max_tof = np.nanmax((n_tof, n_tof_inv, n_tof_error))
             y_max_nerf = np.nanmax((n_nerf, n_nerf_inv, n_nerf_error))
@@ -607,7 +613,7 @@ class TrainerPlot(TrainerBase):
         #     # ax.plot(logs['step'], np.convolve(logs['USS_loss'], mask, mode='same'), label='USS')
         #     ax.plot(logs['step'], convolveIgnorNans(logs['USS_close_loss'], mask), label='USS(close)')
         #     ax.plot(logs['step'], convolveIgnorNans(logs['USS_min_loss'], mask), label='USS(min)')
-        filter_size = 5
+        filter_size = max(self.args.eval.eval_every_n_steps+1, 4)
         ax.plot(logs['step'], smoothIgnoreNans(logs['loss'], filter_size), label='total')
         ax.plot(logs['step'], smoothIgnoreNans(logs['color_loss'], filter_size), label='color')
         if "rgbd_loss" in logs:

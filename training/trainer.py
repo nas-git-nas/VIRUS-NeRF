@@ -92,12 +92,12 @@ class Trainer(TrainerPlot):
             eps=1e-15,
         )
 
-        # scheduler
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer=self.optimizer,
-            T_max=self.args.training.max_steps,
-            eta_min=self.args.training.lr/30,
-        )
+        # # scheduler
+        # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        #     optimizer=self.optimizer,
+        #     T_max=self.args.training.max_steps,
+        #     eta_min=self.args.training.lr/30,
+        # )
 
         # loss function
         self.loss = Loss(
@@ -185,7 +185,7 @@ class Trainer(TrainerPlot):
             self.grad_scaler.scale(loss).backward()
             self.grad_scaler.step(self.optimizer)
             self.grad_scaler.update()
-            self.scheduler.step()
+            # self.scheduler.step()
 
             # evaluation
             eval_tic = time.time()
