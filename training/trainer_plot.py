@@ -145,7 +145,7 @@ class TrainerPlot(TrainerBase):
             data_w:dict,
             metrics_dict:dict,
             num_imgs:int,
-            use_relaative_mnn:bool=False,
+            use_relaative_error:bool=False,
     ):
         """
         Plot scan and density maps.
@@ -153,7 +153,7 @@ class TrainerPlot(TrainerBase):
             data_w: data dictionary in world coordinates
             metrics_dict: metrics dictionary
             num_imgs: number of images to plot
-            use_relaative_mnn: if True, use relative mnn, else use mnn
+            use_relaative_error: if True, use relative mnn, else use mnn
         """
         if not self.args.eval.plot_results:
             return
@@ -324,7 +324,7 @@ class TrainerPlot(TrainerBase):
         nn_dists_inv_nerf = nn_dists_inv_nerf.reshape(N_down, -1)
         nn_dists_inv_lidar = nn_dists_inv_lidar.reshape(N_down, -1)
 
-        if use_relaative_mnn:
+        if use_relaative_error:
             nn_dists_uss = nn_dists_uss / depth_w_gt_uss
             nn_dists_tof = nn_dists_tof / depth_w_gt_tof
             nn_dists_nerf = nn_dists_nerf / depth_w_gt_nerf
@@ -470,11 +470,16 @@ class TrainerPlot(TrainerBase):
             ax.set_box_aspect(1)
 
             ax = axes[0,3]
-            error = np.abs(depth_w_gt_uss[i] - depth_w_uss[i])
+            if use_relaative_error:
+                error = np.abs(depth_w_gt_uss[i] - depth_w_uss[i]) / depth_w_gt_uss[i]
+                rmse = np.sqrt(np.nanmean((depth_w_uss[i]**2 - depth_w_gt_uss[i]**2) / depth_w_gt_uss[i]**2))
+            else:
+                error = np.abs(depth_w_gt_uss[i] - depth_w_uss[i])
+                rmse = np.sqrt(np.nanmean(depth_w_uss[i]**2 - depth_w_gt_uss[i]**2))
             val_idxs = (~np.isnan(error))
             n_uss_error, _, _ = ax.hist(error[val_idxs], bins=hist_bins)
             ax.vlines(inlier_thr, ymin=0, ymax=2000, colors='r', linestyles='dashed', 
-                      label=f'RMSE={np.sqrt(np.nanmean(depth_w_uss[i]**2 - depth_w_gt_uss[i]**2)):.2f}m')
+                      label=f'RMSE={rmse:.2f}m')
             ax.set_title(f'Absolute Error', weight='bold')
             ax.set_ylabel(f'# elements')
             ax.set_xlabel(f'AE [m]')
@@ -482,33 +487,48 @@ class TrainerPlot(TrainerBase):
             ax.set_box_aspect(1)
 
             ax = axes[1,3]
-            error = np.abs(depth_w_gt_tof[i] - depth_w_tof[i])
+            if use_relaative_error:
+                error = np.abs(depth_w_gt_tof[i] - depth_w_tof[i]) / depth_w_gt_tof[i]
+                rmse = np.sqrt(np.nanmean((depth_w_tof[i]**2 - depth_w_gt_tof[i]**2) / depth_w_gt_tof[i]**2))
+            else:
+                error = np.abs(depth_w_gt_tof[i] - depth_w_tof[i])
+                rmse = np.sqrt(np.nanmean(depth_w_tof[i]**2 - depth_w_gt_tof[i]**2))
             val_idxs = ~np.isnan(error)
             n_tof_error, _, _ = ax.hist(error[val_idxs], bins=hist_bins)
             ax.vlines(inlier_thr, ymin=0, ymax=2000, colors='r', linestyles='dashed',
-                        label=f'RMSE={np.sqrt(np.nanmean(depth_w_tof[i]**2 - depth_w_gt_tof[i]**2)):.2f}m')
+                        label=f'RMSE={rmse:.2f}m')
             ax.set_ylabel(f'# elements')
             ax.set_xlabel(f'AE [m]')
             ax.legend()
             ax.set_box_aspect(1)
 
             ax = axes[2,3]
-            error = np.abs(depth_w_gt_lidar[i] - depth_w_lidar[i])
+            if use_relaative_error:
+                error = np.abs(depth_w_gt_lidar[i] - depth_w_lidar[i]) / depth_w_gt_lidar[i]
+                rmse = np.sqrt(np.nanmean((depth_w_lidar[i]**2 - depth_w_gt_lidar[i]**2) / depth_w_gt_lidar[i]**2))
+            else:
+                error = np.abs(depth_w_gt_lidar[i] - depth_w_lidar[i])
+                rmse = np.sqrt(np.nanmean(depth_w_lidar[i]**2 - depth_w_gt_lidar[i]**2))
             val_idxs = ~np.isnan(error)
             n_lidar_error, _, _ = ax.hist(error[val_idxs], bins=hist_bins)
             ax.vlines(inlier_thr, ymin=0, ymax=2000, colors='r', linestyles='dashed',
-                        label=f'RMSE={np.sqrt(np.nanmean(depth_w_lidar[i]**2 - depth_w_gt_lidar[i]**2)):.2f}m')
+                        label=f'RMSE={rmse:.2f}m')
             ax.set_ylabel(f'# elements')
             ax.set_xlabel(f'AE [m]')
             ax.legend()
             ax.set_box_aspect(1)
 
             ax = axes[3,3]
-            error = np.abs(depth_w_gt_nerf[i] - depth_w_nerf[i])
+            if use_relaative_error:
+                error = np.abs(depth_w_gt_nerf[i] - depth_w_nerf[i]) / depth_w_gt_nerf[i]
+                rmse = np.sqrt(np.nanmean((depth_w_nerf[i]**2 - depth_w_gt_nerf[i]**2) / depth_w_gt_nerf[i]**2))
+            else:
+                error = np.abs(depth_w_gt_nerf[i] - depth_w_nerf[i])
+                rmse = np.sqrt(np.nanmean(depth_w_nerf[i]**2 - depth_w_gt_nerf[i]**2))
             val_idxs = ~np.isnan(error)
             n_nerf_error, _, _ = ax.hist(error[val_idxs], bins=hist_bins)
             ax.vlines(inlier_thr, ymin=0, ymax=2000, colors='r', linestyles='dashed', 
-                      label=f'RMSE={np.sqrt(np.nanmean(depth_w_nerf[i]**2 - depth_w_gt_nerf[i]**2)):.2f}m')
+                      label=f'RMSE={rmse:.2f}m')
             ax.set_ylabel(f'# elements')
             ax.set_xlabel(f'AE [m]')
             ax.legend()
@@ -537,13 +557,22 @@ class TrainerPlot(TrainerBase):
             axes[2,2].set_ylim([0, y_max_lidar])
             axes[3,2].set_xlim([0, x_max_inv])
             axes[3,2].set_ylim([0, y_max_nerf])
+            axes[0,3].set_xlim([0, x_max])
+            axes[0,3].set_ylim([0, y_max_uss])
+            axes[1,3].set_xlim([0, x_max])
+            axes[1,3].set_ylim([0, y_max_tof])
+            axes[2,3].set_xlim([0, x_max])
+            axes[2,3].set_ylim([0, y_max_lidar])
+            axes[3,3].set_xlim([0, x_max])
+            axes[3,3].set_ylim([0, y_max_nerf])
+
 
             for i in range(axes.shape[0]):
                 axes[i,0].set_xlim(extent[0], extent[1])
                 axes[i,0].set_ylim(extent[2], extent[3])
         
             plt.tight_layout()
-            name = f"map{i}_rel" if use_relaative_mnn else f"map{i}"
+            name = f"map{i}_rel" if use_relaative_error else f"map{i}"
             plt.savefig(os.path.join(save_dir, name+".pdf"))
             plt.savefig(os.path.join(save_dir, name+".png"))
 
