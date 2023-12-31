@@ -538,9 +538,9 @@ class TrainerPlot(TrainerBase):
             axes[3,2].set_xlim([0, x_max_inv])
             axes[3,2].set_ylim([0, y_max_nerf])
 
-            for ax in axes.flatten():
-                ax.set_xlim(extent[0], extent[1])
-                ax.set_ylim(extent[2], extent[3])
+            for i in range(axes.shape[0]):
+                axes[i,0].set_xlim(extent[0], extent[1])
+                axes[i,0].set_ylim(extent[2], extent[3])
         
             plt.tight_layout()
             name = f"map{i}_rel" if use_relaative_mnn else f"map{i}"
