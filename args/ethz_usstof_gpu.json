@@ -92,6 +92,10 @@
         "matrix": [8, 8],
         "sensor_calibration_error": 0.0,
         "sensor_random_error": 0.0
+    },
+    "LiDAR":
+    {
+        "height_offset": 0.0
     }
     
 }
