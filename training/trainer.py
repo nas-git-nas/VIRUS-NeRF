@@ -245,13 +245,13 @@ class Trainer(TrainerPlot):
             data_w=data_w, 
             metrics_dict=metrics_dict,
             num_imgs=img_idxs_sensor.shape[0],
-            use_relaative_mnn=False,
+            use_relaative_error=False,
         )
         self._plotEvaluation(
             data_w=data_w, 
             metrics_dict=metrics_dict,
             num_imgs=img_idxs_sensor.shape[0],
-            use_relaative_mnn=True,
+            use_relaative_error=True,
         )
         metrics_dict = self._plotLosses(
             logs=self.logs,
