@@ -7,7 +7,8 @@
         "downsample": 1.0,
         "keep_N_observations": "all",
         "keep_sensor": "all",
-        "keep_pixels_in_angle_range": "all"
+        "keep_pixels_in_angle_range": "all",
+        "sensors": ["RGBD", "USS", "ToF"]
     },
     "model":
     {
@@ -31,7 +32,8 @@
         "max_steps": 700,
         "lr": 1e-2,
         "depth_loss_w": 1.0,
-        "random_bg": false
+        "random_bg": false,
+        "real_time_simulation": true
     },
     "evaluation":
     {
@@ -89,6 +91,10 @@
         "matrix": [8, 8],
         "sensor_calibration_error": 0.0,
         "sensor_random_error": 0.0
+    },
+    "LiDAR":
+    {
+        "height_offset": 0.0
     }
     
 }
