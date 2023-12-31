@@ -10,7 +10,7 @@ from modules.distortion import distortion_loss
 from modules.rendering import MAX_SAMPLES, render
 from modules.utils import depth2img, save_deployment_model
 from helpers.geometric_fcts import findNearestNeighbour,  createScanPos
-from helpers.data_fcts import linInterpolateArray, convolveIgnorNans, dataConverged, downsampleData
+from helpers.data_fcts import linInterpolateArray, convolveIgnorNans, dataConverged, downsampleData, smoothIgnoreNans
 from helpers.plotting_fcts import combineImgs
 from training.metrics_rh import MetricsRH
 
@@ -335,7 +335,7 @@ class TrainerPlot(TrainerBase):
             nn_dists_inv_lidar = nn_dists_inv_lidar / depth_w_gt_lidar
 
         for i in range(N_down):
-            fig, axes = plt.subplots(ncols=3, nrows=4, figsize=(9,10))
+            fig, axes = plt.subplots(ncols=4, nrows=4, figsize=(9,10))
 
             ax = axes[0,0]
             ax.imshow(scan_imgs_uss[i].swapaxes(0,1), origin='lower', extent=extent)
@@ -469,12 +469,57 @@ class TrainerPlot(TrainerBase):
             ax.legend()
             ax.set_box_aspect(1)
 
+            ax = axes[0,3]
+            error = np.abs(depth_w_gt_uss[i] - depth_w_uss[i])
+            val_idxs = (~np.isnan(error))
+            n_uss_error, _, _ = ax.hist(error[val_idxs], bins=hist_bins)
+            ax.vlines(inlier_thr, ymin=0, ymax=2000, colors='r', linestyles='dashed', 
+                      label=f'RMSE={np.sqrt(np.nanmean(depth_w_uss[i]**2 - depth_w_gt_uss[i]**2)):.2f}m')
+            ax.set_title(f'Absolute Error', weight='bold')
+            ax.set_ylabel(f'# elements')
+            ax.set_xlabel(f'AE [m]')
+            ax.legend()
+            ax.set_box_aspect(1)
+
+            ax = axes[1,3]
+            error = np.abs(depth_w_gt_tof[i] - depth_w_tof[i])
+            val_idxs = ~np.isnan(error)
+            n_tof_error, _, _ = ax.hist(error[val_idxs], bins=hist_bins)
+            ax.vlines(inlier_thr, ymin=0, ymax=2000, colors='r', linestyles='dashed',
+                        label=f'RMSE={np.sqrt(np.nanmean(depth_w_tof[i]**2 - depth_w_gt_tof[i]**2)):.2f}m')
+            ax.set_ylabel(f'# elements')
+            ax.set_xlabel(f'AE [m]')
+            ax.legend()
+            ax.set_box_aspect(1)
+
+            ax = axes[2,3]
+            error = np.abs(depth_w_gt_lidar[i] - depth_w_lidar[i])
+            val_idxs = ~np.isnan(error)
+            n_lidar_error, _, _ = ax.hist(error[val_idxs], bins=hist_bins)
+            ax.vlines(inlier_thr, ymin=0, ymax=2000, colors='r', linestyles='dashed',
+                        label=f'RMSE={np.sqrt(np.nanmean(depth_w_lidar[i]**2 - depth_w_gt_lidar[i]**2)):.2f}m')
+            ax.set_ylabel(f'# elements')
+            ax.set_xlabel(f'AE [m]')
+            ax.legend()
+            ax.set_box_aspect(1)
+
+            ax = axes[3,3]
+            error = np.abs(depth_w_gt_nerf[i] - depth_w_nerf[i])
+            val_idxs = ~np.isnan(error)
+            n_nerf_error, _, _ = ax.hist(error[val_idxs], bins=hist_bins)
+            ax.vlines(inlier_thr, ymin=0, ymax=2000, colors='r', linestyles='dashed', 
+                      label=f'RMSE={np.sqrt(np.nanmean(depth_w_nerf[i]**2 - depth_w_gt_nerf[i]**2)):.2f}m')
+            ax.set_ylabel(f'# elements')
+            ax.set_xlabel(f'AE [m]')
+            ax.legend()
+            ax.set_box_aspect(1)
+
             x_max = np.nanmax(np.concatenate((depth_w_uss[i], depth_w_tof[i], depth_w_nerf[i], depth_w_lidar[i])))
             x_max_inv = np.nanmax(np.concatenate((nn_dists_inv_uss[i], nn_dists_inv_tof[i], nn_dists_inv_nerf[i], nn_dists_inv_lidar[i])))
-            y_max_uss = np.nanmax((n_uss, n_uss_inv))
-            y_max_tof = np.nanmax((n_tof, n_tof_inv))
-            y_max_nerf = np.nanmax((n_nerf, n_nerf_inv))
-            y_max_lidar = np.nanmax((n_lidar, n_lidar_inv))
+            y_max_uss = np.nanmax((n_uss, n_uss_inv, n_uss_error))
+            y_max_tof = np.nanmax((n_tof, n_tof_inv, n_tof_error))
+            y_max_nerf = np.nanmax((n_nerf, n_nerf_inv, n_nerf_error))
+            y_max_lidar = np.nanmax((n_lidar, n_lidar_inv, n_lidar_error))
 
             axes[0,1].set_xlim([0, x_max])
             axes[0,1].set_ylim([0, y_max_uss])
@@ -492,6 +537,10 @@ class TrainerPlot(TrainerBase):
             axes[2,2].set_ylim([0, y_max_lidar])
             axes[3,2].set_xlim([0, x_max_inv])
             axes[3,2].set_ylim([0, y_max_nerf])
+
+            for ax in axes.flatten():
+                ax.set_xlim(extent[0], extent[1])
+                ax.set_ylim(extent[2], extent[3])
         
             plt.tight_layout()
             name = f"map{i}_rel" if use_relaative_mnn else f"map{i}"
@@ -518,17 +567,28 @@ class TrainerPlot(TrainerBase):
 
         # plot losses
         ax = axes[0]
-        mask = np.ones(self.args.eval.eval_every_n_steps+1) / (self.args.eval.eval_every_n_steps+1)
-        ax.plot(logs['step'], convolveIgnorNans(logs['loss'], mask), label='total')
-        ax.plot(logs['step'], convolveIgnorNans(logs['color_loss'], mask), label='color')
+        # mask = np.ones(self.args.eval.eval_every_n_steps+1) / (self.args.eval.eval_every_n_steps+1)
+        # ax.plot(logs['step'], convolveIgnorNans(logs['loss'], mask), label='total')
+        # ax.plot(logs['step'], convolveIgnorNans(logs['color_loss'], mask), label='color')
+        # if "rgbd_loss" in logs:
+        #     ax.plot(logs['step'], convolveIgnorNans(logs['rgbd_loss'], mask), label='rgbd')
+        # if "ToF_loss" in logs:
+        #     ax.plot(logs['step'], convolveIgnorNans(logs['ToF_loss'], mask), label='ToF')
+        # if "USS_loss" in logs:
+        #     # ax.plot(logs['step'], np.convolve(logs['USS_loss'], mask, mode='same'), label='USS')
+        #     ax.plot(logs['step'], convolveIgnorNans(logs['USS_close_loss'], mask), label='USS(close)')
+        #     ax.plot(logs['step'], convolveIgnorNans(logs['USS_min_loss'], mask), label='USS(min)')
+        filter_size = 5
+        ax.plot(logs['step'], smoothIgnoreNans(logs['loss'], filter_size), label='total')
+        ax.plot(logs['step'], smoothIgnoreNans(logs['color_loss'], filter_size), label='color')
         if "rgbd_loss" in logs:
-            ax.plot(logs['step'], convolveIgnorNans(logs['rgbd_loss'], mask), label='rgbd')
+            ax.plot(logs['step'], smoothIgnoreNans(logs['rgbd_loss'], filter_size), label='rgbd')
         if "ToF_loss" in logs:
-            ax.plot(logs['step'], convolveIgnorNans(logs['ToF_loss'], mask), label='ToF')
+            ax.plot(logs['step'], smoothIgnoreNans(logs['ToF_loss'], filter_size), label='ToF')
         if "USS_loss" in logs:
             # ax.plot(logs['step'], np.convolve(logs['USS_loss'], mask, mode='same'), label='USS')
-            ax.plot(logs['step'], convolveIgnorNans(logs['USS_close_loss'], mask), label='USS(close)')
-            ax.plot(logs['step'], convolveIgnorNans(logs['USS_min_loss'], mask), label='USS(min)')
+            ax.plot(logs['step'], smoothIgnoreNans(logs['USS_close_loss'], filter_size), label='USS(close)')
+            ax.plot(logs['step'], smoothIgnoreNans(logs['USS_min_loss'], filter_size), label='USS(min)')
         ax.set_ylabel('loss')
         ax.set_ylim([0, 1.0])
 

@@ -29,7 +29,7 @@
             "pixs": "random"
         },
         "sensors": ["RGBD"],
-        "max_steps": 5,
+        "max_steps": 2,
         "lr": 1e-2,
         "depth_loss_w": 100.0,
         "random_bg": false,

@@ -278,7 +278,7 @@ class Metrics():
         nn_dists[depth_gt < self.args.eval.min_valid_depth] = np.nan
 
         rnn_dists = nn_dists / depth_gt
-        mrnn = np.nanmean(nn_dists)
+        mrnn = np.nanmean(rnn_dists)
 
         return rnn_dists, mrnn
     

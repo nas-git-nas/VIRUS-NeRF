@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.signal
 import torch
 
 """
@@ -153,6 +154,31 @@ def convolveIgnorNans(
 
     # convolve array
     return np.convolve(arr, kernel, mode="same")
+
+def smoothIgnoreNans(
+    arr:np.ndarray,
+    window_size:int,
+    polyorder:int=3,
+):
+    """
+    Smooth array by applying a Savitzky-Golay filter. Lineraly interpolate nan values.
+    Args:
+        arr: input array; np.array of shape (N,)
+        window_size: window size for Savitzky-Golay filter; int
+        polyorder: polynomial order for Savitzky-Golay filter; int
+    Returns:
+        arr_smooth: smoothed array; np.array of shape (N,)
+    """
+    arr = np.copy(arr)
+
+    if arr.shape[0] < window_size:
+        return arr
+
+    # linear interpolate nan values
+    arr = linInterpolateNans(arr)
+
+    # smooth array
+    return scipy.signal.savgol_filter(arr, window_size, polyorder)
 
 def dataConverged(
     arr:np.array,

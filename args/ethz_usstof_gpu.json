@@ -32,7 +32,8 @@
         "max_steps": 700,
         "lr": 1e-2,
         "depth_loss_w": 100.0,
-        "random_bg": false
+        "random_bg": false,
+        "real_time_simulation": false
     },
     "evaluation":
     {
@@ -46,6 +47,7 @@
         "num_avg_heights": 5,
         "height_tolerance": 0.1,
         "density_map_thr": 10,
+        "min_valid_depth": 0.2,
         "plot_results": true
     },
     "occ_grid":
