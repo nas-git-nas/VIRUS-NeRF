@@ -194,11 +194,13 @@ class NGP(nn.Module):
     @torch.no_grad()
     def updateOccGrid(
         self,
-        density_threshold,    
+        density_threshold:float,
+        elapse_time:float,   
     ):
 
         self.occupancy_grid.update(
             threshold=density_threshold,
+            elapse_time=elapse_time,
         )
 
 

@@ -29,10 +29,11 @@
             "pixs": "random"
         },
         "sensors": ["RGBD"],
-        "max_steps": 2,
+        "max_steps": 5,
         "lr": 1e-2,
         "depth_loss_w": 100.0,
-        "random_bg": false
+        "random_bg": false,
+        "real_time_simulation": true
     },
     "evaluation":
     {
@@ -51,7 +52,7 @@
     },
     "occ_grid":
     {
-        "grid_type": "nerf",
+        "grid_type": "occ",
         "warmup_steps": 256,
         "batch_size": 64,
         "sampling_strategy": {"imgs": "None", "pixs": "None"},  

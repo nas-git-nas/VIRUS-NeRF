@@ -57,6 +57,7 @@ class HParamsTraining(HParams):
         self.lr = None
         self.depth_loss_w = None
         self.random_bg = None
+        self.real_time_simulation = None
 
         HParams.__init__(self, name="training")
     

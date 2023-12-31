@@ -141,7 +141,7 @@ class Trainer(TrainerPlot):
             data = self.train_dataset(
                 batch_size=self.args.training.batch_size,
                 sampling_strategy=self.args.training.sampling_strategy,
-                origin="nerf",
+                elapse_time=time.time()-train_tic,
             )
             
             with torch.autocast(device_type='cuda', dtype=torch.float16):
@@ -156,6 +156,7 @@ class Trainer(TrainerPlot):
                     elif self.args.occ_grid.grid_type == 'occ':
                         self.model.updateOccGrid(
                             density_threshold= 0.5,
+                            elapse_time=time.time()-train_tic,
                         )
                     else:
                         self.args.logger.error(f"grid_type {self.args.occ_grid.grid_type} not implemented")
@@ -200,6 +201,7 @@ class Trainer(TrainerPlot):
             )
             eval_toc = time.time()
             train_tic += eval_toc - eval_tic # subtract evaluation time from training time
+            
 
         self._saveModel()
 
@@ -404,6 +406,7 @@ class Trainer(TrainerPlot):
         data = self.test_dataset(
             img_idxs=torch.tensor(img_idxs, device=self.args.device),
             pix_idxs=torch.tensor(pix_idxs, device=self.args.device),
+            elapse_time=1e12, # very large number -> use all data for evaluation
         )
         rays_o = data['rays_o']
         rays_d = data['rays_d']
@@ -614,6 +617,7 @@ class Trainer(TrainerPlot):
         data = self.test_dataset(
             img_idxs=img_idxs.flatten(),
             pix_idxs=pix_idxs.flatten(),
+            elapse_time=1e12, # very large number -> use all data for evaluation
         )
 
         rays_o = data['rays_o'].detach().cpu().numpy() # (2*N*M, 3)
