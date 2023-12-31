@@ -74,16 +74,20 @@ class OccupancyGrid(Grid):
     def update(
         self,
         threshold:float,
+        elapse_time:float,
     ):
         """
         Update grid with image.
         Args:
             threshold: threshold for occupancy grid; float # TODO: remove this
+            elapse_time: time elapsed since start of training in seconds; float
         Returns:
             grid: occupancy grid; tensor (grid_size, grid_size, grid_size)
         """
         # sample depth measurements
-        ray_update, nerf_update = self._sample()
+        ray_update, nerf_update = self._sample(
+            elapse_time=elapse_time,
+        )
 
         # update occupancy grid
         if ray_update["batch_size"] > 0:
@@ -115,9 +119,12 @@ class OccupancyGrid(Grid):
     @torch.no_grad()
     def _sample(
         self,
+        elapse_time:float,
     ):
         """
         Sample data, choose sensor for depth measurement and choose updating technique.
+        Args:
+            elapse_time: time elapsed since start of training in seconds; float
         Returns:
             ray_update: data for ray update; dict
             nerf_update: data for nerf update; dict
@@ -132,22 +139,26 @@ class OccupancyGrid(Grid):
                 B=B_ray,
                 pixel_strategy="random",  
                 sensor="RGBD",
+                elapse_time=elapse_time,
             )
             nerf_update = self._sampleBatch(
                 B=B_nerf,
                 pixel_strategy="random",
                 sensor="RGBD",
+                elapse_time=elapse_time,
             )
         elif ("ToF" in self.args.training.sensors) and ("USS" in self.args.training.sensors):
             ray_update = self._sampleBatch(
                 B=B_ray,
                 pixel_strategy="valid_tof",
                 sensor="ToF",
+                elapse_time=elapse_time,
             )
             nerf_update = self._sampleBatch(
                 B=B_nerf,
                 pixel_strategy="valid_uss",
                 sensor="USS",
+                elapse_time=elapse_time,
             )
         else:
             self.args.logger.error("occupancy grid sampling strategy does not exist")
@@ -160,6 +171,7 @@ class OccupancyGrid(Grid):
         B:int,
         pixel_strategy:str,
         sensor:str,
+        elapse_time:float,
     ):
         """
         Sample a batch of data from particular sensor.
@@ -167,6 +179,7 @@ class OccupancyGrid(Grid):
             B: batch size; int
             pixel_strategy: sampling strategy for pixels; str
             sensor: sensor name; str
+            elapse_time: elapse time since start of training in seconds; float
         Returns:
             update_dict: measurements; dict
                 'batch_size: batch size; int
@@ -180,7 +193,7 @@ class OccupancyGrid(Grid):
                     "imgs": "all",
                     "pixs": pixel_strategy,
                 },
-            origin="occ",
+            elapse_time=elapse_time,
         )
 
         rays_o = data['rays_o']

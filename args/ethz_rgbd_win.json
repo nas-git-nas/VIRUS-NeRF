@@ -29,10 +29,11 @@
             "pixs": "random"
         },
         "sensors": ["RGBD"],
-        "max_steps": 2,
+        "max_steps": 5,
         "lr": 1e-2,
         "depth_loss_w": 100.0,
-        "random_bg": false
+        "random_bg": false,
+        "real_time_simulation": true
     },
     "evaluation":
     {
@@ -40,17 +41,18 @@
         "res_map": 256,
         "res_angular": 256,
         "eval_every_n_steps": 1,
-        "num_color_pts": 1,
+        "num_color_pts": 0,
         "num_depth_pts": 4,
-        "num_plot_pts": 3,
+        "num_plot_pts": 4,
         "num_avg_heights": 5,
         "height_tolerance": 0.05,
         "density_map_thr": 10,
+        "min_valid_depth": 0.2,
         "plot_results": true
     },
     "occ_grid":
     {
-        "grid_type": "nerf",
+        "grid_type": "occ",
         "warmup_steps": 256,
         "batch_size": 64,
         "sampling_strategy": {"imgs": "None", "pixs": "None"},  
@@ -91,6 +93,10 @@
         "matrix": [8, 8],
         "sensor_calibration_error": 0.0,
         "sensor_random_error": 0.0
+    },
+    "LiDAR":
+    {
+        "height_offset": 0.0
     }
     
 }

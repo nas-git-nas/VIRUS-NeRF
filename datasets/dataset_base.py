@@ -35,7 +35,7 @@ class DatasetBase(Dataset):
         self, 
         batch_size:int=None,
         sampling_strategy:dict=None,
-        origin:str=None,
+        elapse_time:float=None,
         img_idxs:torch.Tensor=None,
         pix_idxs:torch.Tensor=None,
     ):
@@ -44,9 +44,6 @@ class DatasetBase(Dataset):
         Args:
             batch_size: number of samples; int
             sampling_strategy: dictionary containing the sampling strategy for images and pixels; dict
-            origin: sampling origin; str
-                    'nerf': sample for nerf
-                    'occ': sample for occupancy grid
             img_idxs: indices of images; tensor of int64 (batch_size,)
             pix_idxs: indices of pixels; tensor of int64 (batch_size,)
         Returns:
@@ -54,10 +51,10 @@ class DatasetBase(Dataset):
         """
         # sample image and pixel indices if not provided
         if img_idxs is None or pix_idxs is None:
-            img_idxs, pix_idxs, count = self.sampler(
+            img_idxs, pix_idxs = self.sampler(
                 batch_size=batch_size,
                 sampling_strategy=sampling_strategy,
-                origin=origin,
+                elapse_time=elapse_time,
             ) 
 
         # calculate ray origins and directions
@@ -76,7 +73,6 @@ class DatasetBase(Dataset):
         samples = {
             'img_idxs': img_idxs,
             'pix_idxs': pix_idxs,
-            # 'sample_count': count.detach().clone(),
             'sensor_ids': ids.detach().clone().requires_grad_(False),
             'time': time.detach().clone().requires_grad_(False),
             'rays_o': rays_o.detach().clone().requires_grad_(True),
@@ -110,22 +106,6 @@ class DatasetBase(Dataset):
         """
         mean_height = torch.mean(self.poses[:, 2, 3])
         return mean_height.item()
-    
-    def getValidDepthMask(
-        self,
-        img_idxs:torch.Tensor,
-    ):
-        """
-        Get valid depth masks for each sensor.
-        Args:
-            img_idxs: indices of images; tensor of int64 (batch_size,)
-        Returns:
-            val_depth_masks: valid depth masks for each sensor; dict of tensors of bool (batch_size, H*W)
-        """
-        val_depth_masks = {}
-        for sensor, sensor_depths in self.depths_dict.items():
-            val_depth_masks[sensor] = ~torch.isnan(sensor_depths[img_idxs])
-        return val_depth_masks
     
     def getSyncIdxs(
         self,

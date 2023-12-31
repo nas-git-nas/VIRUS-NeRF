@@ -57,6 +57,7 @@ class HParamsTraining(HParams):
         self.lr = None
         self.depth_loss_w = None
         self.random_bg = None
+        self.real_time_simulation = None
 
         HParams.__init__(self, name="training")
     
@@ -79,6 +80,7 @@ class HParamsEvaluation(HParams):
         self.num_avg_heights = None
         self.height_tolerance = None
         self.density_map_thr = None
+        self.min_valid_depth = None
         self.plot_results = None
 
         HParams.__init__(self, name="evaluation")
@@ -149,3 +151,11 @@ class HParamsToF(HParams):
         self.sensor_random_error = None
 
         HParams.__init__(self, name="ToF")
+
+
+class HParamsLiDAR(HParams):
+    def __init__(self):
+        # hyper parameters
+        self.height_offset = None
+
+        HParams.__init__(self, name="LiDAR")

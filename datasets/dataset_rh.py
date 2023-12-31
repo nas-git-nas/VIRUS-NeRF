@@ -105,14 +105,13 @@ class DatasetRH(DatasetBase):
         self.sensor_ids = sensor_ids
         self.times = times
 
-        # TODO: move to base class
+        # initialize sampler
         self.sampler = Sampler(
             args=args,
             dataset_len=len(self),
             img_wh=self.img_wh,
-            seed=args.seed,
             sensors_dict=self.sensors_dict,
-            fct_getValidDepthMask=self.getValidDepthMask,
+            times=self.times,
         )
 
     def readIntrinsics(

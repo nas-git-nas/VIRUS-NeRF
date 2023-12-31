@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import copy
+import sys
 
 from args.args import Args
 
@@ -11,43 +12,30 @@ class Sampler():
             args:Args,
             dataset_len:int,
             img_wh:tuple,
-            seed:int,
             sensors_dict:dict=None,
-            fct_getValidDepthMask:callable=None,
+            times:torch.Tensor=None,
     ) -> None:
         """
         Args:
             args: hyper parameters; instance of Args class
             dataset_len: number of images in dataset; int
             img_wh: image width and height; tuple of int (2,)
-            seed: random seed; int
             sensors_dict: dictionary of sensor models; dict
+            times: time stamps of images; tensor of float (N,)
         """
         self.args = args
         self.dataset_len = dataset_len
         self.img_wh = img_wh
         self.sensors_dict = sensors_dict
-        self.fct_getValidDepthMask = fct_getValidDepthMask
+        self.times = times
 
-        self.rgn = np.random.default_rng(seed=seed)
-
-        # if self.args.training.sampling_strategy["pixs"] == "weighted":
-        #     pixels = np.arange(self.img_wh[1]) - self.img_wh[1] / 2
-        #     angles = pixels * self.args.rgbd.angle_of_view[1] / self.img_wh[1]
-        #     weights = np.exp(- np.abs(angles) / 10)
-        #     weights = np.repeat(weights.reshape(-1, 1), self.img_wh[0], axis=1)
-        #     self.weights = (weights / np.sum(weights)).flatten()
-
-        # self.sample_count = {
-        #     "nerf": torch.zeros(self.dataset_len, img_wh[0]*img_wh[1], dtype=torch.uint8, device=self.args.device),
-        #     "occ": torch.zeros(self.dataset_len, img_wh[0]*img_wh[1], dtype=torch.uint8, device=self.args.device),
-        # }
+        self.rgn = np.random.default_rng(seed=self.args.seed)
 
     def __call__(
         self,
         batch_size:int,
         sampling_strategy:dict,
-        origin:str,
+        elapse_time:float,
     ):
         """
         Sample images and pixels/rays.
@@ -63,9 +51,7 @@ class Sampler():
                     'closest': sample closes pixels predicted by USS
                     'valid_uss': sample random pixels with valid depth of USS
                     'valid_tof': sample random pixels with valid depth of ToF
-            origin: sampling origin; str
-                    'nerf': sample for nerf
-                    'occ': sample for occupancy grid
+            elapse_time: elapse time since training start in seconds; float
         Returns:
             img_idxs: indices of images to be used for training; tensor of int64 (batch_size,)
             pix_idxs: indices of pixels to be used for training; tensor of int64 (batch_size,)
@@ -73,39 +59,41 @@ class Sampler():
         img_idxs = self._imgIdxs(
             batch_size=batch_size,
             img_strategy=sampling_strategy["imgs"],
+            elapse_time=elapse_time,
         )
         pix_idxs = self._pixIdxs(
             pix_strategy=sampling_strategy["pixs"],
             img_idxs=img_idxs,
         )
-        # count = self._count(
-        #     img_idxs=img_idxs,
-        #     pix_idxs=pix_idxs,
-        #     origin=origin,
-        # )
-        count = torch.zeros(batch_size, dtype=torch.uint8, device=self.args.device) # TODO: remove
-
-        return img_idxs, pix_idxs, count
+        return img_idxs, pix_idxs
     
     def _imgIdxs(
             self,
             batch_size:int,
             img_strategy:str,
+            elapse_time:float,
     ):
         """
         Sample image indices.
         Args:
             batch_size: number of samples; int
             img_strategy: image sampling strategy; str
+            elapse_time: elapse time since training start in seconds; float
         Returns:
             img_idxs: indices of images to be used for training; tensor of int64 (batch_size,)
         """
+        valid_img_idxs = self._realTimeSimulation(
+            elapse_time=elapse_time,
+        )
+
         if img_strategy == "all":
-            return torch.randint(0, self.dataset_len, size=(batch_size,), device=self.args.device, dtype=torch.int32)
+            idxs = torch.randint(0, valid_img_idxs.shape[0], size=(batch_size,), device=self.args.device, dtype=torch.int32)
+            return valid_img_idxs[idxs]
         
         if img_strategy == "same":
-            idx = torch.randint(0, self.dataset_len, size=(1,), device=self.args.device, dtype=torch.int32)
-            return idx * torch.ones(batch_size, device=self.args.device, dtype=torch.int32)               
+            idx = torch.randint(0, valid_img_idxs.shape[0], size=(1,), device=self.args.device, dtype=torch.int32)
+            img_idx = valid_img_idxs[idx]
+            return img_idx * torch.ones(batch_size, device=self.args.device, dtype=torch.int32)               
         
         self.args.logger.error(f"image sampling strategy must be either 'all' or 'same'"
                 + f" but is {self.args.training.sampling_strategy['imgs']}")
@@ -252,6 +240,31 @@ class Sampler():
         rand_ints = torch.randint(0, mask_idxs.shape[0], (B,), device=self.args.device, dtype=torch.int32)
         pix_idxs = mask_idxs[rand_ints]
         return pix_idxs
+    
+    def _realTimeSimulation(
+        self,
+        elapse_time:float,
+    ):
+        """
+        Simulate real-time behaviour by sampling only from measurements that are already made.
+        Args:
+            elapse_time: elapse time since training start in seconds; float
+        Return:
+            valid_img_idxs: valid image indices; tensor of ints (N,)
+        """
+        valid_img_idxs = torch.arange(self.dataset_len, device=self.args.device, dtype=torch.int32)
+
+        if self.args.training.real_time_simulation:
+            mask = (elapse_time <= self.times)
+            valid_img_idxs = valid_img_idxs[mask]
+
+        if self.args.model.debug_mode:
+            if valid_img_idxs.shape[0] == 0:
+                self.args.logger.error(f"no valid images found")
+                sys.exit()
+            
+        return valid_img_idxs
+
         
 
         # if pix_strategy == "random" or pix_strategy == "valid_rgbd":

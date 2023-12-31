@@ -24,6 +24,7 @@ from args.args import Args
 from training.sampler import Sampler
 from helpers.data_fcts import sensorName2ID, sensorID2Name
 from ROS1.src.sensors.src.pcl_tools.pcl_coordinator import PCLCoordinator
+from ROS1.src.sensors.src.pcl_tools.pcl_loader import PCLLoader
 
 # try:
 #     from .ray_utils import get_rays
@@ -85,7 +86,7 @@ class DatasetETHZ(DatasetBase):
         )
 
         # load samples
-        poses, rgbs, depths_dict, sensors_dict, sensor_ids, times = self.readMetas(
+        poses, poses_lidar, rgbs, depths_dict, sensors_dict, sensor_ids, times = self.readMetas(
             data_dir=data_dir,
             cam_ids=self.args.ethz.cam_ids,
             img_wh=img_wh,
@@ -103,8 +104,8 @@ class DatasetETHZ(DatasetBase):
         #     )
 
         self.img_wh = img_wh
-        # self.Ks = Ks
         self.poses = poses
+        self.poses_lidar = poses_lidar
         self.directions_dict = directions_dict
         self.rgbs = rgbs
         self.depths_dict = depths_dict
@@ -112,14 +113,13 @@ class DatasetETHZ(DatasetBase):
         self.sensor_ids = sensor_ids
         self.times = times
 
-        # TODO: move to base class
+        # initialize sampler
         self.sampler = Sampler(
             args=args,
             dataset_len=len(self),
             img_wh=self.img_wh,
-            seed=args.seed,
             sensors_dict=self.sensors_dict,
-            fct_getValidDepthMask=self.getValidDepthMask,
+            times=self.times,
         )
 
     def getIdxFromSensorName(
@@ -144,58 +144,87 @@ class DatasetETHZ(DatasetBase):
         idxs = np.where(mask)[0]
         return idxs
     
-    def camera2lidarPosition(
+    def getLidarPoses(
         self,
-        xyz:np.ndarray,
-        sensor_ids:np.ndarray,
-        pose_given_in_world_coord:bool,
+        idxs:np.ndarray,
+    ):
+        data_dir = os.path.join(self.args.ethz.dataset_dir, self.args.ethz.room)
+        df_poses_sync1 = pd.read_csv(
+            filepath_or_buffer=os.path.join(data_dir, 'poses', 'poses_sync1.csv'),
+            dtype=np.float64,
+        )
+        df_poses_sync3 = pd.read_csv(
+            filepath_or_buffer=os.path.join(data_dir, 'poses', 'poses_sync3.csv'),
+            dtype=np.float64,
+        )
+    
+    def getLidarMaps(
+        self,
+        img_idxs:np.ndarray,
     ):
         """
-        Convert camera position to lidar position.
+        Load LiDAR maps and convert them into world coordinate system.
         Args:
-            xyz: camera position; array of shape (N, 3)
-            sensor_ids: sensor ids; array of shape (N,)
+            img_idxs: indices of samples; numpy array of shape (N,)
         Returns:
-            xyz_lidar: lidar position; array of shape (N, 3)
+            xyzs: list of point clouds; list of length N of numpy arrays of shape (M, 3)
+            poses: poses in world coordinates; list of numpy arrays of shape (N, 3, 4)
         """
-        if not pose_given_in_world_coord:
-            xyz = self.scene.c2w(
-                pos=xyz,
-                copy=False,
-            )
+        lidar_dir = os.path.join(self.args.ethz.dataset_dir, self.args.ethz.room, 'lidars/sync')
 
-        # create for every sensor a coordinate transformer
-        t_cam1_robot = [0.36199, -0.15161, 0.0]
-        t_cam3_cam1 = [0.27075537, 0.00205705, 0.0]
-        t_cam3_robot = t_cam3_cam1 + t_cam1_robot
-        ts = {
-            1: t_cam1_robot,
-            3: t_cam3_robot,
-        }
+        poses = self.poses_lidar.clone().detach().cpu().numpy() # (N, 3, 4)
+        times = self.times.clone().detach().cpu().numpy() # (N,)
 
-        # transform position to lidar coordinate system
-        xyz_lidar = np.full_like(xyz, np.nan)
-        for id in np.unique(sensor_ids):
-            xyz_lidar_temp = xyz + ts[id]
+        # convert poses to world coordinate system
+        xyz = poses[:,:,3] # (N, 3)
+        xyz = self.scene.c2w(pos=xyz, copy=False) # (N, 3)
+        poses[:,:,3] = xyz # (N, 3, 4)
+        
+        # load lidar file names and times
+        lidar_files = np.array(os.listdir(lidar_dir))
+        lidar_times = np.array([float(f[:-4]) for f in lidar_files])
+        sort_idxs = np.argsort(lidar_times)
+        lidar_files = lidar_files[sort_idxs]
+        lidar_times = lidar_times[sort_idxs]
+        lidar_times -= lidar_times[0]
 
-            id_mask = (sensor_ids == id)
-            xyz_lidar[id_mask] = xyz_lidar_temp[id_mask]
+        # keep only samples of given indices
+        poses = poses[img_idxs]
+        times = times[img_idxs]
 
+        # find corresponding lidar file to each sample
+        m1, m2 = np.meshgrid(times, lidar_times, indexing='ij')
+        mask = (np.abs(m1-m2) < 1e-1)
+        lidar_idxs = np.argmax(mask, axis=1)
+        lidar_files = lidar_files[lidar_idxs]
         if self.args.model.debug_mode:
-            if np.isnan(xyz_lidar).any():
-                self.args.logger.error("xyz transform not completly updated!")
+            if not np.all(np.sum(mask, axis=1) == np.ones((mask.shape[0]))):
+                self.args.logger.error(f"DatasetETHZ::getLidarMaps: multiple or no lidar files found for one sample")
+                print(f"num corr: {np.sum(mask, axis=1)}")
 
-        if not pose_given_in_world_coord:
-            xyz_lidar = self.scene.w2c(
-                pos=xyz_lidar,
-                copy=False,
+        # load lidar maps in robot coordinate system
+        pcl_loader = PCLLoader(
+            data_dir=os.path.join(self.args.ethz.dataset_dir, self.args.ethz.room),
+            pcl_dir='lidars/sync',
+        )
+        xyzs = []
+        for i, f in enumerate(lidar_files):
+            # load point cloud
+            xyz = pcl_loader.loadPCL(
+                filename=f,
+            ) # (M, 3)
+
+            # convert robot coordinate system to world coordinate system
+            trans = PCLTransformer(
+                t=poses[i,:3,3],
+                R=poses[i,:3,:3],
             )
-        return xyz_lidar
+            xyz = trans.transformPointcloud(
+                xyz=xyz,
+            )
+            xyzs.append(xyz)
             
-
-
-        
-        
+        return xyzs, poses
 
     def splitDataset(
         self,
@@ -368,6 +397,7 @@ class DatasetETHZ(DatasetBase):
             directions_dict: ray directions; dict of { sensor type: array of shape (N_images, H*W, 3) }
         Returns:
             poses: camera poses; array of shape (N_images, 3, 4)
+            poses_lidar: lidar poses; array of shape (N_images, 3, 4)
             rgbs: ray origins; array of shape (N_images, H*W, 3)
             depths_dict: dictionary of depth samples; dict of { sensor type: array of shape (N_images, H*W) }
             sensors_dict: dictionary of sensor models; dict of { sensor: sensor model }
@@ -375,13 +405,16 @@ class DatasetETHZ(DatasetBase):
             times: time of sample in seconds starting at 0; tensor of shape (N_images,)
         """
         # pose data
-        poses, sensor_ids, times = self._readPoses(
+        poses, poses_lidar, sensor_ids, times = self._readPoses(
             data_dir=data_dir,
             cam_ids=cam_ids,
             split_mask=split_mask,
-        ) # (N, 3, 4),  (N,)
+        ) # (N, 3, 4),  (N, 3, 4), (N,), (N,)
         poses = self._convertPoses(
             poses=poses,
+        ) # (N, 3, 4)
+        poses_lidar = self._convertPoses(
+            poses=poses_lidar,
         ) # (N, 3, 4)
 
         # image color data
@@ -469,7 +502,7 @@ class DatasetETHZ(DatasetBase):
         sensor_ids = torch.tensor(sensor_ids, dtype=torch.uint8, requires_grad=False)
         times = torch.tensor(times, dtype=torch.float64, requires_grad=False)
 
-        return poses, rgbs, depths_dict, sensors_dict, sensor_ids, times
+        return poses, poses_lidar, rgbs, depths_dict, sensors_dict, sensor_ids, times
     
     def _readPoses(
         self,
@@ -485,10 +518,12 @@ class DatasetETHZ(DatasetBase):
             split_mask: mask of split; bool array of shape (N_all_splits,)
         Returns:
             poses: camera poses; array of shape (N, 3, 4)
+            poses_lidar: lidar poses; array of shape (N, 3, 4)
             sensor_ids: stack identity number of sample; array of shape (N,)
             times: time of sample in seconds starting at 0; array of shape (N,)
         """
         poses = np.zeros((0, 3, 4))
+        poses_lidar = np.zeros((0, 3, 4))
         sensor_ids = np.zeros((0))
         times = np.zeros((0))
         for cam_id in cam_ids:
@@ -500,10 +535,18 @@ class DatasetETHZ(DatasetBase):
                 filepath_or_buffer=os.path.join(data_dir, 'poses', 'poses_sync'+str(id)+'_cam_robot.csv'),
                 dtype=np.float64,
             )
+            df_lidar = pd.read_csv(
+                filepath_or_buffer=os.path.join(data_dir, 'poses', 'poses_sync'+str(id)+'.csv'),
+                dtype=np.float64,
+            )
 
             time = df["time"].to_numpy()
             time -= time[0]
             time = time[split_mask]
+
+            time_lidar = df_lidar["time"].to_numpy()
+            time_lidar -= time_lidar[0]
+            time_lidar = time_lidar[split_mask]
 
             # verify time
             if self.args.model.debug_mode:
@@ -511,6 +554,10 @@ class DatasetETHZ(DatasetBase):
                     self.args.logger.error(f"DatasetETHZ::_readPoses: time is not consistent")
                     print(f"time: {time}")
                     print(f"times: {times[:]}")
+                if not np.allclose(time, time_lidar, atol=1e-6):
+                    self.args.logger.error(f"DatasetETHZ::_readPoses: time_lidar is not consistent")
+                    print(f"time: {time}")
+                    print(f"time_lidar: {time_lidar}")
 
             pose = np.zeros((np.sum(split_mask), 3, 4))
             for i, pose_i in enumerate(np.arange(df.shape[0])[split_mask]):
@@ -523,11 +570,23 @@ class DatasetETHZ(DatasetBase):
                 ) # (4, 4)
                 pose[i] = T[:3,:] # (3, 4)
 
+            pose_lidar = np.zeros((np.sum(split_mask), 3, 4))
+            for i, pose_i in enumerate(np.arange(df_lidar.shape[0])[split_mask]):
+                trans = PCLTransformer(
+                    t=[df_lidar["x"][pose_i], df_lidar["y"][pose_i], df_lidar["z"][pose_i]],
+                    q=[df_lidar["qx"][pose_i], df_lidar["qy"][pose_i], df_lidar["qz"][pose_i], df_lidar["qw"][pose_i]],
+                )
+                T = trans.getTransform(
+                    type="matrix",
+                ) # (4, 4)
+                pose_lidar[i] = T[:3,:] # (3, 4)
+
             poses = np.concatenate((poses, pose), axis=0) # (N, 3, 4)
+            poses_lidar = np.concatenate((poses_lidar, pose_lidar), axis=0) # (N, 3, 4)
             sensor_ids = np.concatenate((sensor_ids, np.ones((pose.shape[0]))*int(cam_id[-1])), axis=0) # (N,)
             times = np.concatenate((times, time), axis=0) # (N,)
 
-        return poses, sensor_ids, times
+        return poses, poses_lidar, sensor_ids, times
     
     def _readColorImgs(
         self,
