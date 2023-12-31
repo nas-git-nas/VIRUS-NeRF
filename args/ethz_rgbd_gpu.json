@@ -46,6 +46,7 @@
         "num_plot_pts": 3,
         "num_avg_heights": 5,
         "height_tolerance": 0.1,
+        "min_valid_depth": 0.2,
         "density_map_thr": 10,
         "plot_results": true
     },

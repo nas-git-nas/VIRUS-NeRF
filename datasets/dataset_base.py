@@ -88,6 +88,7 @@ class DatasetBase(Dataset):
     def to(self, device):
         self.rgbs = self.rgbs.to(device)
         self.poses = self.poses.to(device)
+        self.poses_lidar = self.poses_lidar.to(device)
         self.times = self.times.to(device)
         self.sensor_ids = self.sensor_ids.to(device)
         for key in self.depths_dict.keys():

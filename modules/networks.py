@@ -141,8 +141,6 @@ class NGP(nn.Module):
         else:
             self.args.logger.error(f"grid_type {self.args.occ_grid.grid_type} not implemented")
 
-        
-
     def density(self, x, return_feat=False):
         """
         Inputs:
