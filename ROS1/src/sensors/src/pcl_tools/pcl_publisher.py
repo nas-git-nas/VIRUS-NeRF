@@ -15,6 +15,7 @@ import sensor_msgs.point_cloud2 as pc2
 from pcl_tools.pcl_processor import PCLProcessor
 from pcl_tools.pcl_creator import PCLCreatorUSS, PCLCreatorToF, PCLCreatorRS
 from pcl_tools.pcl_coordinator import PCLCoordinator
+from pcl_tools.pcl_loader import PCLLoader
 
 
 class PCLPublisher():
@@ -268,4 +269,44 @@ class PCLFilterPublisher(PCLPublisher):
             xyzi=xyzi,
             header=msg.header,
         )
+        
+        
+class PCLStaticPublisher(PCLPublisher):
+    def __init__(
+        self,
+        pub_topic:str,
+        pub_freq:float,
+        data_dir:str,
+        map_name:str,
+    ):
+        
+        super().__init__(
+            pub_topic=pub_topic,
+            sub_topic=None,
+            sub_topic_msg_type=None,
+        )
+        
+        self.pcl_processor = PCLProcessor()
+        self.color = self.color_floats["w"]
+        
+        pcl_loader = PCLLoader(
+            data_dir=data_dir,
+        )
+        xyz = pcl_loader.loadPCL(
+            filename=map_name,
+        )
+        xyzi = np.concatenate((xyz, np.ones((xyz.shape[0], 1))), axis=1)
+        
+        header = Header()
+        header.frame_id = "map"
+        
+        rate = rospy.Rate(pub_freq)
+        while not rospy.is_shutdown():
+            self._publishPCL(
+                xyzi=xyzi,
+                header=header,
+            )
+            rate.sleep()
+        
+   
         

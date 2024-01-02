@@ -160,12 +160,12 @@ include_directories(
 
 ## Declare a C++ executable
 # add_executable(${PROJECT_NAME}_node src/main.cpp src/pcl_saver_node.cpp)
-add_executable(pcl_saver_node src/pcl_saver_node.cpp)
+# add_executable(pcl_saver_node src/pcl_saver_node.cpp)
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(pcl_saver_node
-  ${catkin_LIBRARIES}
-)
+# target_link_libraries(pcl_saver_node
+#   ${catkin_LIBRARIES}
+# )
 
 # ## Add dependencies to the executable
 # add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
@@ -217,10 +217,10 @@ target_link_libraries(pcl_saver_node
 
 
 catkin_install_python(PROGRAMS 
-  scripts/watchdog.py scripts/rs_kalibr.py scripts/pose_saver_node.py
-  scripts/pcl_meas_publisher_node.py scripts/pcl_filter_publisher_node.py 
+  scripts/watchdog.py scripts/rs_kalibr.py scripts/pose_saver_node.py scripts/pose_balm2ethz_node.py
+  scripts/pcl_meas_publisher_node.py scripts/pcl_filter_publisher_node.py scripts/pcl_static_publisher_node.py 
   src/pcl_tools/__init__.py src/pcl_tools/pcl_processor.py src/pcl_tools/pcl_transformer.py 
-  src/pcl_tools/pcl_creator.py src/pcl_tools/pcl_coordinator.py src/pcl_tools/pcl_converter.py
+  src/pcl_tools/pcl_creator.py src/pcl_tools/pcl_coordinator.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

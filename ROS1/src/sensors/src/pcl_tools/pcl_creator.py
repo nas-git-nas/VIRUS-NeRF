@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 
 from abc import ABC, abstractmethod
-import rospy
 import os
 
 
@@ -63,9 +62,9 @@ class PCLCreator():
     ):
         """
         Calculate directions given a field of view.
-        Coordinate system: upsdie-down camera
-            x: points to the left
-            y: points upwards
+        Coordinate system: camera
+            x: points to the right
+            y: points downwards
             z: points into the viewing direction
         Args:
             fov_xy: field of view in degrees (x and y directions); list of length 2
@@ -81,8 +80,8 @@ class PCLCreator():
         angle_max = fov_cells * (num_pts - 1) / 2
         angle_min = - angle_max
         
-        angles_x = np.linspace(angle_max[0], angle_min[0], num_pts[0]) # (W,)
-        angles_y = np.linspace(angle_max[1], angle_min[1], num_pts[1]) # (H,)
+        angles_x = np.linspace(angle_min[0], angle_max[0], num_pts[0]) # (W,)
+        angles_y = np.linspace(angle_min[1], angle_max[1], num_pts[1]) # (H,)
         angles_x, angles_y = np.meshgrid(angles_x, angles_y, indexing="xy") # (H,W), (H,W)
         angles_x = angles_x.flatten() # (H*W,)
         angles_y = angles_y.flatten() # (H*W,)
@@ -192,6 +191,7 @@ class PCLCreatorToF(PCLCreator):
         
         depth = depth.reshape(8, 8)
         depth = depth[:, ::-1].T
+        depth = depth[::-1, ::-1]
         return depth
     
 
@@ -239,6 +239,26 @@ class PCLCreatorRS(PCLCreator):
         depth = depth.reshape(H, W)
         
         return depth
+    
+    
+    
+    
+def test_meas2depth():
+    
+    pcl_creator = PCLCreatorToF()
+    
+    depth = np.zeros((8,8))
+    depth[0,0] = 1
+    depth[0,-1] = 1
+    
+    xyz = pcl_creator.depth2pcl(
+        depth=depth,
+    )
+    
+    print(xyz)
+    
+if __name__ == "__main__":
+    test_meas2depth()
     
 
 

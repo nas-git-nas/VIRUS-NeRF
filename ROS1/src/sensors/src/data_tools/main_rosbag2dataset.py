@@ -8,8 +8,8 @@ from rosbag_wrapper import RosbagWrapper
 
 def main():
     
-    data_dir = "/home/spadmin/catkin_ws_ngp/data/office_2"
-    bag_name = "office_2_2_sync.bag"
+    data_dir = "/home/spadmin/catkin_ws_ngp/data/test"
+    bag_name = "test_sync.bag"
     
     bag_wrapper = RosbagWrapper(
         data_dir=data_dir,
