@@ -2,7 +2,7 @@
     "dataset":
     {
         "path": "../RobotAtHome2/data",
-        "name": "robot_at_home",
+        "name": "RH2",
         "split_ratio": {"train": 0.8, "val": 0.1, "test": 0.1},
         "downsample": 1.0,
         "keep_N_observations": 40,
@@ -44,7 +44,7 @@
         "update_interval": 16,
         "max_res": 1024
     },
-    "robot_at_home":
+    "RH2":
     {
         "session": "session_2",
         "home": "anto",

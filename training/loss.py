@@ -158,7 +158,12 @@ class Loss():
             depth_loss: depth loss value; tensor of float (1,)
         """
         val_idxs = ~torch.isnan(data['depth']['ToF'])
-        tof_loss = F.mse_loss(results['depth'][val_idxs], data['depth']['ToF'][val_idxs])
+
+        tof_loss = 0
+        if torch.sum(val_idxs) > 0:
+            tof_loss = F.mse_loss(results['depth'][val_idxs], data['depth']['ToF'][val_idxs])
+
+        # print(f"num val idxs: {torch.sum(val_idxs)}")
 
         if self.log_loss:
             self.loss_dict['ToF'] = tof_loss.item() * self.args.training.depth_loss_w
@@ -178,37 +183,19 @@ class Loss():
             depth_loss: depth loss value; tensor of float (1,)
         """ 
         # get minimum depth per image for batch 
-        depths_min = torch.zeros(
-            (data["rgb"].shape[0],), 
-            device=self.args.device, 
-            dtype=torch.float32,
-        ) # (N,)
-        weights = torch.zeros(
-            (data["rgb"].shape[0],), 
-            device=self.args.device, 
-            dtype=torch.float32,
-        ) # (N,)
-        for name, model in self.sensors_dict.items():
-            # ignore other sensors
-            if not "USS" in name:
-                continue
+        min_depths, min_counts = self.sensors_dict['USS'].updateStats(
+            depths=results['depth'],
+            data=data,
+        )
 
-            # mask batch to get only samples of particular sensor
-            sensor_mask = (data['stack_id'] == int(name[-1])) # (N,)
-
-            # modify sensor model function inputs
-            depths_min_temp, weights_temp = model.updateDepthMin(
-                data_depth_uss=data['depth']['USS'][sensor_mask],
-                results_depth=results['depth'][sensor_mask],
-                img_idxs=data['img_idxs'][sensor_mask],
-                pix_idxs=data['pix_idxs'][sensor_mask],
-            )
-            depths_min[sensor_mask] = depths_min_temp # (N,)
-            weights[sensor_mask] = weights_temp # (N,)
+        # determine weights
+        weights = torch.ones_like(min_counts).to(self.args.device)
+        # batch_weights = 1 - 1/(1 + min_counts/100)
+        # weights = torch.exp(-min_counts/1000).to(self.args.device)
 
         # mask data
         uss_mask = ~torch.isnan(data['depth']['USS'])
-        depth_mask = results['depth'] < depths_min + self.uss_depth_tol  
+        depth_mask = results['depth'] < min_depths + self.uss_depth_tol  
         close_mask = results['depth'] < data['depth']['USS'] - self.uss_depth_tol  
 
         # calculate close loss: pixels that are closer than the USS measurement

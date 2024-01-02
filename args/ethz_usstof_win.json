@@ -1,13 +1,14 @@
 {
     "dataset":
     {
-        "path": "../RobotAtHome2/data",
-        "name": "RH2",
+        "path": "",
+        "name": "ETHZ",
         "split_ratio": {"train": 0.8, "val": 0.1, "test": 0.1},
         "downsample": 1.0,
-        "keep_N_observations": 10,
+        "keep_N_observations": 60,
         "keep_sensor": "all",
-        "keep_pixels_in_angle_range": "all"
+        "keep_pixels_in_angle_range": "all",
+        "sensors": ["RGBD", "USS", "ToF"]
     },
     "model":
     {
@@ -21,30 +22,32 @@
     "training":
     {
         "distortion_loss_w": 0.0,
-        "batch_size": 8192,
+        "batch_size": 4096,
         "sampling_strategy": 
         {
             "imgs": "all", 
             "pixs": {"closest":0.05, "valid_uss":0.4, "valid_tof":0.4}
         },
-        "sensors": ["RGBD"],
+        "sensors": ["USS", "ToF"],
         "max_steps": 2,
-        "lr": 1e-2,
+        "lr": 5e-3,
         "depth_loss_w": 100.0,
-        "random_bg": false
+        "random_bg": false,
+        "real_time_simulation": false
     },
     "evaluation":
     {
-        "batch_size": 16384,
+        "batch_size": 8192,
         "res_map": 256,
         "res_angular": 256,
         "eval_every_n_steps": 1,
         "num_color_pts": 0,
-        "num_depth_pts": 4,
+        "num_depth_pts": 5,
         "num_plot_pts": 3,
-        "num_avg_heights": 2,
-        "height_tolerance": 0.005,
+        "num_avg_heights": 5,
+        "height_tolerance": 0.05,
         "density_map_thr": 10,
+        "min_valid_depth": 0.2,
         "plot_results": true
     },
     "occ_grid":
@@ -65,7 +68,8 @@
     "ethz":
     {
         "dataset_dir": "../ETHZDataset",
-        "room": "office_2"
+        "room": "office_2",
+        "cam_ids": ["CAM1", "CAM3"]
     },
     "RH2":
     {
@@ -77,18 +81,21 @@
     },
     "RGBD":
     {
-        "angle_of_view": [45, 58]
+        "angle_of_view": [90, 65]
     },
     "USS":
     {
-        "angle_of_view": [30, 30]
+        "angle_of_view": [55, 35]
     },
     "ToF":
     {
-        "angle_of_view": [42.4, 42.4],
+        "angle_of_view": [45, 45],
         "matrix": [8, 8],
         "sensor_calibration_error": 0.0,
         "sensor_random_error": 0.0
+    },
+    "LiDAR":
+    {
+        "height_offset": 0.0
     }
-    
 }

@@ -25,7 +25,7 @@
         "sampling_strategy": 
         {
             "imgs": "all", 
-            "pixs": {"closest":0.05, "valid_uss":0.4, "valid_tof":0.4}
+            "pixs": "random"
         },
         "sensors": ["RGBD"],
         "max_steps": 2,

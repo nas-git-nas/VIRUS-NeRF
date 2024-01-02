@@ -1,13 +1,14 @@
 {
     "dataset":
     {
-        "path": "/media/scratch1/schmin/data/robot_at_home",
-        "name": "robot_at_home",
+        "path": "",
+        "name": "ETHZ",
         "split_ratio": {"train": 0.8, "val": 0.1, "test": 0.1},
         "downsample": 1.0,
-        "keep_N_observations": "all",
+        "keep_N_observations": 50,
         "keep_sensor": "all",
-        "keep_pixels_in_angle_range": "all"
+        "keep_pixels_in_angle_range": "all",
+        "sensors": ["RGBD", "USS", "ToF"]
     },
     "model":
     {
@@ -22,42 +23,55 @@
     {
         "distortion_loss_w": 0.0,
         "batch_size": 4096,
-        "sampling_strategy": {"imgs": "all", "rays": "random"},
+        "sampling_strategy": 
+        {
+            "imgs": "all", 
+            "pixs": "random"
+        },
         "sensors": ["RGBD"],
-        "max_steps": 700,
+        "max_steps": 2,
         "lr": 1e-2,
         "depth_loss_w": 100.0,
-        "random_bg": false
+        "random_bg": false,
+        "real_time_simulation": true
     },
     "evaluation":
     {
-        "batch_size": 4096,
+        "batch_size": 8192,
         "res_map": 256,
         "res_angular": 256,
-        "eval_every_n_steps": 25,
-        "num_color_pts": 10,
-        "num_depth_pts": "all",
-        "num_plot_pts": 3,
-        "num_avg_heights": 10,
-        "height_tolerance": 0.005,
+        "eval_every_n_steps": 1,
+        "num_color_pts": 0,
+        "num_depth_pts": 4,
+        "num_plot_pts": 4,
+        "num_avg_heights": 5,
+        "height_tolerance": 0.05,
         "density_map_thr": 10,
+        "min_valid_depth": 0.2,
         "plot_results": true
     },
     "occ_grid":
     {
         "grid_type": "occ",
         "warmup_steps": 256,
-        "batch_size": 1024,
-        "sampling_strategy": {"imgs": "all", "rays": "uss_tof"},
-        "update_interval": 8,
+        "batch_size": 64,
+        "sampling_strategy": {"imgs": "None", "pixs": "None"},  
+        "update_interval": 2,
         "decay_warmup_steps": 80,
         "batch_ratio_ray_update": 0.5,
         "false_detection_prob_every_m": 0.3,
         "std_every_m": 0.2,
         "nerf_threshold_max": 5.91,
         "nerf_threshold_slope": 0.01
+
     },
-    "robot_at_home":
+    "ethz":
+    {
+        "dataset_dir": "../ETHZDataset",
+        "room": "office_2",
+        "cam_ids": ["CAM1", "CAM3"]
+    },
+    "RH2":
     {
         "session": "session_2",
         "home": "anto",
@@ -67,18 +81,22 @@
     },
     "RGBD":
     {
-        "angle_of_view": [45, 58]
+        "angle_of_view": [90, 65]
     },
     "USS":
     {
-        "angle_of_view": [30, 30]
+        "angle_of_view": [55, 35]
     },
     "ToF":
     {
-        "angle_of_view": [42.4, 42.4],
+        "angle_of_view": [45, 45],
         "matrix": [8, 8],
         "sensor_calibration_error": 0.0,
         "sensor_random_error": 0.0
+    },
+    "LiDAR":
+    {
+        "height_offset": 0.0
     }
     
 }

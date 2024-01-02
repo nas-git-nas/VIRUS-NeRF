@@ -25,7 +25,15 @@ def findNearestNeighbour(array1, array2, batch_size=None, progress_bar=False, ig
 
     # remove nan values
     if ignore_nan:
-        array2 = array2[~np.isnan(array2).any(axis=1)]
+        mask_array1 = ~(np.isnan(array1).any(axis=1))
+        mask_array2 = ~(np.isnan(array2).any(axis=1))
+        array1 = array1[mask_array1]
+        array2 = array2[mask_array2]    
+
+        if array1.shape[0] == 0 or array2.shape[0] == 0:
+            nn_idxs = np.full(mask_array1.shape[0], np.nan, dtype=np.int32)
+            nn_dists = np.full(mask_array1.shape[0], np.nan, dtype=np.float32)
+            return nn_idxs, nn_dists
 
     # define batch size
     if batch_size is None:
@@ -48,6 +56,15 @@ def findNearestNeighbour(array1, array2, batch_size=None, progress_bar=False, ig
 
     # determine nearest neighbour distances
     nn_dists = np.linalg.norm(array2[nn_idxs] - array1, axis=1) # (N,)
+
+    # recover nan values
+    if ignore_nan:
+        nn_idxs_temp = np.full(mask_array1.shape[0], np.nan, dtype=np.int32)
+        nn_idxs_temp[mask_array1] = nn_idxs
+        nn_idxs = nn_idxs_temp
+        nn_dists_temp = np.full(mask_array1.shape[0], np.nan, dtype=np.float32)
+        nn_dists_temp[mask_array1] = nn_dists
+        nn_dists = nn_dists_temp
     
     return nn_idxs, nn_dists
 

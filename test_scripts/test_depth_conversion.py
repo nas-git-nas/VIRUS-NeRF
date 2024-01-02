@@ -6,7 +6,7 @@ from alive_progress import alive_bar
  
 sys.path.insert(0, os.getcwd())
 from datasets.ray_utils import get_rays
-from datasets.robot_at_home import RobotAtHomeDataset
+from datasets.RH2 import RobotAtHomeDataset
 from training.trainer_rh import TrainerRH
 from training.metrics_rh import MetricsRH
 from args.args import Args

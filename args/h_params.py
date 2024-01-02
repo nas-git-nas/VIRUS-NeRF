@@ -28,6 +28,7 @@ class HParamsDataset(HParams):
         self.keep_N_observations = None
         self.keep_sensor = None
         self.keep_pixels_in_angle_range = None
+        self.sensors = None
 
         HParams.__init__(self, name="dataset")
 
@@ -56,12 +57,13 @@ class HParamsTraining(HParams):
         self.lr = None
         self.depth_loss_w = None
         self.random_bg = None
+        self.real_time_simulation = None
 
         HParams.__init__(self, name="training")
     
     def checkArgs(self):
-        if self.sampling_strategy["imgs"] == "all" and self.sampling_strategy["rays"] != "random":
-            self.sampling_strategy["rays"] = "random"
+        if self.sampling_strategy["imgs"] == "all" and self.sampling_strategy["pixs"] != "random":
+            self.sampling_strategy["pixs"] = "random"
             print(f"WARNING: HParamsTraining:checkArgs: sampling strategy for rays must be 'random' if sampling strategy for images is 'all' ")
 
 
@@ -78,6 +80,7 @@ class HParamsEvaluation(HParams):
         self.num_avg_heights = None
         self.height_tolerance = None
         self.density_map_thr = None
+        self.min_valid_depth = None
         self.plot_results = None
 
         HParams.__init__(self, name="evaluation")
@@ -120,7 +123,7 @@ class HParamsRobotAtHome(HParams):
         self.subsession = None
         self.home_session = None
 
-        HParams.__init__(self, name="robot_at_home")
+        HParams.__init__(self, name="RH2")
 
 
 class HParamsRGBD(HParams):
@@ -148,3 +151,11 @@ class HParamsToF(HParams):
         self.sensor_random_error = None
 
         HParams.__init__(self, name="ToF")
+
+
+class HParamsLiDAR(HParams):
+    def __init__(self):
+        # hyper parameters
+        self.height_offset = None
+
+        HParams.__init__(self, name="LiDAR")

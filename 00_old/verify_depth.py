@@ -3,7 +3,7 @@ import torch
 import matplotlib.pyplot as plt
 from alive_progress import alive_bar
 
-from datasets.robot_at_home import RobotAtHomeDataset
+from datasets.RH2 import RobotAtHomeDataset
 from datasets.ray_utils import get_rays
 
 def depth2pos(depths, rays_o, rays_d):

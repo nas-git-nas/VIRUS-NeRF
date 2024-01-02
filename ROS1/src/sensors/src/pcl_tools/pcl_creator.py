@@ -133,11 +133,13 @@ class PCLCreator():
 class PCLCreatorUSS(PCLCreator):
     def __init__(
         self,
+        W:int=64, # changed
+        H:int=64,
     ):
         super().__init__()
         
-        self.W = 64
-        self.H = 64
+        self.W = W
+        self.H = H
         self.directions = self.fovDirections(
             fov_xy=[55, 35],
             W=self.W,
@@ -162,13 +164,17 @@ class PCLCreatorUSS(PCLCreator):
 
     
 class PCLCreatorToF(PCLCreator):
-    def __init__(self):
+    def __init__(
+        self,
+        W:int=8, # changed
+        H:int=8,
+    ):
         super().__init__()
         
         self.directions = self.fovDirections(
             fov_xy=[45, 45],
-            W=8,
-            H=8,
+            W=W,
+            H=H,
         )
         
         self.depth_min = 0.1

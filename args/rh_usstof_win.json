@@ -1,11 +1,11 @@
 {
     "dataset":
     {
-        "path": "",
-        "name": "ETHZ",
+        "path": "../RobotAtHome2/data",
+        "name": "RH2",
         "split_ratio": {"train": 0.8, "val": 0.1, "test": 0.1},
         "downsample": 1.0,
-        "keep_N_observations": 50,
+        "keep_N_observations": 10,
         "keep_sensor": "all",
         "keep_pixels_in_angle_range": "all"
     },
@@ -21,9 +21,13 @@
     "training":
     {
         "distortion_loss_w": 0.0,
-        "batch_size": 8192,
-        "sampling_strategy": {"imgs": "all", "rays": "random"},
-        "sensors": [],
+        "batch_size": 4096,
+        "sampling_strategy": 
+        {
+            "imgs": "all", 
+            "pixs": {"closest":0.05, "valid_uss":0.4, "valid_tof":0.4}
+        },
+        "sensors": ["USS", "ToF"],
         "max_steps": 2,
         "lr": 1e-2,
         "depth_loss_w": 100.0,
@@ -31,11 +35,11 @@
     },
     "evaluation":
     {
-        "batch_size": 16384,
+        "batch_size": 8192,
         "res_map": 256,
         "res_angular": 256,
         "eval_every_n_steps": 1,
-        "num_color_pts": 1,
+        "num_color_pts": 0,
         "num_depth_pts": 4,
         "num_plot_pts": 3,
         "num_avg_heights": 2,
@@ -45,10 +49,10 @@
     },
     "occ_grid":
     {
-        "grid_type": "nerf",
+        "grid_type": "occ",
         "warmup_steps": 256,
         "batch_size": 64,
-        "sampling_strategy": {"imgs": "all", "rays": "rgbd"},  
+        "sampling_strategy": {"imgs": "None", "pixs": "None"},  
         "update_interval": 2,
         "decay_warmup_steps": 80,
         "batch_ratio_ray_update": 0.5,
@@ -61,10 +65,9 @@
     "ethz":
     {
         "dataset_dir": "../ETHZDataset",
-        "room": "office_2",
-        "cam_ids": ["CAM1", "CAM3"]
+        "room": "office_2"
     },
-    "robot_at_home":
+    "RH2":
     {
         "session": "session_2",
         "home": "anto",
@@ -74,7 +77,7 @@
     },
     "RGBD":
     {
-        "angle_of_view": [90, 65]
+        "angle_of_view": [45, 58]
     },
     "USS":
     {

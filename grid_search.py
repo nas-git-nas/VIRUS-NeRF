@@ -60,7 +60,7 @@ def searchOccgrid():
     args.model.save = False
 
     # datasets   
-    if args.dataset.name == 'robot_at_home':
+    if args.dataset.name == 'RH2':
         dataset = DatasetRH    
     train_dataset = dataset(
         args = args,
@@ -103,7 +103,7 @@ def evaluateSearch():
     """
     Evaluate grid search
     """
-    grid_search_dir = "results/robot_at_home/20210602_183722"
+    grid_search_dir = "results/RH2/20210602_183722"
 
     
 

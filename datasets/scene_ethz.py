@@ -24,8 +24,8 @@ class SceneETHZ(SceneBase):
         self.pcl_dir = "maps"
 
         if args.ethz.room == "office_2":
-            self.xyz_min = np.array([-3.0, -3.0, -0.4])
-            self.xyz_max = np.array([15.0, 8.0, 1.2])
+            self.xyz_min = np.array([-2.0, -1.0, -0.4])
+            self.xyz_max = np.array([6.0, 8.0, 1.2])
         elif args.ethz.room == "medium_2":
             self.xyz_min = np.array([-3.0, -3.0, -0.4])
             self.xyz_max = np.array([15.0, 9.0, 1.2])
