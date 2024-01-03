@@ -26,11 +26,20 @@ class PCLMerger(PCLLoader):
         room = data_dir_split[-1]
         
         if room == "office_2":
-            self.xyz_min = np.array([-3.0, -3.0, -0.4])
-            self.xyz_max = np.array([15.0, 8.0, 1.2])
+            self.xyz_min = np.array([-3.0, -3.0, -1.0])
+            self.xyz_max = np.array([15.0, 8.0, 5.0])
         elif room == "medium_2":
-            self.xyz_min = np.array([-3.0, -3.0, -0.4])
-            self.xyz_max = np.array([15.0, 9.0, 1.2])
+            self.xyz_min = np.array([-3.0, -3.0, -1.0])
+            self.xyz_max = np.array([15.0, 9.0, 5.0])
+        elif room == "corridor":
+            self.xyz_min = np.array([0.0, -3.0, -1.0])
+            self.xyz_max = np.array([40.0, 3.0, 5.0])
+        elif room == "office_scan":
+            self.xyz_min = np.array([-4.0, -2.0, -1.0])
+            self.xyz_max = np.array([5.0, 8.0, 5.0])
+        elif room == "medium_scan_2":
+            self.xyz_min = np.array([-5.0, -2.0, -1.0])
+            self.xyz_max = np.array([15.0, 7.0, 5.0])
         else:
             print(f"ERROR: pcl_merger.py:__init__ room={room} not supported")
             sys.exit()
@@ -237,7 +246,10 @@ class PCLMerger(PCLLoader):
     
     
 def run_PCLMerger():
-    data_dir = "/home/spadmin/catkin_ws_ngp/data/office_2"
+    data_dir = "/home/spadmin/catkin_ws_ngp/data/medium_scan_2"
+    
+    if not os.path.exists(os.path.join(data_dir, "maps")):
+        os.makedirs(os.path.join(data_dir, "maps"))
     
     pcl_merger = PCLMerger(
         data_dir=data_dir,
@@ -267,51 +279,57 @@ def run_PCLMerger():
         output2_filename='maps/map_kiss-balm.pcd',
     )
     
-def comparePoses():
-    data_dir = "/home/spadmin/catkin_ws_ngp/data/office_2"
-    pcl_merger = PCLMerger(
-        data_dir=data_dir,
-    )
-    
-    poses_lidar, times_lidar = pcl_merger.loadPoses(
-        pose_format='vector',
-        filename='poses/poses_lidar.csv',
-    )
-    poses_lidar_balm, times_lidar_balm = pcl_merger.loadPoses(
-        pose_format='vector',
-        filename='poses/poses_lidar_balm.csv',
-    )
-    idxs = pcl_merger.matchTimes(
-        times_subset=times_lidar_balm,
-        times=times_lidar,
-    )
-    poses_lidar = poses_lidar[idxs]
-    
-    if not np.allclose(poses_lidar, poses_lidar_balm):
-        print(f"ERROR: pcl_merger.py:comparePoses poses_lidar != poses_lidar_balm")
-        xyz_error = np.linalg.norm(poses_lidar[:, :3] - poses_lidar_balm[:, :3], axis=1)
-        print(f"xyz_error: max={np.max(xyz_error)}, min={np.min(xyz_error)}, mean={np.mean(xyz_error)}")
-    
-    # poses_lidar, times_lidar = pcl_merger.loadPoses(
-    #     pose_format='matrix_times',
-    #     filename='balm/alidarPose.csv',
-    # )
-    # poses_lidar_balm = pcl_merger.loadPoses(
-    #     pose_format='matrix',
-    #     filename='balm/poses_lidar_balm.csv',
-    # )
 
-    # if not np.allclose(poses_lidar, poses_lidar_balm):
-    #     print(f"ERROR: pcl_merger.py:comparePoses poses_lidar != poses_lidar_balm")
-    #     xyz_error = np.linalg.norm(poses_lidar[:, :3, 3] - poses_lidar_balm[:, :3, 3], axis=1)
-    #     print(f"xyz_error: max={np.max(xyz_error)}, min={np.min(xyz_error)}, mean={np.mean(xyz_error)}")
     
 if __name__ == "__main__":
     run_PCLMerger()
     # comparePoses()
     
+
+
+
+
+
+
+
+# def comparePoses():
+#     data_dir = "/home/spadmin/catkin_ws_ngp/data/corridor"
+#     pcl_merger = PCLMerger(
+#         data_dir=data_dir,
+#     )
     
+#     poses_lidar, times_lidar = pcl_merger.loadPoses(
+#         pose_format='vector',
+#         filename='poses/poses_lidar.csv',
+#     )
+#     poses_lidar_balm, times_lidar_balm = pcl_merger.loadPoses(
+#         pose_format='vector',
+#         filename='poses/poses_lidar_balm.csv',
+#     )
+#     idxs = pcl_merger.matchTimes(
+#         times_subset=times_lidar_balm,
+#         times=times_lidar,
+#     )
+#     poses_lidar = poses_lidar[idxs]
     
+#     if not np.allclose(poses_lidar, poses_lidar_balm):
+#         print(f"ERROR: pcl_merger.py:comparePoses poses_lidar != poses_lidar_balm")
+#         xyz_error = np.linalg.norm(poses_lidar[:, :3] - poses_lidar_balm[:, :3], axis=1)
+#         print(f"xyz_error: max={np.max(xyz_error)}, min={np.min(xyz_error)}, mean={np.mean(xyz_error)}")
+    
+#     # poses_lidar, times_lidar = pcl_merger.loadPoses(
+#     #     pose_format='matrix_times',
+#     #     filename='balm/alidarPose.csv',
+#     # )
+#     # poses_lidar_balm = pcl_merger.loadPoses(
+#     #     pose_format='matrix',
+#     #     filename='balm/poses_lidar_balm.csv',
+#     # )
+
+#     # if not np.allclose(poses_lidar, poses_lidar_balm):
+#     #     print(f"ERROR: pcl_merger.py:comparePoses poses_lidar != poses_lidar_balm")
+#     #     xyz_error = np.linalg.norm(poses_lidar[:, :3, 3] - poses_lidar_balm[:, :3, 3], axis=1)
+#     #     print(f"xyz_error: max={np.max(xyz_error)}, min={np.min(xyz_error)}, mean={np.mean(xyz_error)}")
     
 # def evaluate(
 #         self,

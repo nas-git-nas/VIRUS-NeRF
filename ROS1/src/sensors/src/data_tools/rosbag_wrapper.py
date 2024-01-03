@@ -203,8 +203,6 @@ class RosbagWrapper():
         if save_meas or return_msg:
             img = self.cv_bridge.imgmsg_to_cv2(msg_temp, desired_encoding="passthrough")
             
-            print(f"img max: {np.max(img)}, min: {np.min(img)}")
-            
         if save_meas:
             folder_name = f"{topic_temp[1:].replace('/', '_')}"
             img_name = f"img{img_counters[topic_temp]}.npy"

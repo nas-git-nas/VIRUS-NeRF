@@ -1,17 +1,10 @@
 import numpy as np
 import copy
-try:
-    import rospy
-    ROSPY_AVAILABLE = True
-except:
-    ROSPY_AVAILABLE = False
+import rospy
 import pandas as pd
 import os
 
-try:
-    from pcl_tools.pcl_transformer import PCLTransformer
-except:
-    from ROS1.src.sensors.src.pcl_tools.pcl_transformer import PCLTransformer
+from pcl_tools.pcl_transformer import PCLTransformer
 
 class PCLCoordinator():
     def __init__(
@@ -83,10 +76,7 @@ class PCLCoordinator():
             return
         
         self.transform = None
-        if ROSPY_AVAILABLE:
-            rospy.logerr(f"ERROR: PCLCoordinator.__init__: source={source} and target={target} not implemented")
-        else:
-            print(f"ERROR: PCLCoordinator.__init__: source={source} and target={target} not implemented")
+        rospy.logerr(f"ERROR: PCLCoordinator.__init__: source={source} and target={target} not implemented")
         
     def transformCoordinateSystem(
         self,
@@ -125,21 +115,14 @@ class PCLCoordinator():
             trans: transform from camera to map coordinate system; PCLTransformer
         """
         if time is None:
-            if ROSPY_AVAILABLE:
-                rospy.logerr(f"ERROR: PCLCoordinator._lookupTransform: time={time} not given")
-            else:
-                print(f"ERROR: PCLCoordinator._lookupTransform: time={time} not given")
+            rospy.logerr(f"ERROR: PCLCoordinator._lookupTransform: time={time} not given")
         
         mask = np.abs(self.df_lookup_table['time'] - time) < 1e-4
         if np.sum(mask) != 1:
+            rospy.logerr(f"ERROR: PCLCoordinator._lookupTransform: time={time} not found in lookup table: np.sum(mask)={np.sum(mask)}")
             error = np.abs(self.df_lookup_table['time'] - time)
             error_min = np.min(error)
-            if ROSPY_AVAILABLE:
-                rospy.logerr(f"ERROR: PCLCoordinator._lookupTransform: time={time} not found in lookup table: np.sum(mask)={np.sum(mask)}")
-                rospy.logerr(f"ERROR: PCLCoordinator._lookupTransform: min error={error_min}")
-            else:
-                print(f"ERROR: PCLCoordinator._lookupTransform: time={time} not found in lookup table: np.sum(mask)={np.sum(mask)}")
-                print(f"ERROR: PCLCoordinator._lookupTransform: min error={error_min}")
+            rospy.logerr(f"ERROR: PCLCoordinator._lookupTransform: min error={error_min}")
             
         row = self.df_lookup_table.loc[mask]        
         trans = PCLTransformer(
@@ -148,91 +131,3 @@ class PCLCoordinator():
         )
         return trans
     
-    
-    
-def createLookupTables(
-    data_dir:str,
-):
-    """
-    Create lookup table for dynamic transforms.
-    Args:
-        data_dir: path to data directory; str
-    """
-    lookupTable(
-        data_dir=data_dir,
-        stack_id=1,
-    )
-    lookupTable(
-        data_dir=data_dir,
-        stack_id=3,
-    )
-    
-    
-def lookupTable(
-    data_dir:str,
-    stack_id:int,
-):
-    """
-    Create lookup table for dynamic transforms.
-    Args:
-        data_dir: path to data directory; str
-    """
-    # read robot poses
-    df_poses_robot = pd.read_csv(
-        os.path.join(data_dir, 'poses', 'poses_sync'+str(stack_id)+'.csv'),
-        dtype=np.float64,
-    )
-    
-    df_poses_cam = pd.DataFrame(
-        columns=['time', 'x', 'y', 'z', 'qx', 'qy', 'qz', 'qw'],
-        dtype=np.float64,
-    )
-    
-    coord = PCLCoordinator(
-        source="CAM"+str(stack_id),
-        target="robot",
-    )
-    
-    for i in range(len(df_poses_robot)):
-        row = df_poses_robot.iloc[i]
-        
-        
-        # lookup transform from robot to map
-        robot_map = PCLTransformer(
-            q=row[['qx', 'qy', 'qz', 'qw']].values,
-            t=row[['x', 'y', 'z']].values,
-        )
-        
-        # calculate transform from CAM to robot
-        cam_robot = copy.deepcopy(coord.transform)
-        cam_map = cam_robot.concatTransform(
-            add_transform=robot_map,
-            apply_first_add_transform=False,
-        )
-        
-        # add transform from CAM to map to dataframe
-        q, t = cam_map.getTransform(type="quaternion")
-        time = np.array([row['time']])
-        arr = np.concatenate((time, t, q))
-        df_poses_cam = df_poses_cam.append(
-            pd.DataFrame(
-                data=np.concatenate((time, t, q)).reshape(1,-1),
-                columns=['time', 'x', 'y', 'z', 'qx', 'qy', 'qz', 'qw'],
-            ),
-            ignore_index=True,
-        )
-    
-    # save lookup table
-    df_poses_cam.to_csv(
-        path_or_buf=os.path.join(data_dir, 'poses', 'poses_sync'+str(stack_id)+'_cam_robot.csv'),
-        index=False,
-    )
-    
-def main():
-    data_dir = "/home/spadmin/catkin_ws_ngp/data/office_2"
-    createLookupTables(
-        data_dir=data_dir,
-    )
-    
-if __name__ == '__main__':
-    main()

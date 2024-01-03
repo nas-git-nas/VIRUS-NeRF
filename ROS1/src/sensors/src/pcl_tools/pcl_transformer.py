@@ -54,7 +54,7 @@ class PCLTransformer():
             self._t = np.copy(t)
             return
             
-        if t is not None and R is not None:
+        if t is not None and q is not None:
             self._r = Rotation.from_matrix(np.copy(R))
             self._t = np.copy(t)
             return

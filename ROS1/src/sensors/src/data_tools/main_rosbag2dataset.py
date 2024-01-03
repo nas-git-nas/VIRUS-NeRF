@@ -1,15 +1,10 @@
-import numpy as np
-
-
-
-
 from rosbag_wrapper import RosbagWrapper
 
 
 def main():
     
-    data_dir = "/home/spadmin/catkin_ws_ngp/data/test"
-    bag_name = "test_sync.bag"
+    data_dir = "/home/spadmin/catkin_ws_ngp/data/medium_scan_2"
+    bag_name = "medium_scan_2_sync.bag"
     
     bag_wrapper = RosbagWrapper(
         data_dir=data_dir,
@@ -28,8 +23,6 @@ def main():
             "/TOF3",
         ]
     )
-    
-
 
 if __name__ == "__main__":
     main()

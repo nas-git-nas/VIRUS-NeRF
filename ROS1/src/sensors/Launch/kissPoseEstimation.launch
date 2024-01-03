@@ -1,10 +1,10 @@
 <launch>
     <arg 
         name="data_dir" 
-        default="/home/spadmin/catkin_ws_ngp/data/medium_scan_2/"/>
+        default="/home/spadmin/catkin_ws_ngp/data/corridor/"/>
     <arg 
         name="bag_name" 
-        default="medium_scan_4.bag"/>
+        default="corridor.bag"/>
 
     <include 
         file="$(find sensors)/Launch/visualization.launch">
@@ -25,7 +25,7 @@
             value="/rslidar_filtered" />
         <rosparam 
             param="lims_p" >
-            [-90, 45]
+            [-150, 80]
         </rosparam>
         <rosparam 
             param="lims_r" >
@@ -38,7 +38,7 @@
             output="screen" />
     </group>
 
-    <group ns="/pose_saver">
+    <!-- <group ns="/pose_saver">
         <param 
             name="topic_pose" 
             type="str" 
@@ -56,15 +56,9 @@
             type="pose_saver_node.py" 
             name="pose_saver_node" 
             output="screen" />
-    </group>
+    </group> -->
 
     <group ns="/Rosbag">
-        <node 
-            pkg="rosbag" 
-            type="record" 
-            name="recorder" 
-            output="screen" 
-            args="--output-name=$(arg data_dir)lidar_filtered.bag /rslidar_filtered"/>
         <node 
             pkg="rosbag" 
             type="play" 
@@ -74,6 +68,3 @@
     </group>
 
 </launch>
-
-
-

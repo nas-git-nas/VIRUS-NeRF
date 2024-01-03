@@ -13,11 +13,14 @@ def main_createDataset():
     """
     Create dataset used for BALM
     """
-    data_dir = "/home/spadmin/catkin_ws_ngp/data/office_2"
+    data_dir = "/home/spadmin/catkin_ws_ngp/data/medium_scan_2"
     lidar_pcl_dir = "lidars/filtered"
     lidar_poses_name = "poses/poses_lidar.csv"
     balm_dir = "balm"
     num_scans = 300
+    
+    if not os.path.exists(os.path.join(data_dir, balm_dir)):
+        os.makedirs(os.path.join(data_dir, balm_dir))
     
     # Load poses and times
     pcl_merger = PCLMerger(
