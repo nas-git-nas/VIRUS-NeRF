@@ -15,6 +15,7 @@ import sensor_msgs.point_cloud2 as pc2
 from pcl_tools.pcl_processor import PCLProcessor
 from pcl_tools.pcl_creator import PCLCreatorUSS, PCLCreatorToF, PCLCreatorRS
 from pcl_tools.pcl_coordinator import PCLCoordinator
+from pcl_tools.pcl_loader import PCLLoader
 
 
 class PCLPublisher():
@@ -106,6 +107,7 @@ class PCLMeasPublisher(PCLPublisher):
         self,
         sensor_id:str,
         pub_frame_id:str,
+        use_balm_poses:bool,
         data_dir:str=None,
     ):
         self.sensor_id = sensor_id
@@ -159,7 +161,10 @@ class PCLMeasPublisher(PCLPublisher):
             
             lookup_table_path = None
             if self.pub_frame_id == "map":
-                lookup_table_path = os.path.join(data_dir, "poses", "poses_sync"+self.sensor_id[-1]+"_cam_robot.csv")
+                if use_balm_poses:
+                    lookup_table_path = os.path.join(data_dir, "poses", "poses_cam_balm_sync"+self.sensor_id[-1]+".csv")
+                else:
+                    lookup_table_path = os.path.join(data_dir, "poses", "poses_cam_sync"+self.sensor_id[-1]+".csv")
                 
             self.pcl_coordinator = PCLCoordinator(
                 source=self.sub_frame_id,
@@ -239,6 +244,7 @@ class PCLFilterPublisher(PCLPublisher):
         Args:
             msg: ROS pointcloud message; PointCloud2
         """
+        # start_time = rospy.get_time()
             
         xyzi = []
         for p in pc2.read_points(msg, field_names = ("x", "y", "z", "intensity"), skip_nans=True):
@@ -268,4 +274,47 @@ class PCLFilterPublisher(PCLPublisher):
             xyzi=xyzi,
             header=msg.header,
         )
+        
+        # stop_time = rospy.get_time()
+        # rospy.logwarn(f"PCLFilterPublisher._callback: Time elapsed: {stop_time-start_time}s")
+        
+        
+class PCLStaticPublisher(PCLPublisher):
+    def __init__(
+        self,
+        pub_topic:str,
+        pub_freq:float,
+        data_dir:str,
+        map_name:str,
+    ):
+        
+        super().__init__(
+            pub_topic=pub_topic,
+            sub_topic=None,
+            sub_topic_msg_type=None,
+        )
+        
+        self.pcl_processor = PCLProcessor()
+        self.color = self.color_floats["w"]
+        
+        pcl_loader = PCLLoader(
+            data_dir=data_dir,
+        )
+        xyz = pcl_loader.loadPCL(
+            filename=map_name,
+        )
+        xyzi = np.concatenate((xyz, np.ones((xyz.shape[0], 1))), axis=1)
+        
+        header = Header()
+        header.frame_id = "map"
+        
+        rate = rospy.Rate(pub_freq)
+        while not rospy.is_shutdown():
+            self._publishPCL(
+                xyzi=xyzi,
+                header=header,
+            )
+            rate.sleep()
+        
+   
         

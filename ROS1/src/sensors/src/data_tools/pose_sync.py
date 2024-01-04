@@ -2,6 +2,7 @@ from rosbag import Bag
 import numpy as np
 import os
 import pandas as pd
+import rospy
 
 from rosbag_wrapper import RosbagWrapper
 
@@ -23,12 +24,16 @@ class PoseSync(RosbagWrapper):
         
     def __call__(
         self,
+        return_msgs:bool,
         times_dict:dict,
+        masks:dict,
     ):
         """
         Sync pose with other sensors.
         Args:
+            return_msgs: whether to return msgs; bool
             times_dict: dictionary with times; dict
+            masks: masks of valid measurements determined by MeasSync; dict of np.array of bools
         returns:
             topics: list of topics; list of str
             msgs: list of msgs; list of list of Odometry msgs
@@ -37,10 +42,12 @@ class PoseSync(RosbagWrapper):
         poses_1_sync, times_1 = self._syncPose(
             stack_id=1,
             times_rs=times_dict["/CAM1/color/image_raw"],
+            mask=masks["CAM1"],
         )
         poses_3_sync, times_3 = self._syncPose(
             stack_id=3,
             times_rs=times_dict["/CAM3/color/image_raw"],
+            mask=masks["CAM3"],
         )
         
         # Save to CSV file
@@ -49,7 +56,7 @@ class PoseSync(RosbagWrapper):
             columns=['time', 'x', 'y', 'z', 'qx', 'qy', 'qz', 'qw'],
             dtype=np.float64,
         ).to_csv(
-            path_or_buf=os.path.join(self.data_dir, 'poses', 'poses_sync1.csv'),
+            path_or_buf=os.path.join(self.data_dir, 'poses', self.poses_name.replace('.csv', '_sync1.csv')),
             index=False,
         )
         pd.DataFrame(
@@ -57,9 +64,12 @@ class PoseSync(RosbagWrapper):
             columns=['time', 'x', 'y', 'z', 'qx', 'qy', 'qz', 'qw'],
             dtype=np.float64,
         ).to_csv(
-            path_or_buf=os.path.join(self.data_dir, 'poses', 'poses_sync3.csv'),
+            path_or_buf=os.path.join(self.data_dir, 'poses', self.poses_name.replace('.csv', '_sync3.csv')),
             index=False,
         )
+        
+        if not return_msgs:
+            return
         
         # Convert to msgs
         msgs_1 = self.poses2msgs(
@@ -80,13 +90,15 @@ class PoseSync(RosbagWrapper):
     def _syncPose(
         self,
         stack_id:int,
-        times_rs:np.array=None ,
+        times_rs:np.array=None,
+        mask:np.array=None,
     ):
         """
         Synchronize poses with camera samples from one sensor stack.
         Args:
             stack_id: id of sensor stack; int
             times_rs: times of camera samples; np.array of floats (N)
+            mask: mask of valid measurements determined by MeasSync; np.array of bools (N)
         Returns:
             poses_sync: synchronized poses; np.array of floats (N,7)
             times_rs: times of camera samples; np.array of floats (N)
@@ -115,6 +127,10 @@ class PoseSync(RosbagWrapper):
             x1=poses[idxs_below],
             x2=poses[idxs_above],
         )
+        
+        if mask is not None:
+            poses_sync = poses_sync[mask]
+            times_rs = times_rs[mask]
         return poses_sync, times_rs
         
     def _findNeighbours(

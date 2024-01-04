@@ -133,13 +133,11 @@ class PCLCreator():
 class PCLCreatorUSS(PCLCreator):
     def __init__(
         self,
-        W:int=64, # changed
-        H:int=64,
     ):
         super().__init__()
         
-        self.W = W
-        self.H = H
+        self.W = 64
+        self.H = 64
         self.directions = self.fovDirections(
             fov_xy=[55, 35],
             W=self.W,
@@ -164,17 +162,13 @@ class PCLCreatorUSS(PCLCreator):
 
     
 class PCLCreatorToF(PCLCreator):
-    def __init__(
-        self,
-        W:int=8, # changed
-        H:int=8,
-    ):
+    def __init__(self):
         super().__init__()
         
         self.directions = self.fovDirections(
             fov_xy=[45, 45],
-            W=W,
-            H=H,
+            W=8,
+            H=8,
         )
         
         self.depth_min = 0.1
@@ -245,6 +239,26 @@ class PCLCreatorRS(PCLCreator):
         depth = depth.reshape(H, W)
         
         return depth
+    
+    
+    
+    
+def test_meas2depth():
+    
+    pcl_creator = PCLCreatorToF()
+    
+    depth = np.zeros((8,8))
+    depth[0,0] = 1
+    depth[0,-1] = 1
+    
+    xyz = pcl_creator.depth2pcl(
+        depth=depth,
+    )
+    
+    print(xyz)
+    
+if __name__ == "__main__":
+    test_meas2depth()
     
 
 

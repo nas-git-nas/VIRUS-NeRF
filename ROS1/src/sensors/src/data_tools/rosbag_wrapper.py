@@ -201,7 +201,7 @@ class RosbagWrapper():
         df_meas:dict,
     ):
         if save_meas or return_msg:
-            img = self.cv_bridge.imgmsg_to_cv2(msg_temp, desired_encoding=msg_temp.encoding)
+            img = self.cv_bridge.imgmsg_to_cv2(msg_temp, desired_encoding="passthrough")
             
         if save_meas:
             folder_name = f"{topic_temp[1:].replace('/', '_')}"
