@@ -335,7 +335,7 @@ class TrainerPlot(TrainerBase):
             nn_dists_inv_lidar = nn_dists_inv_lidar / depth_w_gt_lidar
 
         for i in range(N_down):
-            fig, axes = plt.subplots(ncols=4, nrows=4, figsize=(9,10))
+            fig, axes = plt.subplots(ncols=4, nrows=4, figsize=(10,10))
 
             ax = axes[0,0]
             ax.imshow(scan_imgs_uss[i].swapaxes(0,1), origin='lower', extent=extent)

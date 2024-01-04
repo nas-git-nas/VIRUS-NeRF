@@ -205,13 +205,12 @@ class DatasetETHZ(DatasetBase):
         # load lidar maps in robot coordinate system
         pcl_loader = PCLLoader(
             data_dir=os.path.join(self.args.ethz.dataset_dir, self.args.ethz.room),
-            pcl_dir='lidars/filtered',
         )
         xyzs = []
         for i, f in enumerate(lidar_files):
             # load point cloud
             xyz = pcl_loader.loadPCL(
-                filename=f,
+                filename=os.path.join('lidars/filtered', f),
             ) # (M, 3)
 
             # convert robot coordinate system to world coordinate system
