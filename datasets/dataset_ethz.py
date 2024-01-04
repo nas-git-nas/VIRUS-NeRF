@@ -23,7 +23,6 @@ from datasets.sensor_model import RGBDModel, ToFModel, USSModel
 from args.args import Args
 from training.sampler import Sampler
 from helpers.data_fcts import sensorName2ID, sensorID2Name
-from ROS1.src.sensors.src.pcl_tools.pcl_coordinator import PCLCoordinator
 from ROS1.src.sensors.src.pcl_tools.pcl_loader import PCLLoader
 
 # try:
@@ -206,13 +205,12 @@ class DatasetETHZ(DatasetBase):
         # load lidar maps in robot coordinate system
         pcl_loader = PCLLoader(
             data_dir=os.path.join(self.args.ethz.dataset_dir, self.args.ethz.room),
-            pcl_dir='lidars/filtered',
         )
         xyzs = []
         for i, f in enumerate(lidar_files):
             # load point cloud
             xyz = pcl_loader.loadPCL(
-                filename=f,
+                filename=os.path.join('lidars/filtered', f),
             ) # (M, 3)
 
             # convert robot coordinate system to world coordinate system

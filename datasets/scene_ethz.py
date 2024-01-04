@@ -21,8 +21,7 @@ class SceneETHZ(SceneBase):
             data_dir: path to data directory; str
         """ 
         self.data_dir = data_dir
-        self.pcl_dir = "maps"
-        self.map_name = "map_kiss.pcd"
+        self.map_name = "maps/map_kiss.pcd"
 
         if args.ethz.room == "office":
             self.xyz_min = np.array([-2.0, -1.0, -0.4])
@@ -48,7 +47,6 @@ class SceneETHZ(SceneBase):
         """
         pcl_loader = PCLLoader(
             data_dir=self.data_dir,
-            pcl_dir=self.pcl_dir,
         )
         return pcl_loader.loadPCL(
             filename=self.map_name,

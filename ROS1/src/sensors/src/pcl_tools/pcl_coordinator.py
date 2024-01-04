@@ -80,7 +80,7 @@ class PCLCoordinator():
             return
         
         self.transform = None
-        if
+        if ROSPY_AVAILABLE:
             rospy.logerr(f"ERROR: PCLCoordinator.__init__: source={source} and target={target} not implemented")
         else:
             print(f"ERROR: PCLCoordinator.__init__: source={source} and target={target} not implemented")
