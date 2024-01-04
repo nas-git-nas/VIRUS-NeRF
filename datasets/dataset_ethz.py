@@ -23,7 +23,6 @@ from datasets.sensor_model import RGBDModel, ToFModel, USSModel
 from args.args import Args
 from training.sampler import Sampler
 from helpers.data_fcts import sensorName2ID, sensorID2Name
-from ROS1.src.sensors.src.pcl_tools.pcl_coordinator import PCLCoordinator
 from ROS1.src.sensors.src.pcl_tools.pcl_loader import PCLLoader
 
 # try:
