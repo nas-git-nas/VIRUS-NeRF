@@ -37,7 +37,7 @@ from datasets.ray_utils import get_rays, get_ray_directions
 from datasets.dataset_base import DatasetBase
 from datasets.color_utils import read_image
 from datasets.scene_ethz import SceneETHZ
-
+from datasets.splitter_ethz import SplitterETHZ
 from ROS1.src.sensors.src.pcl_tools.pcl_transformer import PCLTransformer
 from ROS1.src.sensors.src.pcl_tools.pcl_creator import PCLCreatorUSS, PCLCreatorToF
 
@@ -50,10 +50,8 @@ class DatasetETHZ(DatasetBase):
         split:str='train',
         scene:SceneETHZ=None,
     ):
+        self.time_start = None
         
-        self.rng = np.random.RandomState(
-            seed=args.seed,
-        )
 
         super().__init__(
             args=args, 
@@ -72,10 +70,11 @@ class DatasetETHZ(DatasetBase):
             )
 
         # split dataset
-        split_masks = self.splitDataset(
-            data_dir=data_dir,
+        splitter = SplitterETHZ(
+            args=args,
+        )
+        split_masks = splitter.splitDataset(
             split=split,
-            cam_ids=self.args.ethz.cam_ids,
         )
 
         # load camera intrinsics
@@ -194,13 +193,14 @@ class DatasetETHZ(DatasetBase):
 
         # find corresponding lidar file to each sample
         m1, m2 = np.meshgrid(times, lidar_times, indexing='ij')
-        mask = (np.abs(m1-m2) < 1e-1)
+        mask = (np.abs(m1-m2) < 0.05)
         lidar_idxs = np.argmax(mask, axis=1)
         lidar_files = lidar_files[lidar_idxs]
         if self.args.model.debug_mode:
             if not np.all(np.sum(mask, axis=1) == np.ones((mask.shape[0]))):
                 self.args.logger.error(f"DatasetETHZ::getLidarMaps: multiple or no lidar files found for one sample")
-                print(f"num corr: {np.sum(mask, axis=1)}")
+                self.args.logger.error(f"time: {times}")
+                self.args.logger.error(f"lidar_times: {lidar_times[np.where(mask)[1]]}")
 
         # load lidar maps in robot coordinate system
         pcl_loader = PCLLoader(
@@ -224,145 +224,6 @@ class DatasetETHZ(DatasetBase):
             xyzs.append(xyz)
             
         return xyzs, poses
-
-    def splitDataset(
-        self,
-        data_dir:str,
-        split:str,
-        cam_ids:list,
-    ):
-        """
-        Split the dataset into train and test sets.
-        Args:
-            data_dir: path to data directory; str
-            split: split type; str
-            cam_ids: list of camera ids; list of str
-        Returns:
-            split_masks: split of dataset; dict of bool array { sensor type: bool array of shape (N_images,) }
-        """
-        path_description = os.path.join(data_dir, 'split', 'split_description.csv')
-        path_split = os.path.join(data_dir, 'split', 'split.csv')
-        if not os.path.exists(os.path.join(data_dir, 'split')):
-            os.mkdir(os.path.join(data_dir, 'split'))
-        split_ratio = self.args.dataset.split_ratio
-
-        # verify consistendy of dataset length
-        N_sensors = self._verifyDatasetLength(
-            data_dir=data_dir,
-            cam_ids=cam_ids,
-        )
-
-        # load split if it exists already
-        df_description = None
-        if os.path.exists(path_description) and os.path.exists(path_split):    
-            df_description = pd.read_csv(
-                filepath_or_buffer=path_description,
-                dtype={'info':str,'train':float, 'val':float, 'test':float},
-            )
-        
-            # split ratio must be the same as in description (last split)
-            if df_description['train'].values[0]==split_ratio['train'] \
-                and df_description['val'].values[0]==split_ratio['val'] \
-                and df_description['test'].values[0]==split_ratio['test'] \
-                and df_description['keep_N_observations'].values[0] == str(self.args.dataset.keep_N_observations):
-
-                # load split and merge with df
-                df_split = pd.read_csv(
-                    filepath_or_buffer=path_split,
-                    dtype={'split1':str, 'split3':str},
-                )
-
-                # verify if split has same length as dataset
-                if (df_split['split1'].shape[0] == N_sensors['CAM1']) and (df_split['split3'].shape[0] == N_sensors['CAM3']):
-                    split_masks = {}
-                    for cam_id in cam_ids:
-                        id = sensorName2ID(
-                            sensor_name=cam_id,
-                            dataset=self.args.dataset.name,
-                        )
-                        split_values = df_split['split'+str(id)].values
-                        split_valid = (split_values != 'None')
-                        split_masks[cam_id] = (split_values[split_valid] == split)
-                    return split_masks
-                
-        # verify that split ratio is correct
-        if split_ratio['train'] + split_ratio['val'] + split_ratio['test'] != 1.0:
-            self.args.logger.error(f"split ratios do not sum up to 1.0")
-
-        split_arrs = {}
-        split_masks = {}
-        for cam_id in cam_ids:
-            id = sensorName2ID(
-                sensor_name=cam_id,
-                dataset=self.args.dataset.name,
-            )
-            # skip images for testing
-            if self.args.dataset.keep_N_observations != 'all':
-                N_used = self.args.dataset.keep_N_observations // len(cam_ids)
-                if N_used > N_sensors[cam_id]:
-                    self.args.logger.error(f"keep_N_observations is larger than dataset length")
-            else:
-                N_used = N_sensors[cam_id]
-
-            # create new split
-            N_train = int(split_ratio['train']*N_used)
-            N_val = int(split_ratio['val']*N_used)
-            N_test = int(split_ratio['test']*N_used)
-
-            rand_idxs = self.rng.permutation(N_sensors[cam_id])
-            train_idxs = rand_idxs[:N_train]
-            val_idxs = rand_idxs[N_train:N_train+N_val]
-            test_idxs = rand_idxs[N_train+N_val:N_train+N_val+N_test]
-
-            split_arr = N_sensors[cam_id] * ["skip"]
-            for i in train_idxs:
-                split_arr[i] = "train"
-            for i in val_idxs:
-                split_arr[i] = "val"
-            for i in test_idxs:
-                split_arr[i] = "test"
-
-            split_arrs['split'+str(id)] = np.array(split_arr)
-            split_masks['CAM'+str(id)] = (np.array(split_arr) == split)
-
-        N_max = 0
-        for cam_id in cam_ids:
-            N_max = max(N_max, len(split_masks[cam_id]))
-
-        # fill up with None
-        for cam_id in cam_ids:
-            id = sensorName2ID(
-                sensor_name=cam_id,
-                dataset=self.args.dataset.name,
-            )
-            N = len(split_arrs['split'+str(id)])
-            if N < N_max:
-                split_arrs['split'+str(id)] = np.concatenate((split_arrs['split'+str(id)], (N_max-N)*["None"]), axis=0)
-
-        # save split and description
-        pd.DataFrame(
-            data=split_arrs,
-            dtype=str,
-        ).to_csv(
-            path_or_buf=path_split,
-            index=False,
-        )
-        pd.DataFrame(
-            data={
-                'train':split_ratio['train'], 
-                'val':split_ratio['val'], 
-                'test':split_ratio['test'], 
-                'keep_N_observations':str(self.args.dataset.keep_N_observations),
-                'info':"This file contains the split ratios for this dataset. "
-            },
-            index=[0],
-        ).to_csv(
-            path_or_buf=path_description,
-            index=False,
-        )
-
-        return split_masks
-
 
     def readIntrinsics(
         self,
@@ -574,11 +435,9 @@ class DatasetETHZ(DatasetBase):
             )
 
             time = df["time"].to_numpy()
-            time -= time[0]
             time = time[split_masks[cam_id]]
 
             time_lidar = df_lidar["time"].to_numpy()
-            time_lidar -= time_lidar[0]
             time_lidar = time_lidar[split_masks[cam_id]]
 
             # verify time
@@ -618,6 +477,10 @@ class DatasetETHZ(DatasetBase):
             poses_lidar = np.concatenate((poses_lidar, pose_lidar), axis=0) # (N, 3, 4)
             sensor_ids = np.concatenate((sensor_ids, np.ones((pose.shape[0]))*int(cam_id[-1])), axis=0) # (N,)
             times = np.concatenate((times, time), axis=0) # (N,)
+
+        times = self.normalizeTimes(
+            times=times,
+        )
 
         return poses, poses_lidar, sensor_ids, times
     
@@ -739,12 +602,15 @@ class DatasetETHZ(DatasetBase):
             meass_temp = meass_temp[split_masks[cam_id]]
 
             time = df["time"].to_numpy()
-            time -= time[0]
             time = time[split_masks[cam_id]]
 
             meass = np.concatenate((meass, meass_temp), axis=0) # (N,)
             sensor_ids = np.concatenate((sensor_ids, np.ones((meass_temp.shape[0]))*int(cam_id[-1])), axis=0) # (N,)
             times = np.concatenate((times, time), axis=0) # (N,)
+
+        times = self.normalizeTimes(
+            times=times,
+        )
 
         return meass, sensor_ids, times
     
@@ -781,7 +647,6 @@ class DatasetETHZ(DatasetBase):
             )
 
             time = df["time"].to_numpy()
-            time -= time[0]
             time = time[split_masks[cam_id]]
 
             meass_temp = np.zeros((df.shape[0], 64))
@@ -809,6 +674,10 @@ class DatasetETHZ(DatasetBase):
         # im = axs[2].imshow(img3, cmap='jet')
         # fig.colorbar(im, ax=axs[2])
         # plt.show()
+            
+        times = self.normalizeTimes(
+            times=times,
+        )
 
         return meass, meas_stds, sensor_ids, times
     
@@ -1081,55 +950,27 @@ class DatasetETHZ(DatasetBase):
             )
         return depths, stds, sensor_model
     
-    def _verifyDatasetLength(
+    def normalizeTimes(
         self,
-        data_dir:str,
-        cam_ids:list,
+        times:np.ndarray,
     ):
         """
-        Verify that the dataset length is the same for all sensors.
+        Normalize times that it starts with 0.
         Args:
-            data_dir: path to data directory; str
-            cam_ids: list of camera ids; list of str
+            times: time of sample in seconds starting at 0; array of shape (N,)
         Returns:
-            Ns: lengths of measurements per sensor stack; dict of { cam_id: int }
+            times: normalized time; array of shape (N,)
         """
-        Ns = {}
-        for cam_id in cam_ids:
-            N = None # length of dataset
-            id = sensorName2ID(
-                sensor_name=cam_id,
-                dataset=self.args.dataset.name,
-            )
-            df_names = [
-                'measurements/USS'+str(id)+'.csv',
-                'measurements/TOF'+str(id)+'.csv',
-            ]
-            for name in df_names:
-                df = pd.read_csv(
-                    filepath_or_buffer=os.path.join(data_dir, name),
-                    dtype={'time':str, 'meas':np.float32},
-                )
-                if N is None:
-                    N = df.shape[0]
-                elif N != df.shape[0]:
-                    self.args.logger.error(f"DatasetETHZ::_verifyDatasetLength: dataset length "
-                                        + f"is not the same for all sensors!")
-                    return None
-                    
-            dir_names = [
-                'measurements/CAM'+str(id)+'_color_image_raw',
-                'measurements/CAM'+str(id)+'_aligned_depth_to_color_image_raw',
-            ]
-            for name in dir_names:
-                files = os.listdir(os.path.join(data_dir, name))
-                if N != len(files):
-                    self.args.logger.error(f"DatasetETHZ::_verifyDatasetLength: dataset length "
-                                        + f"is not the same for all sensors!")
-                    return None
-            Ns[cam_id] = N
+        times_min = np.min(times)
+        if self.time_start is None:
+            self.time_start = times_min
+        
+        if times_min < self.time_start:
+            self.args.logger.error(f"DatasetETHZ::normalizeTimes: time is not increasing")
 
-        return Ns
+        times -= self.time_start
+        return times
+    
 
     
 

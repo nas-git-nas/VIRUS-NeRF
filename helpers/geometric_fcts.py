@@ -5,7 +5,13 @@ from contextlib import nullcontext
 
 
 
-def findNearestNeighbour(array1, array2, batch_size=None, progress_bar=False, ignore_nan=False):
+def findNearestNeighbour(
+    array1:np.ndarray, 
+    array2:np.ndarray, 
+    batch_size:int=None, 
+    progress_bar:bool=False, 
+    ignore_nan:bool=False,
+):
     """
     Find the closest points in array2 for each point in array1
     and return the indices of array2 for each point in array1.
@@ -69,10 +75,10 @@ def findNearestNeighbour(array1, array2, batch_size=None, progress_bar=False, ig
     return nn_idxs, nn_dists
 
 def createScanRays(
-        rays_o:torch.Tensor,
-        res_angular:int,
-        h_tol_c:float,
-        num_avg_heights:int,
+    rays_o:torch.Tensor,
+    res_angular:int,
+    h_tol_c:float,
+    num_avg_heights:int,
 ):
     """
     Create scan rays for gievn image indices.
@@ -114,13 +120,13 @@ def createScanRays(
     return rays_o_avg.reshape(-1, 3), rays_d_avg.reshape(-1, 3) # (N*M*A, 3), (N*M*A, 3)
 
 def createScanPos(
-        res_map:int,
-        height_c:float,
-        num_avg_heights:int,
-        tolerance_c:float,
-        cube_min:float,
-        cube_max:float,
-        device:str,
+    res_map:int,
+    height_c:float,
+    num_avg_heights:int,
+    tolerance_c:float,
+    cube_min:float,
+    cube_max:float,
+    device:str,
 ):
     """
     Create map positions to evaluate density for different heights.

@@ -2,6 +2,7 @@ import glob
 import os
 import time
 import tqdm
+import sys
 
 import warnings
 
@@ -824,6 +825,180 @@ class Trainer(TrainerPlot):
             num_test_pts=num_test_pts,
         )
         return metrics_dict, data_w
+
+    def _evaluateDepth(
+        self,
+        img_idxs:np.array,
+    ):
+        """
+        Sample points from NeRF and evaluate depth error.
+        Args:
+            img_idxs: image indices; array of int (N,)
+            pos_gt: ground truth positions; array of shape (N*M, 3)
+        """
+        metrics_dict = {}
+        data_dict = {}
+        for sensor in self.args.eval.sensors:
+            # get data for evaluation
+            rays_o, rays_d, depths = self._getEvaluationData(
+                img_idxs=img_idxs,
+                sensor=sensor,
+            ) # (N*K, 3), (N*K, 3), (N*K,)
+
+            # convert depth to positions: 3D -> 2D space
+            pos, pos_o = self.test_dataset.scene.depth2pos(
+                depth=depths,
+                rays_o=rays_o,
+                rays_d=rays_d,
+            ) # (N*K, 2), (N*K, 2)
+
+            data_dict[sensor] = {
+                'pos': pos,
+                'pos_o': pos_o,
+                'depths': depths,
+            }
+
+            if sensor == "GT":
+                continue
+
+            # calculate metrics
+            nn_dists, mnn_zones = self.metrics.nn(
+                pos=pos,
+                pos_ref=data_dict["GT"]["pos"],
+                depths_ref=data_dict["GT"]["depths"],
+                num_points=img_idxs.shape[0],
+                ref_pos_is_gt=True,
+            ) # (N*K,), (N*K,)
+            nn_dists_inv, mnn_zones_inv = self.metrics.nn(
+                pos=data_dict["GT"]["pos"],
+                pos_ref=pos,
+                depths_ref=data_dict["GT"]["depths"],
+                num_points=img_idxs.shape[0],
+                ref_pos_is_gt=False,
+            ) # (N*M,), (N*M,)
+
+            metrics_dict[sensor] = {
+                'nn_dists': nn_dists,
+                'nn_dists_inv': nn_dists_inv,
+                'mnn_zones': mnn_zones,
+                'mnn_zones_inv': mnn_zones_inv,
+            }
+            
+    def _getEvaluationData(
+        self,
+        img_idxs:np.array,
+        sensor:str,
+    ):
+        """
+        Get evaluation data.
+        Args:
+            img_idxs: image indices; array of int (N,)
+            sensor: sensor name; str
+        Returns:
+            rays_o: ray origins; array of shape (N*M, 3)
+            rays_d: ray directions; array of shape (N*M, 3)
+            depth: depth; array of shape (N*M,)
+        """
+        if sensor == "GT":
+            return self._getEvaluationDataGT(
+                img_idxs=img_idxs,
+            )
+        elif sensor == "NeRF":
+            return self._getEvaluationDataNeRF(
+                img_idxs=img_idxs,
+            )
+        elif sensor == "LiDAR":
+            return self._getEvaluationDataLiDAR(
+                img_idxs=img_idxs,
+            )
+        elif sensor == "ToF":
+            return self._getEvaluationDataToF(
+                img_idxs=img_idxs,
+            )
+        elif sensor == "USS":
+            return self._getEvaluationDataUSS(
+                img_idxs=img_idxs,
+            )
+        else:
+            self.args.logger.error(f"sensor {sensor} not implemented")
+            sys.exit()
+
+
+    def _getEvaluationDataGT(
+        self,
+        img_idxs:np.array,
+    ):
+        """
+        Get evaluation data for ground truth.
+        Args:
+            img_idxs: image indices; array of int (N,)
+        Returns:
+            rays_o: ray origins; array of shape (N*M, 3)
+            rays_d: ray directions; array of shape (N*M, 3)
+            depth: depth; array of shape (N*M,)
+        """
+        pass
+
+    def _getEvaluationDataNeRF(
+        self,
+        img_idxs:np.array,
+    ):
+        """
+        Get evaluation data for NeRF.
+        Args:
+            img_idxs: image indices; array of int (N,)
+        Returns:
+            rays_o: ray origins; array of shape (N*M, 3)
+            rays_d: ray directions; array of shape (N*M, 3)
+            depth: depth; array of shape (N*M,)
+        """
+        pass
+
+    def _getEvaluationDataLiDAR(
+        self,
+        img_idxs:np.array,
+    ):
+        """
+        Get evaluation data for LiDAR.
+        Args:
+            img_idxs: image indices; array of int (N,)
+        Returns:
+            rays_o: ray origins; array of shape (N*M, 3)
+            rays_d: ray directions; array of shape (N*M, 3)
+            depth: depth; array of shape (N*M,)
+        """
+        pass
+
+    def _getEvaluationDataToF(
+        self,
+        img_idxs:np.array,
+    ):
+        """
+        Get evaluation data for ToF sensor.
+        Args:
+            img_idxs: image indices; array of int (N,)
+        Returns:
+            rays_o: ray origins; array of shape (N*M, 3)
+            rays_d: ray directions; array of shape (N*M, 3)
+            depth: depth; array of shape (N*M,)
+        """
+        pass
+
+    def _getEvaluationDataUSS(
+        self,
+        img_idxs:np.array,
+    ):
+        """
+        Get evaluation data for USS sensor.
+        Args:
+            img_idxs: image indices; array of int (N,)
+        Returns:
+            rays_o: ray origins; array of shape (N*M, 3)
+            rays_d: ray directions; array of shape (N*M, 3)
+            depth: depth; array of shape (N*M,)
+        """
+        pass
+
 
     
     

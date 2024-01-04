@@ -334,6 +334,62 @@ class SceneBase():
                                   scan_depth[val_idxs] * np.sin(scan_angles[val_idxs])), axis=1)
         pos[val_idxs] += rays_o[val_idxs,:2] # (N, 2)
         return pos
+    
+    def direction2angle(
+        self,
+        rays_d:np.array
+    ):
+        """
+        Convert direction to angles.
+        Args:
+            rays_d: direction of scan rays; numpy array of shape (N, 2)
+        Returns:
+            angles: angles of scan rays; numpy array of shape (N,)
+        """
+        return np.arctan2(rays_d[:,1], rays_d[:,0])
+    
+    def collapseRays(
+        self, 
+        rays_o:np.array,
+        rays_d:np.array,
+        depths:np.array,
+    ):
+        """
+        Convert 3D rays to 2D rays. Verify that all rays are in the same plane.
+        Args:
+            rays_o: origin of scan rays; numpy array of shape (N, 3)
+            rays_d: direction of scan rays; numpy array of shape (N, 3)
+            depths: depth values of scan rays; numpy array of shape (N,)
+        Returns:
+            pos: origin of scan rays; numpy array of shape (N, 2)
+            angles: direction of scan rays; numpy array of shape (N, 2)
+        """
+        pos = 
+
+    def collapsePos(
+        self, 
+        pos:np.array
+    ):
+        """
+        Convert 3D positions to 2D positions. Verify that all positions are in the same plane.
+        Args:
+            pos: position; numpy array of shape (N, 3)
+        Returns:
+            pos: position; numpy array of shape (N, 3)
+        """
+        height_max = np.nanmax(pos[:,2])
+        height_min = np.nanmin(pos[:,2])
+        height_mean = np.nanmean(pos[:,2])
+
+        if (height_max - height_mean) > self.args.eval.height_tolerance:
+            self.args.logger.error(f"height_max - height_mean = {height_max - height_mean} > height_tolerance = {self.args.eval.height_tolerance}!")
+        if (height_mean - height_min) > self.args.eval.height_tolerance:
+            self.args.logger.error(f"height_mean - height_min = {height_mean - height_min} > height_tolerance = {self.args.eval.height_tolerance}!")
+        
+        pos[:,2] = height_mean
+        return pos
+    
+    def verifyHeight
 
     def _calcScanRays(
         self, 

@@ -81,6 +81,8 @@ class HParamsEvaluation(HParams):
         self.height_tolerance = None
         self.density_map_thr = None
         self.min_valid_depth = None
+        self.zones = None
+        self.sensors = None
         self.plot_results = None
 
         HParams.__init__(self, name="evaluation")
