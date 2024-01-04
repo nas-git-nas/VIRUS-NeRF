@@ -22,13 +22,16 @@ class SceneETHZ(SceneBase):
         """ 
         self.data_dir = data_dir
         self.pcl_dir = "maps"
+        self.map_name = "map_kiss.pcd"
 
-        if args.ethz.room == "office_2":
+        if args.ethz.room == "office":
             self.xyz_min = np.array([-2.0, -1.0, -0.4])
             self.xyz_max = np.array([6.0, 8.0, 1.2])
-        elif args.ethz.room == "medium_2":
+        elif args.ethz.room == "commonroom":
             self.xyz_min = np.array([-3.0, -3.0, -0.4])
             self.xyz_max = np.array([15.0, 9.0, 1.2])
+        else:
+            self.args.logger.error("Invalid room name.")
 
         SceneBase.__init__(
             self, 
@@ -47,7 +50,9 @@ class SceneETHZ(SceneBase):
             data_dir=self.data_dir,
             pcl_dir=self.pcl_dir,
         )
-        return pcl_loader.loadLatestPCL()
+        return pcl_loader.loadPCL(
+            filename=self.map_name,
+        )
     
     def _defineParams(self):
         """

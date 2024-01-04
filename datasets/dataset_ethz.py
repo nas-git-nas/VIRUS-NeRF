@@ -73,9 +73,10 @@ class DatasetETHZ(DatasetBase):
             )
 
         # split dataset
-        split_mask = self.splitDataset(
+        split_masks = self.splitDataset(
             data_dir=data_dir,
             split=split,
+            cam_ids=self.args.ethz.cam_ids,
         )
 
         # load camera intrinsics
@@ -90,7 +91,7 @@ class DatasetETHZ(DatasetBase):
             data_dir=data_dir,
             cam_ids=self.args.ethz.cam_ids,
             img_wh=img_wh,
-            split_mask=split_mask,
+            split_masks=split_masks,
             directions_dict=directions_dict,
         )
 
@@ -170,7 +171,7 @@ class DatasetETHZ(DatasetBase):
             xyzs: list of point clouds; list of length N of numpy arrays of shape (M, 3)
             poses: poses in world coordinates; list of numpy arrays of shape (N, 3, 4)
         """
-        lidar_dir = os.path.join(self.args.ethz.dataset_dir, self.args.ethz.room, 'lidars/sync')
+        lidar_dir = os.path.join(self.args.ethz.dataset_dir, self.args.ethz.room, 'lidars/filtered')
 
         poses = self.poses_lidar.clone().detach().cpu().numpy() # (N, 3, 4)
         times = self.times.clone().detach().cpu().numpy() # (N,)
@@ -205,7 +206,7 @@ class DatasetETHZ(DatasetBase):
         # load lidar maps in robot coordinate system
         pcl_loader = PCLLoader(
             data_dir=os.path.join(self.args.ethz.dataset_dir, self.args.ethz.room),
-            pcl_dir='lidars/sync',
+            pcl_dir='lidars/filtered',
         )
         xyzs = []
         for i, f in enumerate(lidar_files):
@@ -230,14 +231,16 @@ class DatasetETHZ(DatasetBase):
         self,
         data_dir:str,
         split:str,
+        cam_ids:list,
     ):
         """
         Split the dataset into train and test sets.
         Args:
             data_dir: path to data directory; str
             split: split type; str
+            cam_ids: list of camera ids; list of str
         Returns:
-            split: split of dataset; bool array of shape (N,)
+            split_masks: split of dataset; dict of bool array { sensor type: bool array of shape (N_images,) }
         """
         path_description = os.path.join(data_dir, 'split', 'split_description.csv')
         path_split = os.path.join(data_dir, 'split', 'split.csv')
@@ -246,8 +249,9 @@ class DatasetETHZ(DatasetBase):
         split_ratio = self.args.dataset.split_ratio
 
         # verify consistendy of dataset length
-        N_dataset = self._verifyDatasetLength(
+        N_sensors = self._verifyDatasetLength(
             data_dir=data_dir,
+            cam_ids=cam_ids,
         )
 
         # load split if it exists already
@@ -267,48 +271,79 @@ class DatasetETHZ(DatasetBase):
                 # load split and merge with df
                 df_split = pd.read_csv(
                     filepath_or_buffer=path_split,
-                    dtype={'split':str},
+                    dtype={'split1':str, 'split3':str},
                 )
 
                 # verify if split has same length as dataset
-                if df_split.shape[0] == N_dataset:
-                    return (df_split["split"].values == split)
+                if (df_split['split1'].shape[0] == N_sensors['CAM1']) and (df_split['split3'].shape[0] == N_sensors['CAM3']):
+                    split_masks = {}
+                    for cam_id in cam_ids:
+                        id = sensorName2ID(
+                            sensor_name=cam_id,
+                            dataset=self.args.dataset.name,
+                        )
+                        split_values = df_split['split'+str(id)].values
+                        split_valid = (split_values != 'None')
+                        split_masks[cam_id] = (split_values[split_valid] == split)
+                    return split_masks
                 
         # verify that split ratio is correct
         if split_ratio['train'] + split_ratio['val'] + split_ratio['test'] != 1.0:
             self.args.logger.error(f"split ratios do not sum up to 1.0")
 
-        # skip images for testing
-        if self.args.dataset.keep_N_observations != 'all':
-            N_used = self.args.dataset.keep_N_observations
-            if N_used > N_dataset:
-                self.args.logger.error(f"keep_N_observations is larger than dataset length")
-        else:
-            N_used = N_dataset
+        split_arrs = {}
+        split_masks = {}
+        for cam_id in cam_ids:
+            id = sensorName2ID(
+                sensor_name=cam_id,
+                dataset=self.args.dataset.name,
+            )
+            # skip images for testing
+            if self.args.dataset.keep_N_observations != 'all':
+                N_used = self.args.dataset.keep_N_observations // len(cam_ids)
+                if N_used > N_sensors[cam_id]:
+                    self.args.logger.error(f"keep_N_observations is larger than dataset length")
+            else:
+                N_used = N_sensors[cam_id]
 
-        # create new split
-        N_train = int(split_ratio['train']*N_used)
-        N_val = int(split_ratio['val']*N_used)
-        N_test = int(split_ratio['test']*N_used)
+            # create new split
+            N_train = int(split_ratio['train']*N_used)
+            N_val = int(split_ratio['val']*N_used)
+            N_test = int(split_ratio['test']*N_used)
 
-        rand_idxs = self.rng.permutation(N_dataset)
-        train_idxs = rand_idxs[:N_train]
-        val_idxs = rand_idxs[N_train:N_train+N_val]
-        test_idxs = rand_idxs[N_train+N_val:N_train+N_val+N_test]
+            rand_idxs = self.rng.permutation(N_sensors[cam_id])
+            train_idxs = rand_idxs[:N_train]
+            val_idxs = rand_idxs[N_train:N_train+N_val]
+            test_idxs = rand_idxs[N_train+N_val:N_train+N_val+N_test]
 
-        split_arr = N_dataset * ["skip"]
-        for i in train_idxs:
-            split_arr[i] = "train"
-        for i in val_idxs:
-            split_arr[i] = "val"
-        for i in test_idxs:
-            split_arr[i] = "test"
-        split_arr = np.array(split_arr)
+            split_arr = N_sensors[cam_id] * ["skip"]
+            for i in train_idxs:
+                split_arr[i] = "train"
+            for i in val_idxs:
+                split_arr[i] = "val"
+            for i in test_idxs:
+                split_arr[i] = "test"
+
+            split_arrs['split'+str(id)] = np.array(split_arr)
+            split_masks['CAM'+str(id)] = (np.array(split_arr) == split)
+
+        N_max = 0
+        for cam_id in cam_ids:
+            N_max = max(N_max, len(split_masks[cam_id]))
+
+        # fill up with None
+        for cam_id in cam_ids:
+            id = sensorName2ID(
+                sensor_name=cam_id,
+                dataset=self.args.dataset.name,
+            )
+            N = len(split_arrs['split'+str(id)])
+            if N < N_max:
+                split_arrs['split'+str(id)] = np.concatenate((split_arrs['split'+str(id)], (N_max-N)*["None"]), axis=0)
 
         # save split and description
         pd.DataFrame(
-            data=split_arr,
-            columns=["split"],
+            data=split_arrs,
             dtype=str,
         ).to_csv(
             path_or_buf=path_split,
@@ -328,7 +363,7 @@ class DatasetETHZ(DatasetBase):
             index=False,
         )
 
-        return (split_arr == split)
+        return split_masks
 
 
     def readIntrinsics(
@@ -384,7 +419,7 @@ class DatasetETHZ(DatasetBase):
         data_dir:str,
         cam_ids:list,
         img_wh:tuple,
-        split_mask:np.array,
+        split_masks:dict,
         directions_dict:dict,
     ):
         """
@@ -393,7 +428,7 @@ class DatasetETHZ(DatasetBase):
             data_dir: path to data directory; str
             cam_ids: list of camera ids; list of str
             img_wh: image width and height; tuple of ints
-            split_mask: mask of split; bool array of shape (N,)
+            split_mask: mask of splits; dict of { sensor type: bool array of shape (N_all_splits,) }
             directions_dict: ray directions; dict of { sensor type: array of shape (N_images, H*W, 3) }
         Returns:
             poses: camera poses; array of shape (N_images, 3, 4)
@@ -408,7 +443,7 @@ class DatasetETHZ(DatasetBase):
         poses, poses_lidar, sensor_ids, times = self._readPoses(
             data_dir=data_dir,
             cam_ids=cam_ids,
-            split_mask=split_mask,
+            split_masks=split_masks,
         ) # (N, 3, 4),  (N, 3, 4), (N,), (N,)
         poses = self._convertPoses(
             poses=poses,
@@ -422,7 +457,7 @@ class DatasetETHZ(DatasetBase):
             data_dir=data_dir,
             cam_ids=cam_ids,
             img_wh=img_wh,
-            split_mask=split_mask,
+            split_masks=split_masks,
         ) # (N, H*W, 3), (N,)
         if self.args.model.debug_mode:
             if not np.all(sensor_ids == rgbs_sensor_ids):
@@ -440,7 +475,7 @@ class DatasetETHZ(DatasetBase):
                 data_dir=data_dir,
                 cam_ids=cam_ids,
                 img_wh=img_wh,
-                split_mask=split_mask,
+                split_masks=split_masks,
             )
             if self.args.model.debug_mode and not np.all(sensor_ids == rgbs_sensor_ids):
                 self.args.logger.error(f"DatasetETHZ::read_meta: stack ids do not match")
@@ -458,7 +493,7 @@ class DatasetETHZ(DatasetBase):
             uss_meass, uss_sensor_ids, times = self._readUSS(
                 data_dir=data_dir,
                 cam_ids=cam_ids,
-                split_mask=split_mask,
+                split_masks=split_masks,
             ) # (N,), (N,)
             if self.args.model.debug_mode:
                 if not np.all(sensor_ids == uss_sensor_ids):
@@ -478,7 +513,7 @@ class DatasetETHZ(DatasetBase):
             tof_meass, tof_meas_stds, tof_sensor_ids, times = self._readToF(
                 data_dir=data_dir,
                 cam_ids=cam_ids,
-                split_mask=split_mask,
+                split_masks=split_masks,
             ) # (N, 64), (N, 64), (N,)
             if self.args.model.debug_mode:
                 if not np.all(sensor_ids == tof_sensor_ids):
@@ -508,14 +543,14 @@ class DatasetETHZ(DatasetBase):
         self,
         data_dir:str,
         cam_ids:list,
-        split_mask:np.array,
+        split_masks:dict,
     ):
         """
         Read poses from the dataset for each camera.
         Args:
             cam_ids: list of camera ids; list of str
             data_dir: path to data directory; str
-            split_mask: mask of split; bool array of shape (N_all_splits,)
+            split_masks: mask of split; bool array of shape (N_all_splits,)
         Returns:
             poses: camera poses; array of shape (N, 3, 4)
             poses_lidar: lidar poses; array of shape (N, 3, 4)
@@ -532,35 +567,35 @@ class DatasetETHZ(DatasetBase):
                 dataset=self.args.dataset.name,
             )
             df = pd.read_csv(
-                filepath_or_buffer=os.path.join(data_dir, 'poses', 'poses_sync'+str(id)+'_cam_robot.csv'),
+                filepath_or_buffer=os.path.join(data_dir, 'poses', 'poses_cam_sync'+str(id)+'.csv'),
                 dtype=np.float64,
             )
             df_lidar = pd.read_csv(
-                filepath_or_buffer=os.path.join(data_dir, 'poses', 'poses_sync'+str(id)+'.csv'),
+                filepath_or_buffer=os.path.join(data_dir, 'poses', 'poses_lidar_sync'+str(id)+'.csv'),
                 dtype=np.float64,
             )
 
             time = df["time"].to_numpy()
             time -= time[0]
-            time = time[split_mask]
+            time = time[split_masks[cam_id]]
 
             time_lidar = df_lidar["time"].to_numpy()
             time_lidar -= time_lidar[0]
-            time_lidar = time_lidar[split_mask]
+            time_lidar = time_lidar[split_masks[cam_id]]
 
             # verify time
             if self.args.model.debug_mode:
-                if (times.shape[0] > 0) and (not np.allclose(time, times[:len(time)], atol=1e-1)):
-                    self.args.logger.error(f"DatasetETHZ::_readPoses: time is not consistent")
-                    print(f"time: {time}")
-                    print(f"times: {times[:]}")
+                # if (times.shape[0] > 0) and (not np.allclose(time, times[:len(time)], atol=1e-1)):
+                #     self.args.logger.error(f"DatasetETHZ::_readPoses: time is not consistent")
+                #     print(f"time: {time}")
+                #     print(f"times: {times[:]}")
                 if not np.allclose(time, time_lidar, atol=1e-6):
                     self.args.logger.error(f"DatasetETHZ::_readPoses: time_lidar is not consistent")
                     print(f"time: {time}")
                     print(f"time_lidar: {time_lidar}")
 
-            pose = np.zeros((np.sum(split_mask), 3, 4))
-            for i, pose_i in enumerate(np.arange(df.shape[0])[split_mask]):
+            pose = np.zeros((np.sum(split_masks[cam_id]), 3, 4))
+            for i, pose_i in enumerate(np.arange(df.shape[0])[split_masks[cam_id]]):
                 trans = PCLTransformer(
                     t=[df["x"][pose_i], df["y"][pose_i], df["z"][pose_i]],
                     q=[df["qx"][pose_i], df["qy"][pose_i], df["qz"][pose_i], df["qw"][pose_i]],
@@ -570,8 +605,8 @@ class DatasetETHZ(DatasetBase):
                 ) # (4, 4)
                 pose[i] = T[:3,:] # (3, 4)
 
-            pose_lidar = np.zeros((np.sum(split_mask), 3, 4))
-            for i, pose_i in enumerate(np.arange(df_lidar.shape[0])[split_mask]):
+            pose_lidar = np.zeros((np.sum(split_masks[cam_id]), 3, 4))
+            for i, pose_i in enumerate(np.arange(df_lidar.shape[0])[split_masks[cam_id]]):
                 trans = PCLTransformer(
                     t=[df_lidar["x"][pose_i], df_lidar["y"][pose_i], df_lidar["z"][pose_i]],
                     q=[df_lidar["qx"][pose_i], df_lidar["qy"][pose_i], df_lidar["qz"][pose_i], df_lidar["qw"][pose_i]],
@@ -593,7 +628,7 @@ class DatasetETHZ(DatasetBase):
         data_dir:str,
         cam_ids:list,
         img_wh:tuple,
-        split_mask:np.array,
+        split_masks:dict,
     ):
         """
         Read color images from the dataset for each camera.
@@ -601,7 +636,7 @@ class DatasetETHZ(DatasetBase):
             cam_ids: list of camera ids; list of str
             data_dir: path to data directory; str
             img_wh: image width and height; tuple of ints
-            split_mask: mask of split; bool array of shape (N_all_splits,)
+            split_mask: mask of splits; dict of { sensor type: bool array of shape (N_all_splits,) }
         Returns:
             rgbs_dict: color images; array of shape (N, H*W, 3)
             sensor_ids: stack identity number of sample; array of shape (N,)
@@ -612,8 +647,8 @@ class DatasetETHZ(DatasetBase):
         sensor_ids = np.zeros((0))
         for cam_id in cam_ids:
             rgb_path = os.path.join(data_dir, 'measurements/'+cam_id+'_color_image_raw') 
-            rgb_files = np.array(['img'+str(i)+'.png' for i in range(split_mask.shape[0])])
-            rgb_files = rgb_files[split_mask]
+            rgb_files = np.array(['img'+str(i)+'.png' for i in range(split_masks[cam_id].shape[0])])
+            rgb_files = rgb_files[split_masks[cam_id]]
 
             rgbs_temp = np.zeros((len(rgb_files), H*W, 3))
             for i, f in enumerate(rgb_files):
@@ -636,7 +671,7 @@ class DatasetETHZ(DatasetBase):
         data_dir:str,
         cam_ids:list,
         img_wh:tuple,
-        split_mask:np.array,
+        split_masks:dict,
     ):
         """
         Read depth images from the dataset for each camera.
@@ -644,7 +679,7 @@ class DatasetETHZ(DatasetBase):
             cam_ids: list of camera ids; list of str
             data_dir: path to data directory; str
             img_wh: image width and height; tuple of ints
-            split_mask: mask of split; bool array of shape (N_all_splits,)
+            split_masks: mask of splits; dict of { sensor type: bool array }
         Returns:
             depths: depth images; array of shape (N, H*W)
             sensor_ids: stack identity number of sample; array of shape (N,)
@@ -655,8 +690,8 @@ class DatasetETHZ(DatasetBase):
         sensor_ids = np.zeros((0))
         for cam_id in cam_ids:
             depth_path = os.path.join(data_dir, 'measurements/'+cam_id+'_aligned_depth_to_color_image_raw')
-            depth_files = np.array(['img'+str(i)+'.npy' for i in range(split_mask.shape[0])])
-            depth_files = depth_files[split_mask]
+            depth_files = np.array(['img'+str(i)+'.npy' for i in range(split_masks[cam_id].shape[0])])
+            depth_files = depth_files[split_masks[cam_id]]
 
             depths_temp = np.zeros((len(depth_files), H*W))
             for i, f in enumerate(depth_files):
@@ -678,14 +713,14 @@ class DatasetETHZ(DatasetBase):
         self,
         data_dir:str,
         cam_ids:list,
-        split_mask:np.array,
+        split_masks:dict,
     ):
         """
         Read USS measurements from the dataset for each camera.
         Args:
             cam_ids: list of camera ids; list of str
             data_dir: path to data directory; str
-            split_mask: mask of split; bool array of shape (N_all_splits,)
+            split_massk: mask of splits; dict of { sensor type: bool array }
         Returns:
             meass: USS measurements; array of shape (N_images,)
             sensor_ids: stack identity number of sample; array of shape (N_images,)
@@ -703,11 +738,11 @@ class DatasetETHZ(DatasetBase):
                 dtype=np.float64,
             )
             meass_temp = df["meas"].to_numpy()
-            meass_temp = meass_temp[split_mask]
+            meass_temp = meass_temp[split_masks[cam_id]]
 
             time = df["time"].to_numpy()
             time -= time[0]
-            time = time[split_mask]
+            time = time[split_masks[cam_id]]
 
             meass = np.concatenate((meass, meass_temp), axis=0) # (N,)
             sensor_ids = np.concatenate((sensor_ids, np.ones((meass_temp.shape[0]))*int(cam_id[-1])), axis=0) # (N,)
@@ -719,14 +754,14 @@ class DatasetETHZ(DatasetBase):
         self,
         data_dir:str,
         cam_ids:list,
-        split_mask:np.array,
+        split_masks:dict,
     ):
         """
         Read Tof measurements from the dataset for each camera.
         Args:
             cam_ids: list of camera ids; list of str
             data_dir: path to data directory; str
-            split_mask: mask of split; bool array of shape (N_all_splits,)
+            split_masks: mask of splits; dict of { sensor type: bool array }
         Returns:
             meass: USS measurements; array of shape (N_images, 64)
             meas_stds: USS measurements; array of shape (N_images, 64)
@@ -749,7 +784,7 @@ class DatasetETHZ(DatasetBase):
 
             time = df["time"].to_numpy()
             time -= time[0]
-            time = time[split_mask]
+            time = time[split_masks[cam_id]]
 
             meass_temp = np.zeros((df.shape[0], 64))
             stds = np.zeros((df.shape[0], 64))
@@ -757,8 +792,8 @@ class DatasetETHZ(DatasetBase):
                 meass_temp[:,i] = df["meas_"+str(i)].to_numpy()
                 stds[:,i] = df["stds_"+str(i)].to_numpy()
             
-            meass_temp = meass_temp[split_mask]
-            stds = stds[split_mask]
+            meass_temp = meass_temp[split_masks[cam_id]]
+            stds = stds[split_masks[cam_id]]
 
             meass = np.concatenate((meass, meass_temp), axis=0) # (N, 64)
             meas_stds = np.concatenate((meas_stds, stds), axis=0)
@@ -1051,47 +1086,52 @@ class DatasetETHZ(DatasetBase):
     def _verifyDatasetLength(
         self,
         data_dir:str,
+        cam_ids:list,
     ):
         """
         Verify that the dataset length is the same for all sensors.
         Args:
             data_dir: path to data directory; str
+            cam_ids: list of camera ids; list of str
         Returns:
-            N: length of dataset; int
+            Ns: lengths of measurements per sensor stack; dict of { cam_id: int }
         """
-        N = None # length of dataset
-
-        df_names = [
-            'measurements/USS1.csv',
-            'measurements/USS3.csv',
-            'measurements/TOF1.csv',
-            'measurements/TOF3.csv',
-        ]
-        for name in df_names:
-            df = pd.read_csv(
-                filepath_or_buffer=os.path.join(data_dir, name),
-                dtype={'time':str, 'meas':np.float32},
+        Ns = {}
+        for cam_id in cam_ids:
+            N = None # length of dataset
+            id = sensorName2ID(
+                sensor_name=cam_id,
+                dataset=self.args.dataset.name,
             )
-            if N is None:
-                N = df.shape[0]
-            elif N != df.shape[0]:
-                self.args.logger.error(f"DatasetETHZ::_verifyDatasetLength: dataset length "
-                                       + f"is not the same for all sensors!")
-                return None
-                
-        dir_names = [
-            'measurements/CAM1_color_image_raw',
-            'measurements/CAM3_color_image_raw',
-            'measurements/CAM1_aligned_depth_to_color_image_raw',
-            'measurements/CAM3_aligned_depth_to_color_image_raw',
-        ]
-        for name in dir_names:
-            files = os.listdir(os.path.join(data_dir, name))
-            if N != len(files):
-                self.args.logger.error(f"DatasetETHZ::_verifyDatasetLength: dataset length "
-                                       + f"is not the same for all sensors!")
-                return None
-        return N
+            df_names = [
+                'measurements/USS'+str(id)+'.csv',
+                'measurements/TOF'+str(id)+'.csv',
+            ]
+            for name in df_names:
+                df = pd.read_csv(
+                    filepath_or_buffer=os.path.join(data_dir, name),
+                    dtype={'time':str, 'meas':np.float32},
+                )
+                if N is None:
+                    N = df.shape[0]
+                elif N != df.shape[0]:
+                    self.args.logger.error(f"DatasetETHZ::_verifyDatasetLength: dataset length "
+                                        + f"is not the same for all sensors!")
+                    return None
+                    
+            dir_names = [
+                'measurements/CAM'+str(id)+'_color_image_raw',
+                'measurements/CAM'+str(id)+'_aligned_depth_to_color_image_raw',
+            ]
+            for name in dir_names:
+                files = os.listdir(os.path.join(data_dir, name))
+                if N != len(files):
+                    self.args.logger.error(f"DatasetETHZ::_verifyDatasetLength: dataset length "
+                                        + f"is not the same for all sensors!")
+                    return None
+            Ns[cam_id] = N
+
+        return Ns
 
     
 

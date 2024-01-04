@@ -68,7 +68,7 @@
     "ethz":
     {
         "dataset_dir": "../ETHZDataset",
-        "room": "office_2",
+        "room": "office",
         "cam_ids": ["CAM1", "CAM3"]
     },
     "RH2":
