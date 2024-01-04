@@ -1,6 +1,10 @@
 import numpy as np
 import copy
-import rospy
+try:
+    import rospy
+    ROSPY_AVAILABLE = True
+except:
+    ROSPY_AVAILABLE = False
 import pandas as pd
 import os
 
@@ -76,7 +80,10 @@ class PCLCoordinator():
             return
         
         self.transform = None
-        rospy.logerr(f"ERROR: PCLCoordinator.__init__: source={source} and target={target} not implemented")
+        if
+            rospy.logerr(f"ERROR: PCLCoordinator.__init__: source={source} and target={target} not implemented")
+        else:
+            print(f"ERROR: PCLCoordinator.__init__: source={source} and target={target} not implemented")
         
     def transformCoordinateSystem(
         self,
@@ -115,14 +122,21 @@ class PCLCoordinator():
             trans: transform from camera to map coordinate system; PCLTransformer
         """
         if time is None:
-            rospy.logerr(f"ERROR: PCLCoordinator._lookupTransform: time={time} not given")
+            if ROSPY_AVAILABLE:
+                rospy.logerr(f"ERROR: PCLCoordinator._lookupTransform: time={time} not given")
+            else:
+                print(f"ERROR: PCLCoordinator._lookupTransform: time={time} not given")
         
         mask = np.abs(self.df_lookup_table['time'] - time) < 1e-4
         if np.sum(mask) != 1:
-            rospy.logerr(f"ERROR: PCLCoordinator._lookupTransform: time={time} not found in lookup table: np.sum(mask)={np.sum(mask)}")
             error = np.abs(self.df_lookup_table['time'] - time)
             error_min = np.min(error)
-            rospy.logerr(f"ERROR: PCLCoordinator._lookupTransform: min error={error_min}")
+            if ROSPY_AVAILABLE:
+                rospy.logerr(f"ERROR: PCLCoordinator._lookupTransform: time={time} not found in lookup table: np.sum(mask)={np.sum(mask)}")
+                rospy.logerr(f"ERROR: PCLCoordinator._lookupTransform: min error={error_min}")
+            else:
+                print(f"ERROR: PCLCoordinator._lookupTransform: time={time} not found in lookup table: np.sum(mask)={np.sum(mask)}")
+                print(f"ERROR: PCLCoordinator._lookupTransform: min error={error_min}")
             
         row = self.df_lookup_table.loc[mask]        
         trans = PCLTransformer(
