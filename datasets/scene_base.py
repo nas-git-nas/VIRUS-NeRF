@@ -312,28 +312,99 @@ class SceneBase():
         pos_c = self.idx2c(map_idxs=map_idxs, res=res)
         return self.c2w(pos=pos_c)
     
+    def pos2map(
+        self,
+        pos:np.ndarray,
+        num_points:int,
+    ):
+        """
+        Convert position to slice map.
+        Args:
+            pos: position to transform; array of shape (N*M, 2)
+            num_points: number of points in slice map; int
+        Returns:
+            map: map; array of shape (N, L, L)
+        """
+        idxs = self.w2idx(
+            pos=pos, 
+            res=self.args.eval.res_map,
+        ) # (N*M, 2)
+        idxs = idxs.reshape((num_points, -1, 2))
+
+        map = np.zeros((num_points, self.args.eval.res_map, self.args.eval.res_map))
+        map[np.arange(num_points)[:,None,None], idxs[:,:,0], idxs[:,:,1]] = 1
+        return map
+    
     def depth2pos(
         self, 
         rays_o:np.array, 
-        scan_depth:np.array, 
-        scan_angles:np.array
+        rays_d:np.array, 
+        depths:np.array
     ):
         """
         Convert depth values to positions.
         Args:
-            rays_o: origin of scan rays in cube coordinates; numpy array of shape (N, 2/3)
-            scan_depth: distance to closest point in scene at rays_o; numpy array of shape (N,)
-            scan_angles: angles of scan rays; numpy array of shape (N,)
+            rays_o: origin of scan rays in cube coordinates; numpy array of shape (N, 3)
+            rays_d: direction of scan rays; numpy array of shape (N, 3)
+            depths: depth values of scan rays; numpy array of shape (N,)
         Returns:
-            pos: position in cube coordinate system; numpy array of shape (N, 2)
+            pos: position of scan rays; numpy array of shape (N, 2)
+            pos_o: origin of scan rays in plane; numpy array of shape (N, 2)
         """
-        val_idxs = np.where(~np.isnan(scan_depth))[0]
-        
-        pos = np.full((scan_depth.shape[0], 2), np.nan) # (N, 2)
-        pos[val_idxs] = np.stack((scan_depth[val_idxs] * np.cos(scan_angles[val_idxs]), 
-                                  scan_depth[val_idxs] * np.sin(scan_angles[val_idxs])), axis=1)
-        pos[val_idxs] += rays_o[val_idxs,:2] # (N, 2)
-        return pos
+        # valid mask
+        mask = (~np.isnan(depths)) & np.all(~np.isnan(rays_o), axis=1) & np.all(~np.isnan(rays_d), axis=1)
+
+        # collapse rays from 3D to 2D
+        pos_o_temp, angles, dists = self.space2plane(
+            rays_o=rays_o[mask],
+            rays_d=rays_d[mask],
+            depths=depths[mask],
+        )
+        pos_temp = pos_o_temp + np.stack((dists * np.cos(angles), dists * np.sin(angles)), axis=1)
+
+        # recover nan values
+        pos = np.full((mask.shape[0], 2), np.nan)
+        pos_o = np.full((mask.shape[0], 2), np.nan)
+        pos[mask] = pos_temp
+        pos_o[mask] = pos_o_temp
+        return pos, pos_o
+    
+    def space2plane(
+        self,
+        rays_o:np.array,
+        rays_d:np.array,
+        depths:np.array,
+    ):
+        """
+        Convert 3D rays to 2D rays. Verify that all rays are in the same plane.
+        Args:
+            rays_o: origin of scan rays; numpy array of shape (N, 3)
+            rays_d: direction of scan rays; numpy array of shape (N, 3)
+            depths: depth values of scan rays; numpy array of shape (N,)
+        Returns:
+            pos_o: origin of scan rays in plane; numpy array of shape (N, 2)
+            angles: angles of scan rays; numpy array of shape (N,)
+            dist: distance of scan rays; numpy array of shape (N,)
+        """
+        rays_o = np.copy(rays_o) # (N, 3)
+        rays_d = np.copy(rays_d) # (N, 3)
+        depths = np.copy(depths) # (N,)
+
+        if self.args.model.debug_mode:
+            # verify that all rays_d have norm 1
+            if not np.allclose(np.linalg.norm(rays_d, axis=1), 1):
+                self.args.logger.error(f"norm of rays_d is not 1: norm = {np.linalg.norm(rays_d[:,:2], axis=1)}!")
+                self.args.logger.error(f"norm min = {np.min(np.linalg.norm(rays_d[:,:2], axis=1))}, "
+                                       +f"norm max = {np.max(np.linalg.norm(rays_d[:,:2], axis=1))}")
+
+        # convert rays from 3D to 2D
+        pos_o = rays_o[:,:2] # (N, 2)
+        dist = depths * np.linalg.norm(rays_d[:,:2], axis=1) # (N,)
+        angles = self.direction2angle(
+            rays_d=rays_d[:,:2]
+        ) # (N,)
+
+        return pos_o, angles, dist
     
     def direction2angle(
         self,
@@ -346,50 +417,13 @@ class SceneBase():
         Returns:
             angles: angles of scan rays; numpy array of shape (N,)
         """
-        return np.arctan2(rays_d[:,1], rays_d[:,0])
-    
-    def collapseRays(
-        self, 
-        rays_o:np.array,
-        rays_d:np.array,
-        depths:np.array,
-    ):
-        """
-        Convert 3D rays to 2D rays. Verify that all rays are in the same plane.
-        Args:
-            rays_o: origin of scan rays; numpy array of shape (N, 3)
-            rays_d: direction of scan rays; numpy array of shape (N, 3)
-            depths: depth values of scan rays; numpy array of shape (N,)
-        Returns:
-            pos: origin of scan rays; numpy array of shape (N, 2)
-            angles: direction of scan rays; numpy array of shape (N, 2)
-        """
-        pos = 
-
-    def collapsePos(
-        self, 
-        pos:np.array
-    ):
-        """
-        Convert 3D positions to 2D positions. Verify that all positions are in the same plane.
-        Args:
-            pos: position; numpy array of shape (N, 3)
-        Returns:
-            pos: position; numpy array of shape (N, 3)
-        """
-        height_max = np.nanmax(pos[:,2])
-        height_min = np.nanmin(pos[:,2])
-        height_mean = np.nanmean(pos[:,2])
-
-        if (height_max - height_mean) > self.args.eval.height_tolerance:
-            self.args.logger.error(f"height_max - height_mean = {height_max - height_mean} > height_tolerance = {self.args.eval.height_tolerance}!")
-        if (height_mean - height_min) > self.args.eval.height_tolerance:
-            self.args.logger.error(f"height_mean - height_min = {height_mean - height_min} > height_tolerance = {self.args.eval.height_tolerance}!")
+        if self.args.model.debug_mode:
+            # verify that all rays_d has only 2 dimensions
+            if rays_d.shape[1] != 2:
+                self.args.logger.error(f"rays_d has not only 2 dimensions!")
         
-        pos[:,2] = height_mean
-        return pos
-    
-    def verifyHeight
+        angles = np.arctan2(rays_d[:,1], rays_d[:,0]) # (N,)
+        return angles
 
     def _calcScanRays(
         self, 

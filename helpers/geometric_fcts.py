@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import sys
 from alive_progress import alive_bar
 from contextlib import nullcontext
 
@@ -37,7 +38,7 @@ def findNearestNeighbour(
         array2 = array2[mask_array2]    
 
         if array1.shape[0] == 0 or array2.shape[0] == 0:
-            nn_idxs = np.full(mask_array1.shape[0], np.nan, dtype=np.int32)
+            nn_idxs = - np.ones(mask_array1.shape[0], dtype=np.int32)
             nn_dists = np.full(mask_array1.shape[0], np.nan, dtype=np.float32)
             return nn_idxs, nn_dists
 
@@ -49,13 +50,13 @@ def findNearestNeighbour(
             batch_size -= 1
 
     # determine nearest neighbour indices
-    nn_idxs = np.zeros(array1.shape[0], dtype=np.int32) # (N,)
+    nn_idxs = - np.ones(array1.shape[0], dtype=np.int32) # (N,)
     with alive_bar(array1.shape[0]//batch_size, bar = 'bubbles', receipt=False) if progress_bar else nullcontext() as bar:
 
         # split calculation in batches to avoid memory error
         for i in range(0, array1.shape[0], batch_size):
             dist = np.linalg.norm(array2[:, np.newaxis] - array1[i:i+batch_size], axis=2) # (M, batch_size)
-            nn_idxs[i:i+batch_size] = np.argmin(dist, axis=0)
+            nn_idxs[i:i+batch_size] = np.argmin(dist, axis=0).astype(np.int32) # (batch_size,)
 
             if progress_bar:
                 bar()
@@ -65,7 +66,7 @@ def findNearestNeighbour(
 
     # recover nan values
     if ignore_nan:
-        nn_idxs_temp = np.full(mask_array1.shape[0], np.nan, dtype=np.int32)
+        nn_idxs_temp = - np.ones(mask_array1.shape[0], dtype=np.int32)
         nn_idxs_temp[mask_array1] = nn_idxs
         nn_idxs = nn_idxs_temp
         nn_dists_temp = np.full(mask_array1.shape[0], np.nan, dtype=np.float32)
@@ -74,50 +75,100 @@ def findNearestNeighbour(
     
     return nn_idxs, nn_dists
 
+
 def createScanRays(
-    rays_o:torch.Tensor,
-    res_angular:int,
-    h_tol_c:float,
-    num_avg_heights:int,
+    rays_o:np.ndarray,
+    angle_res:int,
+    angle_min_max:tuple=(-np.pi, np.pi),
 ):
     """
-    Create scan rays for gievn image indices.
-        N: number of points
-        M: number of angular samples
-        A: number of heights to average over
+    Create scan rays for gievn ray origins.
     Args:
-        rays_o: ray origins; array of shape (N, 3)
-        res_angular: number of angular samples (M); int
-        h_tol_c: height tolerance in cube coordinates (meters); float
-        num_avg_heights: number of heights to average over (A); int
+        rays_o: ray origins; array of shape (N, 3) or torch tensor of shape (N, 3)
+        angle_res: number of angular samples (M); int
+        angle_min_max: minimum and maximum angle (radians); tuple of float (2,)
     Returns:
-        rays_o: ray origins; array of shape (N*M*A, 3)
-        rays_d: ray directions; array of shape (N*M*A, 3)
+        rays_o: ray origins; array of shape (N*M, 3) or torch tensor of shape (N*M, 3)
+        rays_d: ray directions; array of shape (N*M, 3) or torch tensor of shape (N*M, 3)
     """
-    rays_o = rays_o.detach().clone() # (N, 3)
-    N = rays_o.shape[0] # number of points
+    ouput_is_tensor = False
+    if isinstance(rays_o, torch.Tensor):
+        ouput_is_tensor = True
+        device = rays_o.device
+        rays_o = rays_o.detach().clone().cpu().numpy()
 
-    # duplicate rays for different angles
-    rays_o = torch.repeat_interleave(rays_o, res_angular, dim=0) # (N*M, 3)
+        # # create ray directions
+        # rays_d = torch.zeros((angle_res, 3), device=rays_o.device) # (M, 3)
+        # angles = torch.linspace(angle_min_max[0], angle_min_max[1]-(angle_min_max[1]-angle_min_max[0])/angle_res, angle_res, device=rays_o.device)
+        # rays_d[:,0] = torch.cos(angles)
+        # rays_d[:,1] = torch.sin(angles)
 
-    # create directions
-    rays_d = torch.linspace(-np.pi, np.pi-2*np.pi/res_angular, res_angular, 
-                            dtype=torch.float32, device=rays_o.device) # (M,)
-    rays_d = torch.stack((torch.cos(rays_d), torch.sin(rays_d), torch.zeros_like(rays_d)), axis=1) # (M, 3)
-    rays_d = rays_d.repeat(N, 1) # (N*M, 3)
+        # # repeat rays for different points and angles
+        # rays_d = torch.tile(rays_d, dims=(rays_o.shape[0],1)) # (N, M, 3)
+        # rays_o = torch.tile(rays_o.reshape(-1,1), dims=(1,angle_res)) # (N, M, 3)
+        # rays_o = rays_o.reshape(-1,3)
+        # rays_d = rays_d.reshape(-1,3)
+        # return rays_o, rays_d
 
-    if num_avg_heights == 1:
-        return rays_o, rays_d
+    # create ray directions
+    rays_d = np.zeros((angle_res, 3)) # (M, 3)
+    angles = np.linspace(angle_min_max[0], angle_min_max[1], angle_res, endpoint=False)
+    rays_d[:,0] = np.cos(angles)
+    rays_d[:,1] = np.sin(angles)
 
-    # get rays for different heights
-    rays_o_avg = torch.zeros(N*res_angular, num_avg_heights, 3).to(rays_o.device) # (N*M, A, 3)
-    rays_d_avg = torch.zeros(N*res_angular, num_avg_heights, 3).to(rays_o.device) # (N*M, A, 3)   
-    for i, h in enumerate(np.linspace(-h_tol_c, h_tol_c, num_avg_heights)):
-        h_tensor = torch.tensor([0.0, 0.0, h], dtype=torch.float32, device=rays_o.device)
-        rays_o_avg[:,i,:] = rays_o + h_tensor
-        rays_d_avg[:,i,:] = rays_d
+    # repeat rays for different points and angles
+    rays_d = np.tile(rays_d, (rays_o.shape[0], 1)) # (N*M, 3)
+    rays_o = np.repeat(rays_o, angle_res, axis=0) # (N*M, 3)
 
-    return rays_o_avg.reshape(-1, 3), rays_d_avg.reshape(-1, 3) # (N*M*A, 3), (N*M*A, 3)
+    if ouput_is_tensor:
+        rays_o = torch.tensor(rays_o, dtype=torch.float32, device=device)
+        rays_d = torch.tensor(rays_d, dtype=torch.float32, device=device)
+    return rays_o, rays_d
+
+# def createScanRays(
+#     rays_o:torch.Tensor,
+#     res_angular:int,
+#     h_tol_c:float,
+#     num_avg_heights:int,
+# ):
+#     """
+#     Create scan rays for gievn image indices.
+#         N: number of points
+#         M: number of angular samples
+#         A: number of heights to average over
+#     Args:
+#         rays_o: ray origins; array of shape (N, 3)
+#         res_angular: number of angular samples (M); int
+#         h_tol_c: height tolerance in cube coordinates (meters); float
+#         num_avg_heights: number of heights to average over (A); int
+#     Returns:
+#         rays_o: ray origins; array of shape (N*M*A, 3)
+#         rays_d: ray directions; array of shape (N*M*A, 3)
+#     """
+#     rays_o = rays_o.detach().clone() # (N, 3)
+#     N = rays_o.shape[0] # number of points
+
+#     # duplicate rays for different angles
+#     rays_o = torch.repeat_interleave(rays_o, res_angular, dim=0) # (N*M, 3)
+
+#     # create directions
+#     rays_d = torch.linspace(-np.pi, np.pi-2*np.pi/res_angular, res_angular, 
+#                             dtype=torch.float32, device=rays_o.device) # (M,)
+#     rays_d = torch.stack((torch.cos(rays_d), torch.sin(rays_d), torch.zeros_like(rays_d)), axis=1) # (M, 3)
+#     rays_d = rays_d.repeat(N, 1) # (N*M, 3)
+
+#     if num_avg_heights == 1:
+#         return rays_o, rays_d
+
+#     # get rays for different heights
+#     rays_o_avg = torch.zeros(N*res_angular, num_avg_heights, 3).to(rays_o.device) # (N*M, A, 3)
+#     rays_d_avg = torch.zeros(N*res_angular, num_avg_heights, 3).to(rays_o.device) # (N*M, A, 3)   
+#     for i, h in enumerate(np.linspace(-h_tol_c, h_tol_c, num_avg_heights)):
+#         h_tensor = torch.tensor([0.0, 0.0, h], dtype=torch.float32, device=rays_o.device)
+#         rays_o_avg[:,i,:] = rays_o + h_tensor
+#         rays_d_avg[:,i,:] = rays_d
+
+#     return rays_o_avg.reshape(-1, 3), rays_d_avg.reshape(-1, 3) # (N*M*A, 3), (N*M*A, 3)
 
 def createScanPos(
     res_map:int,

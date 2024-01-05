@@ -169,27 +169,24 @@ class DatasetETHZ(DatasetBase):
             xyzs: list of point clouds; list of length N of numpy arrays of shape (M, 3)
             poses: poses in world coordinates; list of numpy arrays of shape (N, 3, 4)
         """
-        lidar_dir = os.path.join(self.args.ethz.dataset_dir, self.args.ethz.room, 'lidars/filtered')
-
-        poses = self.poses_lidar.clone().detach().cpu().numpy() # (N, 3, 4)
-        times = self.times.clone().detach().cpu().numpy() # (N,)
-
-        # convert poses to world coordinate system
-        xyz = poses[:,:,3] # (N, 3)
-        xyz = self.scene.c2w(pos=xyz, copy=False) # (N, 3)
-        poses[:,:,3] = xyz # (N, 3, 4)
+        # get times and poses of samples in world coordinate system
+        times = self.times[img_idxs].clone().detach().cpu().numpy() # (N,)
+        poses = self.poses_lidar[img_idxs].clone().detach().cpu().numpy() # (N, 3, 4)
+        poses[:,:,3]  = self.scene.c2w(pos=poses[:,:,3], copy=False) # (N, 3)
         
         # load lidar file names and times
-        lidar_files = np.array(os.listdir(lidar_dir))
-        lidar_times = np.array([float(f[:-4]) for f in lidar_files])
+        pcl_loader = PCLLoader(
+            data_dir=os.path.join(self.args.ethz.dataset_dir, self.args.ethz.room),
+        )
+        lidar_times, lidar_files = pcl_loader.getTimes(
+            pcl_dir='lidars/filtered',
+        )
         sort_idxs = np.argsort(lidar_times)
-        lidar_files = lidar_files[sort_idxs]
+        lidar_files = np.array(lidar_files)[sort_idxs]
         lidar_times = lidar_times[sort_idxs]
-        lidar_times -= lidar_times[0]
-
-        # keep only samples of given indices
-        poses = poses[img_idxs]
-        times = times[img_idxs]
+        lidar_times = self.normalizeTimes(
+            times=lidar_times,
+        )
 
         # find corresponding lidar file to each sample
         m1, m2 = np.meshgrid(times, lidar_times, indexing='ij')
@@ -201,11 +198,7 @@ class DatasetETHZ(DatasetBase):
                 self.args.logger.error(f"DatasetETHZ::getLidarMaps: multiple or no lidar files found for one sample")
                 self.args.logger.error(f"time: {times}")
                 self.args.logger.error(f"lidar_times: {lidar_times[np.where(mask)[1]]}")
-
-        # load lidar maps in robot coordinate system
-        pcl_loader = PCLLoader(
-            data_dir=os.path.join(self.args.ethz.dataset_dir, self.args.ethz.room),
-        )
+        
         xyzs = []
         for i, f in enumerate(lidar_files):
             # load point cloud
@@ -222,6 +215,25 @@ class DatasetETHZ(DatasetBase):
                 xyz=xyz,
             )
             xyzs.append(xyz)
+
+            # h_min = poses[i,2,3] - self.args.eval.height_tolerance
+            # h_max = poses[i,2,3] + self.args.eval.height_tolerance
+
+            # xyz_gt = self.scene._point_cloud 
+            # xyz_gt = xyz_gt[(xyz_gt[:,2] >= h_min) & (xyz_gt[:,2] <= h_max)]
+            # plt.scatter(xyz_gt[:,0], xyz_gt[:,1], s=0.1, c="black")
+            
+            # xyz_plot = xyz[(xyz[:,2] >= h_min) & (xyz[:,2] <= h_max)] # (k, 3)
+            # plt.scatter(xyz_plot[:,0], xyz_plot[:,1], s=0.1, c="b")
+
+            # poses_cam = self.poses.clone().detach().cpu().numpy() # (N, 3, 4)
+            # poses_lidar = self.poses_lidar.clone().detach().cpu().numpy() # (N, 3, 4)
+            # poses_cam[:,:,3] = self.scene.c2w(pos=poses_cam[:,:,3], copy=False) # (N, 3)
+            # poses_lidar[:,:,3] = self.scene.c2w(pos=poses_lidar[:,:,3], copy=False) # (N, 3)
+            # plt.scatter(poses_lidar[:,0,3], poses_lidar[:,1,3], s=0.5, c="r")
+            # plt.scatter(poses[i,0,3], poses[i,1,3], s=20, c="pink")
+            # plt.scatter(poses_cam[:,0,3], poses_cam[:,1,3], s=0.5, c="g")
+            # plt.show()
             
         return xyzs, poses
 
@@ -260,10 +272,15 @@ class DatasetETHZ(DatasetBase):
                                         [0.0, df_cam['fy'].values[0], df_cam['cy'].values[0]], 
                                         [0.0, 0.0, 1.0]]) # (3, 3)
 
-        # get ray directions
+        # get ray directions and normalize them
         directions_dict = {}
         for cam_id in cam_ids:
-            directions_dict[cam_id] = get_ray_directions(h, w, K_dict[cam_id]) # (H*W, 3)
+            directions = get_ray_directions(h, w, K_dict[cam_id]) # (H*W, 3)
+            directions_dict[cam_id] = directions / np.linalg.norm(directions, axis=1, keepdims=True) # (H*W, 3)
+
+            if self.args.model.debug_mode:
+                if not torch.allclose(torch.norm(directions_dict[cam_id], dim=1), torch.ones((directions_dict[cam_id].shape[0]))):
+                    self.args.logger.error(f"DatasetETHZ::readIntrinsics: directions are not normalized")
 
         # convert numpy arrays to tensors
         for cam_id in cam_ids:
@@ -961,12 +978,8 @@ class DatasetETHZ(DatasetBase):
         Returns:
             times: normalized time; array of shape (N,)
         """
-        times_min = np.min(times)
         if self.time_start is None:
-            self.time_start = times_min
-        
-        if times_min < self.time_start:
-            self.args.logger.error(f"DatasetETHZ::normalizeTimes: time is not increasing")
+            self.time_start = np.min(times)
 
         times -= self.time_start
         return times

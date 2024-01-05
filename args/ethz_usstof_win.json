@@ -43,7 +43,7 @@
         "eval_every_n_steps": 1,
         "num_color_pts": 0,
         "num_depth_pts": 5,
-        "num_plot_pts": 3,
+        "num_plot_pts": 5,
         "num_avg_heights": 5,
         "height_tolerance": 0.05,
         "density_map_thr": 10,
@@ -53,7 +53,7 @@
             "local_path_planner": [0.1, 2.0],
             "global_path_planner": [0.1, 100.0]
         },
-        "sensors": ["USS", "ToF", "LiDAR", "NeRF"],
+        "sensors": ["GT", "USS", "ToF", "LiDAR", "NeRF"],
         "plot_results": true
     },
     "occ_grid":

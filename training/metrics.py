@@ -12,10 +12,10 @@ from helpers.geometric_fcts import findNearestNeighbour
 
 class Metrics():
     def __init__(
-            self,
-            args:Args,
-            img_wh:tuple,
-        ) -> None:
+        self,
+        args:Args,
+        img_wh:tuple,
+    ) -> None:
         """
         Metrics base class.
         Args:
@@ -37,13 +37,13 @@ class Metrics():
         pass
 
     def evaluate(
-            self, 
-            data:dict,
-            eval_metrics:list,
-            convert_to_world_coords:bool=True, 
-            copy:bool=True,
-            num_test_pts:int=None,
-        ) -> dict:
+        self, 
+        data:dict,
+        eval_metrics:list,
+        convert_to_world_coords:bool=True, 
+        copy:bool=True,
+        num_test_pts:int=None,
+    ) -> dict:
         """
         Evaluate metrics listed in eval_metrics.
         Args:
@@ -86,19 +86,19 @@ class Metrics():
             elif metric == 'mare':
                 dict['mare'] = self._mare(depth=data['depth'], depth_gt=data['depth_gt'])
             elif metric == 'nn':
-                nn_dists, mnn = self._nn(pos=data['pos'], pos_gt=data['pos_gt'], num_test_pts=num_test_pts, depth_gt=data['depth_gt'])
+                nn_dists, mnn = self._nn(pos=data['pos'], pos_ref=data['pos_gt'], num_test_pts=num_test_pts, depth_gt=data['depth_gt'])
                 dict['nn_dists'] = nn_dists
                 dict['mnn'] = mnn
             elif metric == 'nn_inv':
-                nn_dists_inv, mnn_inv = self._nn(pos=data['pos_gt'], pos_gt=data['pos'], num_test_pts=num_test_pts, depth_gt=data['depth_gt'])
+                nn_dists_inv, mnn_inv = self._nn(pos=data['pos_gt'], pos_ref=data['pos'], num_test_pts=num_test_pts, depth_gt=data['depth_gt'])
                 dict['nn_dists_inv'] = nn_dists_inv
                 dict['mnn_inv'] = mnn_inv
             elif metric == 'rnn':
-                rnn_dists, mrnn = self._rnn(pos=data['pos'], pos_gt=data['pos_gt'], num_test_pts=num_test_pts, depth_gt=data['depth_gt'])
+                rnn_dists, mrnn = self._rnn(pos=data['pos'], pos_ref=data['pos_gt'], num_test_pts=num_test_pts, depth_gt=data['depth_gt'])
                 dict['rnn_dists'] = rnn_dists
                 dict['mrnn'] = mrnn
             elif metric == 'rnn_inv':
-                rnn_dists_inv, mrnn_inv = self._rnn(pos=data['pos_gt'], pos_gt=data['pos'], num_test_pts=num_test_pts, depth_gt=data['depth_gt'])
+                rnn_dists_inv, mrnn_inv = self._rnn(pos=data['pos_gt'], pos_ref=data['pos'], num_test_pts=num_test_pts, depth_gt=data['depth_gt'])
                 dict['rnn_dists_inv'] = rnn_dists_inv
                 dict['mrnn_inv'] = mrnn_inv
             elif metric == 'psnr':
@@ -110,178 +110,207 @@ class Metrics():
 
         return dict
     
-    def nnNumpy(
-            self, 
-            array1:np.array, 
-            array2:np.array
-        ):
+    def nn(
+        self, 
+        pos:np.array, 
+        pos_ref:np.array,
+        depths_gt:np.array,
+        num_points:int,
+        ref_pos_is_gt:bool,
+    ):
         """
-        Find the closest points in array2 for each point in array1
-        and return the indices of array2 for each point in array1.
+        Calculate nearest neighbour distance between pos_w and pos_w_gt
         Args:
-            array1: array of float (N, 2/3)
-            array2: array of float (M, 2/3)
+            pos: position in world coordinate system; either numpy array or torch tensor (N*K, 2)
+            pos_ref: reference position in world coordinate system; either numpy array or torch tensor (N*M, 2)
+            depths_gt: ground truth depth; either numpy array
+                        - if ref_pos_is_gt=True: shape = (N*M,)
+                        - if ref_pos_is_gt=False: shape = (N*K,)
+            num_points: number of points (N); int
+            ref_pos_is_gt: whether or not the reference position the ground truth is; bool
         Returns:
-            nn_idxs: indices of nearest neighbours from array2 with respect to array1; array of int (N,)
-            nn_dists: distances of nearest neighbours from array2 with respect to array1; array of float (N,)
+            nn_dists: nearest neighbour distances; either numpy array or torch tensor (N*K,)
+            mnn_zones: mean of nearest neighbour distances {zone:mnn}; dict {str: float}
         """
-        # downsample arrays
-        array1 = np.copy(array1.astype(np.float32))
-        array2 = np.copy(array2.astype(np.float32))
+        N = num_points
+        K = pos.shape[0] // N
+        M = pos_ref.shape[0] // N
 
-        # determine nearest neighbour indices and distances
-        dists = np.linalg.norm(array2[:, np.newaxis] - array1, axis=2) # (M, N)
-        nn_idxs = np.argmin(dists, axis=0) # (N,)
-        nn_dists = np.min(dists, axis=0) # (N,)
+        pos = pos.reshape(N, K, 2) # (N, K, 2)
+        pos_ref = pos_ref.reshape(N, M, 2) # (N, M, 2)
+        if ref_pos_is_gt:
+            depths_gt = depths_gt.reshape(N, M) # (N, M)
+        else:
+            depths_gt = depths_gt.reshape(N, K) # (N, K)
         
-        return nn_idxs, nn_dists
+        nn_depths = np.zeros((N, K), dtype=np.int32) # (N, K)
+        nn_dists = np.zeros((N, K)) # (N, K)
+        for i in range(N):
+            idxs, dists = findNearestNeighbour(
+                array1=pos[i], 
+                array2=pos_ref[i],
+                ignore_nan=True,
+            ) # (K,), (K,)
+            nn_dists[i] = dists
+
+            if ref_pos_is_gt:
+                nn_depths[i] = np.where((idxs < 0), np.nan, depths_gt[i, idxs])
+            else:
+                nn_depths[i] = depths_gt[i]
+
+        
+        nn_dists = nn_dists.flatten() # (N*K,)
+        nn_depths = nn_depths.flatten() # (N*K,)
+
+        mnn_zones = {}
+        for zone, min_max in self.args.eval.zones.items():
+            mask = (nn_depths >= min_max[0]) & (nn_depths <= min_max[1]) # (N*K,)
+            mnn_zones[zone] = np.nanmean(nn_dists[mask])
+
+        return nn_dists, mnn_zones
     
-    def nnTorch(
-            self, 
-            tensor1:torch.tensor, 
-            tensor2:torch.tensor,
-        ):
+    def nn_dists(
+        self, 
+        pos:np.array, 
+        pos_ref:np.array,
+        num_points:int,
+    ):
         """
-        Find the closest points in array2 for each point in array1
-        and return the indices of array2 for each point in array1.
+        Calculate nearest neighbour distance between pos_w and pos_w_gt
         Args:
-            array1: tensor of float (N, 2/3)
-            array2: tensor of float (M, 2/3)
+            pos: position in world coordinate system; either numpy array (N*K, 2)
+            pos_ref: reference position in world coordinate system; either numpy array (N*M, 2)
+            depths_gt: ground truth depth; either numpy array (N*M,)
+            num_points: number of points (N); int
         Returns:
-            nn_idxs: indices of nearest neighbours from tensor2 with respect to tensor1; array of int (N,)
-            nn_dists: distances of nearest neighbours from tensor2 with respect to tensor1; array of float (N,)
+            nn_idxs: nearest neighbour indices; either numpy array (N*K,)
+            nn_dists: nearest neighbour distances; either numpy array  (N*K,)
         """
-        # downsample arrays
-        tensor1 = np.copy(tensor1.astype(np.float32))
-        tensor2 = np.copy(tensor2.astype(np.float32))
+        N = num_points
+        K = pos.shape[0] // N
+        M = pos_ref.shape[0] // N
 
-        # determine nearest neighbour indices and distances
-        dists = torch.linalg.norm(tensor2[:, np.newaxis] - tensor1, dim=2) # (M, N)
-        nn_idxs = torch.argmin(dists, dim=0) # (N,)
-        nn_dists = torch.min(dists, dim=0) # (N,)
+        pos = pos.reshape(N, K, 2) # (N, K, 2)
+        pos_ref = pos_ref.reshape(N, M, 2)
         
+        nn_idxs = np.zeros((N, K), dtype=np.int32) # (N, K)
+        nn_dists = np.zeros((N, K)) # (N, K)
+        for i in range(N):
+            idxs, dists = findNearestNeighbour(
+                array1=pos[i], 
+                array2=pos_ref[i],
+                ignore_nan=True,
+            )
+            nn_dists[i] = dists
+            nn_idxs[i] = idxs
+
+        nn_idxs = nn_idxs.flatten() # (N*K,)
+        nn_dists = nn_dists.flatten() # (N*K,)
         return nn_idxs, nn_dists
     
     def _rmse(
-            self,
-            depth, 
-            depth_gt
-        ):
+        self,
+        depth, 
+        depth_gt
+    ):
         """
         Calculate Root Mean Squared Error (RMSE) between depth and depth_gt
         Args:
-            depth: predicted depth; either numpy array or torch tensor (N*M,)
-            depth_gt: ground truth depth; either numpy array or torch tensor (N*M,)
+            depth: predicted depth; either numpy array (N*M,) or torch tensor (N*M,)
+            depth_gt: ground truth depth; either numpy array (N*M,) or torch tensor (N*M,)
         Returns:
-            rmse: root mean squared error; float
+            rmse: root mean squared error for zones; dict {str: float}
         """
-        if torch.is_tensor(depth):
-            return torch.sqrt(torch.nanmean((depth - depth_gt)**2)).item()
-        return np.sqrt(np.nanmean((depth - depth_gt)**2))
+        rmse = {}
+        for zone, min_max in self.args.eval.zones.items():
+            mask = (depth_gt >= min_max[0]) & (depth_gt <= min_max[1])
+            if torch.is_tensor(depth):
+                rmse[zone] = torch.nanmean((depth[mask] - depth_gt[mask])**2).item()
+            else:
+                rmse[zone] = np.nanmean((depth[mask] - depth_gt[mask])**2)
+        return rmse
 
     def _mae(
-            self, 
-            depth, 
-            depth_gt
-        ):
+        self, 
+        depth, 
+        depth_gt
+    ):
         """
         Calculate Mean Absolute Error (MAE) between depth and depth_gt
         Args:
             depth: predicted depth; either numpy array or torch tensor (N*M,)
             depth_gt: ground truth depth; either numpy array or torch tensor (N*M,)
         Returns:
-            mae: mean absolute error; float
+            mae: mean absolute error for zones; dict {str: float}
         """
-        if torch.is_tensor(depth):
-            return torch.nanmean(torch.abs(depth - depth_gt)).item()
-        return np.nanmean(np.abs(depth - depth_gt))
+        mae = {}
+        for zone, min_max in self.args.eval.zones.items():
+            mask = (depth_gt >= min_max[0]) & (depth_gt <= min_max[1])
+            if torch.is_tensor(depth):
+                mae[zone] = torch.nanmean(torch.abs(depth[mask] - depth_gt[mask])).item()
+            else:
+                mae[zone] = np.nanmean(np.abs(depth[mask] - depth_gt[mask]))
+        return mae
     
     def _mare(
-            self, 
-            depth, 
-            depth_gt
-        ):
+        self, 
+        depth, 
+        depth_gt
+    ):
         """
         Calculate Mean Absolute Relative Error (MARE) between depth and depth_gt
         Args:
             depth: predicted depth; either numpy array or torch tensor (N*M,)
             depth_gt: ground truth depth; either numpy array or torch tensor (N*M,)
         Returns:
-            mare: mean absolute relative error; float
+            mare: mean absolute relative error for zones; dict {str: float}
         """
-        if torch.is_tensor(depth):
-            return torch.nanmean(torch.abs((depth - depth_gt)/ depth_gt)).item()
-        return np.nanmean(np.abs((depth - depth_gt)/ depth_gt))
+        mare = {}
+        for zone, min_max in self.args.eval.zones.items():
+            mask = (depth_gt >= min_max[0]) & (depth_gt <= min_max[1])
+            if torch.is_tensor(depth):
+                mare[zone] = torch.nanmean(torch.abs((depth[mask] - depth_gt[mask])/ depth_gt[mask])).item()
+            else:
+                mare[zone] = np.nanmean(np.abs((depth[mask] - depth_gt[mask])/ depth_gt[mask]))
+        return mare
     
-    def _nn(
-            self, 
-            pos:np.array, 
-            pos_gt:np.array,
-            num_test_pts:int,
-            depth_gt:np.array,
-        ):
-        """
-        Calculate nearest neighbour distance between pos_w and pos_w_gt
-        Args:
-            pos: predicted position in world coordinate system; either numpy array or torch tensor (N, M, 2)
-            pos_gt: ground truth position in world coordinate system; either numpy array or torch tensor (N, M, 2)
-            num_test_pts: number of test points (N); int
-            depth_gt: ground truth depth; either numpy array or torch tensor (N*M)
-        Returns:
-            nn_dists: nearest neighbour distances; either numpy array or torch tensor (N,M)
-            mnn: mean of nearest neighbour distances; float
-        """
-        nn_dists = np.zeros((num_test_pts, pos.shape[1]))
-        for i in range(num_test_pts):
-            _, dists = findNearestNeighbour(
-                array1=pos[i], 
-                array2=pos_gt[i],
-                ignore_nan=True,
-            )
-            nn_dists[i] = dists
 
-        depth_gt = depth_gt.reshape(num_test_pts, -1)
-        nn_dists[depth_gt < self.args.eval.min_valid_depth] = np.nan
-
-        mnn = np.nanmean(nn_dists)
-
-        return nn_dists, mnn
     
     def _rnn(
-            self, 
-            pos:np.array, 
-            pos_gt:np.array,
-            num_test_pts:int,
-            depth_gt:np.array,
-        ):
+        self, 
+        pos:np.array, 
+        pos_ref:np.array,
+        num_test_pts:int,
+        depth_gt:np.array,
+    ):
         """
         Calculate nearest neighbour distance between pos_w and pos_w_gt
         Args:
-            pos: predicted position in world coordinate system; either numpy array or torch tensor (N, M, 2)
-            pos_gt: ground truth position in world coordinate system; either numpy array or torch tensor (N, M, 2)
+            pos: position in world coordinate system; either numpy array or torch tensor (N, M, 2)
+            pos_gt: reference position in world coordinate system; either numpy array or torch tensor (N, M, 2)
             num_test_pts: number of test points (N); int
             depth_gt: ground truth depth; either numpy array or torch tensor (N*M)
         Returns:
             nn_dists: nearest neighbour distances; either numpy array or torch tensor (N,M)
             mnn: mean of nearest neighbour distances; float
         """
-        nn_dists = np.zeros((num_test_pts, pos.shape[1]))
+        rnn_dists = np.zeros((num_test_pts, pos.shape[1]))
         for i in range(num_test_pts):
             _, dists = findNearestNeighbour(
                 array1=pos[i], 
-                array2=pos_gt[i],
+                array2=pos_ref[i],
                 ignore_nan=True,
             )
-            nn_dists[i] = dists
+            rnn_dists[i] = dists
 
-        depth_gt = depth_gt.reshape(num_test_pts, -1)
-        nn_dists[depth_gt < self.args.eval.min_valid_depth] = np.nan
+        rnn_dists = rnn_dists.flatten()
 
-        rnn_dists = nn_dists / depth_gt
-        mrnn = np.nanmean(rnn_dists)
+        mrnn = {}
+        for zone, min_max in self.args.eval.zones.items():
+            mask = (depth_gt >= min_max[0]) & (depth_gt <= min_max[1]) 
+            mrnn[zone] = np.nanmean(rnn_dists[mask] / depth_gt[mask])
 
         return rnn_dists, mrnn
-    
 
     def _psnr(
             self,
@@ -411,3 +440,55 @@ class Metrics():
                 eval_metrics.remove('psnr')
 
     
+
+# def nnNumpy(
+#             self, 
+#             array1:np.array, 
+#             array2:np.array
+#         ):
+#         """
+#         Find the closest points in array2 for each point in array1
+#         and return the indices of array2 for each point in array1.
+#         Args:
+#             array1: array of float (N, 2/3)
+#             array2: array of float (M, 2/3)
+#         Returns:
+#             nn_idxs: indices of nearest neighbours from array2 with respect to array1; array of int (N,)
+#             nn_dists: distances of nearest neighbours from array2 with respect to array1; array of float (N,)
+#         """
+#         # downsample arrays
+#         array1 = np.copy(array1.astype(np.float32))
+#         array2 = np.copy(array2.astype(np.float32))
+
+#         # determine nearest neighbour indices and distances
+#         dists = np.linalg.norm(array2[:, np.newaxis] - array1, axis=2) # (M, N)
+#         nn_idxs = np.argmin(dists, axis=0) # (N,)
+#         nn_dists = np.min(dists, axis=0) # (N,)
+        
+#         return nn_idxs, nn_dists
+    
+#     def nnTorch(
+#             self, 
+#             tensor1:torch.tensor, 
+#             tensor2:torch.tensor,
+#         ):
+#         """
+#         Find the closest points in array2 for each point in array1
+#         and return the indices of array2 for each point in array1.
+#         Args:
+#             array1: tensor of float (N, 2/3)
+#             array2: tensor of float (M, 2/3)
+#         Returns:
+#             nn_idxs: indices of nearest neighbours from tensor2 with respect to tensor1; array of int (N,)
+#             nn_dists: distances of nearest neighbours from tensor2 with respect to tensor1; array of float (N,)
+#         """
+#         # downsample arrays
+#         tensor1 = np.copy(tensor1.astype(np.float32))
+#         tensor2 = np.copy(tensor2.astype(np.float32))
+
+#         # determine nearest neighbour indices and distances
+#         dists = torch.linalg.norm(tensor2[:, np.newaxis] - tensor1, dim=2) # (M, N)
+#         nn_idxs = torch.argmin(dists, dim=0) # (N,)
+#         nn_dists = torch.min(dists, dim=0) # (N,)
+        
+#         return nn_idxs, nn_dists

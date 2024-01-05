@@ -36,8 +36,8 @@ class PCLLoader():
         Args:
             pcl_dir: directory of the point clouds; str
         Returns:
-            times: list of times of the point clouds; list of float
-            filenames: list of filenames of the point clouds; list of str
+            times: times of the point clouds; array of floats
+            filenames: filenames of the point clouds; list of str
         """
         filenames = self.getFiles(
             pcl_dir=pcl_dir,
