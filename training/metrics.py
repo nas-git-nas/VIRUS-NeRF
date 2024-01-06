@@ -130,7 +130,9 @@ class Metrics():
             ref_pos_is_gt: whether or not the reference position the ground truth is; bool
         Returns:
             nn_dists: nearest neighbour distances; either numpy array or torch tensor (N*K,)
-            mnn_zones: mean of nearest neighbour distances {zone:mnn}; dict {str: float}
+            nn_mean: mean of nearest neighbour distances {zone:mnn}; dict {str: float}
+            nn_median: median of nearest neighbour distances {zone:mrnn}; dict {str: float}
+            nn_inlier: ratio of points with a NN-distance smaller than a threshold {zone:inlier_ratio}; dict {str: float}
         """
         N = num_points
         K = pos.shape[0] // N
@@ -162,12 +164,19 @@ class Metrics():
         nn_dists = nn_dists.flatten() # (N*K,)
         nn_depths = nn_depths.flatten() # (N*K,)
 
-        mnn_zones = {}
+        nn_mean = {}
+        nn_median = {}
+        nn_inlier = {}
         for zone, min_max in self.args.eval.zones.items():
-            mask = (nn_depths >= min_max[0]) & (nn_depths <= min_max[1]) # (N*K,)
-            mnn_zones[zone] = np.nanmean(nn_dists[mask])
+            zone_mask = (nn_depths >= min_max[0]) & (nn_depths <= min_max[1]) # (N*K,)
+            valid_mask = ~np.isnan(nn_dists) # (N*K,)
+            mask = zone_mask & valid_mask
 
-        return nn_dists, mnn_zones
+            nn_mean[zone] = np.nanmean(nn_dists[mask])
+            nn_median[zone] = np.nanmedian(nn_dists[mask])
+            nn_inlier[zone] = np.sum(nn_dists[mask] < self.args.eval.inlier_threshold) / np.sum(mask)
+
+        return nn_dists, nn_mean, nn_median, nn_inlier
     
     def nn_dists(
         self, 

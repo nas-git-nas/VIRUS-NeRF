@@ -69,7 +69,7 @@ class Trainer(TrainerPlot):
             test_dataset=test_dataset,
         )
         
-        self.rng = np.random.default_rng(seed=self.args.training.seed)
+        self.rng = np.random.default_rng(seed=self.args.seed)
 
         # # TODO: remove this
         # self.model.mark_invisible_cells(
@@ -240,7 +240,10 @@ class Trainer(TrainerPlot):
         )
 
         # create plots
-        self._plotEvaluation(
+        self._plotMetrics(
+            metrics_dict=metrics_dict,
+        )
+        self._plotMaps(
             data_dict=data_w, 
             metrics_dict=metrics_dict,
             num_points=img_idxs_sensor.shape[0],
@@ -257,7 +260,7 @@ class Trainer(TrainerPlot):
             f"evaluation: " \
             + f"psnr_avg={np.round(metrics_dict['NeRF']['psnr'],2)} | " \
             + f"ssim_avg={metrics_dict['NeRF']['ssim']:.3} | " \
-            + f"depth_mnn={metrics_dict['NeRF']['mnn_zones']['global_path_planner']:.3} | " \
+            + f"depth_mnn={metrics_dict['NeRF']['nn_mean']['global_path_planner']:.3} | " \
         )
 
         metric_df = {key:[] for key in metrics_dict["NeRF"].keys()}
@@ -459,6 +462,13 @@ class Trainer(TrainerPlot):
                 rays_d=rays_d,
             ) # (N*K, 2), (N*K, 2)
 
+            # sample evaluation data for every angle range
+            pos, pos_o = self._sampleEvaluationData(
+                pos=pos,
+                pos_o=pos_o,
+                num_points=img_idxs.shape[0],
+            ) # (N*M, 2), (N*M, 2)
+
             data_dict[sensor] = {
                 'pos': pos,
                 'pos_o': pos_o,
@@ -470,7 +480,7 @@ class Trainer(TrainerPlot):
                 continue
 
             # calculate metrics
-            nn_dists, mnn_zones = self.metrics.nn(
+            nn_dists, nn_mean, nn_median, nn_inlier = self.metrics.nn(
                 pos=pos,
                 pos_ref=data_dict["GT"]["pos"],
                 depths_gt=data_dict["GT"]["depths"],
@@ -478,7 +488,7 @@ class Trainer(TrainerPlot):
                 ref_pos_is_gt=True,
             ) # (N*K,), (N*K,)
 
-            nn_dists_inv, mnn_zones_inv = self.metrics.nn(
+            nn_dists_inv, nn_mean_inv, nn_median_inv, nn_inlier_inv = self.metrics.nn(
                 pos=data_dict["GT"]["pos"],
                 pos_ref=pos,
                 depths_gt=data_dict["GT"]["depths"],
@@ -489,8 +499,12 @@ class Trainer(TrainerPlot):
             metrics_dict[sensor] = {
                 'nn_dists': nn_dists,
                 'nn_dists_inv': nn_dists_inv,
-                'mnn_zones': mnn_zones,
-                'mnn_zones_inv': mnn_zones_inv,
+                'nn_mean': nn_mean,
+                'nn_mean_inv': nn_mean_inv,
+                'nn_inlier': nn_inlier,
+                'nn_inlier_inv': nn_inlier_inv,
+                'nn_median': nn_median,
+                'nn_median_inv': nn_median_inv,
             }
 
         return metrics_dict, data_dict
@@ -790,41 +804,58 @@ class Trainer(TrainerPlot):
     
     def _sampleEvaluationData(
         self,
-        rays_o:np.array,
-        rays_d:np.array,
-        depths:np.array,
+        pos:np.ndarray,
+        pos_o:np.ndarray,
         num_points:int,
     ):
         """
         Sample evaluation data.
         Args:
-            rays_o: ray origins; array of shape (N*K, 3)
-            rays_d: ray directions; array of shape (N*K, 3)
-            depth: depth; array of shape (N*K,)
+            pos: positions; array of shape (N*K, 2)
+            pos_o: positions of ray origins; array of shape (N*K, 2)
         Returns:
-            rays_o: ray origins; array of shape (N*K, 3) or (N*M, 3)
-            rays_d: ray directions; array of shape (N*K, 3) or (N*M, 3)
-            depth: depth; array of shape (N*K,) or (N*M,)
+            pos: positions; array of shape (N*M, 2)
+            pos_o: positions of ray origins; array of shape (N*M, 2)
         """
         N = num_points
-        K = rays_o.shape[0] // N
+        K = pos.shape[0] // N
         M = self.args.eval.res_angular
 
-        if K <= M:
-            return rays_o, rays_d, depths
+        # if K <= M:
+        #     return rays_o, rays_d, depths
 
-        rays_o = rays_o.reshape(N, -1, 3) # (N, K, 3)
-        rays_d = rays_d.reshape(N, -1, 3) # (N, K, 3)
-        depths = depths.reshape(N, -1) # (N, K)
+        pos = pos.reshape(N, K, 2) # (N, K, 2)
+        pos_o = pos_o.reshape(N, K, 2) # (N, K, 2)
+        angles = np.arctan2((pos - pos_o)[:,:,1], (pos - pos_o)[:,:,0]) # (N,K)
+        dists = np.linalg.norm((pos - pos_o), axis=2) # (N,K)
 
-        angles = np.arctan2(rays_d[:,:,1], rays_d[:,:,0]) # (N, M)
-        bins = np.linspace(-np.pi, np.pi, M+1) # (M+1,)
-        bin_idxs = np.digitize(angles, bins) - 1 # (N, K), in range [0, M-1]
+        # set nan values to infinity to ignore them
+        valid_mask = np.all(~np.isnan(pos), axis=2) # (N, K)
+        angles[~valid_mask] = 0.0
+        dists[~valid_mask] = np.inf
 
-        mask = (bin_idxs[:,:,None] == np.arange(M)[None,None,:]) # (N, K, M)
-        mask = mask.reshape(N*K, M) # (N*K, M)
-        rand_idxs = (self.rng.random((N*K)) * np.sum(mask, axis=1)).astype(np.uint32) # (N*K,)
-        
+        # bin samples by angle
+        angle_bins = np.linspace(-np.pi, np.pi, M) # (M+1,)
+        angle_bin_idxs = np.digitize(angles, angle_bins) - 1 # (N,K), in range [0, M-1]
+        if self.args.model.debug_mode:
+            if np.max(angle_bin_idxs) >= M or np.min(angle_bin_idxs) < 0:
+                self.args.logger.error(f"angle_bin_idxs out of range: max={np.max(angle_bin_idxs)}, min={np.min(angle_bin_idxs)}")
+                self.args.logger.error(f"angles: max={np.max(angles)}, min={np.min(angles)}")
+                self.args.logger.error(f"angle_bins: {angle_bins}")
+                sys.exit()
+
+        # project samples from measurement space (N,K) to angle bin space (N, M)
+        mask = (angle_bin_idxs[:,:,None] == np.arange(M)[None,None,:]) # (N, K, M)
+        dists = np.where(mask, dists[:,:,None], np.inf) # (N, K, M) 
+        idxs = np.argmin(dists, axis=1) # (N, M) in range [0, K-1]
+        pos = pos[np.arange(N).repeat(M), idxs.flatten()] # (N*M, 2)
+        pos_o = pos_o[np.arange(N).repeat(M), idxs.flatten()] # (N*M, 2)
+
+        # filter invalid samples
+        valid_mask = (np.min(dists, axis=1) < np.inf) # (N, M)
+        pos[~valid_mask.flatten()] = np.nan # (N*M, 2)
+        pos_o[~valid_mask.flatten()] = np.nan # (N*M, 2)
+        return pos, pos_o
 
     # @torch.no_grad()
     # def _evaluateLidar(

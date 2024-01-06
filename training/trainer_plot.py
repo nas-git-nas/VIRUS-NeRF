@@ -153,7 +153,7 @@ class TrainerPlot(TrainerBase):
         plt.savefig(os.path.join(self.args.save_dir, "occ_grid"+str(step)+".png"))
 
     @torch.no_grad()
-    def _plotEvaluation(
+    def _plotMaps(
             self,
             data_dict:dict,
             metrics_dict:dict,
@@ -211,7 +211,6 @@ class TrainerPlot(TrainerBase):
             for s, (sensor, data) in enumerate(data_dict.items()):
                 pos = data['pos'].reshape(N, -1, 2)[i] # (M, 2)
                 pos_o = data['pos_o'].reshape(N, -1, 2)[i] # (M, 2)
-                depths = data['depths'].reshape(N, -1)[i] # (M,)
 
                 scan = self.test_dataset.scene.pos2map(
                     pos=pos,
@@ -247,49 +246,84 @@ class TrainerPlot(TrainerBase):
                 ax.text(-0.17, 0.5, 'y [m]', fontsize=10, va='center', rotation='vertical', transform=ax.transAxes)
 
                 ax = axes[s-1,1]
-                bin_counts, _, _ = ax.hist(nn_dists, bins=hist_bins, color=self.colors[sensor])
-                ax.vlines(np.mean(nn_dists), ymin=0, ymax=np.max(bin_counts)+1, colors='r', linestyles='dashed', 
-                        label=f"Mean: {np.mean(nn_dists):.2f}m")
+                if len(nn_dists_inv) > 0:
+                    bin_counts, _, _ = ax.hist(nn_dists, bins=hist_bins, color=self.colors[sensor])
+                    ax.vlines(np.mean(nn_dists), ymin=0, ymax=np.max(bin_counts)+1, colors='r', linestyles='dashed', 
+                            label=f"Mean: {np.mean(nn_dists):.2f}m")
                 if s == 0:
                     ax.set_title(f'NNE Sensor->GT', weight='bold')
                 ax.set_ylabel(f'# elements')
                 ax.set_xlabel(f'NNE [m]')
-                ax.legend()
+                if len(ax.get_legend_handles_labels()[1]) > 0:
+                    ax.legend()
                 ax.set_box_aspect(1)
-                ax.set_xlim([0, np.max(nn_dists)+2*bin_size])
-                ax.set_ylim([0, np.max(bin_counts)+1])
+                ax.set_xlim([0, 1.2*np.max(nn_dists, initial=0.2)])
+                ax.set_ylim([0, 1.2*np.max(bin_counts, initial=1.0)])
 
                 ax = axes[s-1,2]
-                bin_counts_inv, _, _ = ax.hist(nn_dists_inv, bins=hist_bins, color=self.colors[sensor])
-                ax.vlines(np.mean(nn_dists_inv), ymin=0, ymax=np.max(bin_counts_inv)+1, colors='r', linestyles='dashed', 
-                        label=f"Mean: {np.mean(nn_dists_inv):.2f}m")
+                if len(nn_dists_inv) > 0:
+                    bin_counts_inv, _, _ = ax.hist(nn_dists_inv, bins=hist_bins, color=self.colors[sensor])
+                    ax.vlines(np.mean(nn_dists_inv), ymin=0, ymax=np.max(bin_counts_inv)+1, colors='r', linestyles='dashed', 
+                            label=f"Mean: {np.mean(nn_dists_inv):.2f}m")
                 if s == 0:
                     ax.set_title(f'NNE GT->Sensor', weight='bold')
                 ax.set_ylabel(f'# elements')
                 ax.set_xlabel(f'NNE [m]')
-                ax.legend()
+                if len(ax.get_legend_handles_labels()[1]) > 0:
+                    ax.legend()
                 ax.set_box_aspect(1)
-                ax.set_xlim([0, np.max(nn_dists_inv)+2*bin_size])
-                ax.set_ylim([0, np.max(bin_counts_inv)+1])
-
-            #     y_max = max(np.max(bin_counts), np.min(bin_counts_inv))
-            #     axes[s-1,1].set_ylim([0, y_max])
-            #     axes[s-1,2].set_ylim([0, y_max])
-
-            #     if nn_dists.size > 0:
-            #         nn_dist_max = max(nn_dist_max, np.max(nn_dists))
-            #     if nn_dists_inv.size > 0:
-            #         nn_dist_inv_max = max(nn_dist_inv_max, np.max(nn_dists_inv))
-
-            # for s in range(axes.shape[0]):
-            #     axes[s,0].set_xlim(extent[0], extent[1])
-            #     axes[s,0].set_ylim(extent[2], extent[3])
-            #     axes[s,1].set_xlim([0, nn_dist_max])
-            #     axes[s,2].set_xlim([0, nn_dist_inv_max])
+                ax.set_xlim([0, 1.2*np.max(nn_dists_inv, initial=0.2)])
+                ax.set_ylim([0, 1.2*np.max(bin_counts_inv, initial=1.0)])
 
             plt.tight_layout()
             plt.savefig(os.path.join(save_dir, f"map{i}.pdf"))
             plt.savefig(os.path.join(save_dir, f"map{i}.png"))
+
+    def _plotMetrics(
+        self,
+        metrics_dict:dict,
+    ):
+        """
+        Plot average metrics.
+        Args:
+            metrics_dict: dict of metrics
+        """
+        categories = list(metrics_dict.keys())
+        sensors = list(metrics_dict[categories[0]].keys())
+
+        sensors = list(metrics_dict.keys())
+        zones = list(metrics_dict[sensors[0]]['nn_mean'].keys())
+
+        x = np.arange(len(zones))  # the label locations
+        width = 0.6  # the width of the bars
+
+        fig, axs = plt.subplots(ncols=2, nrows=3, figsize=(10,8))
+        metrics = ['nn_mean', 'nn_mean_inv', 'nn_median', 'nn_median_inv', 'nn_inlier', 'nn_inlier_inv']
+
+        for ax, metric in zip(axs.flatten(), metrics):
+
+            for j, sensor in enumerate(sensors):
+                performances = [metrics_dict[sensors[j]][metric][z] for z in zones]
+                ax.bar(x - width/2 + (j+0.5)*width/len(sensors), performances, width/len(sensors), 
+                            label=sensor, color=self.colors[sensor])
+                
+            ax.set_xlim([-0.75*width, np.max(x)+2.0*width])
+            ax.set_xticks(x)
+            ax.legend()
+
+        axs[2,0].set_xticks(x, [f"{self.args.eval.zones[z][0]}-{self.args.eval.zones[z][1]}m" for z in zones])
+        axs[2,1].set_xticks(x, [f"{self.args.eval.zones[z][0]}-{self.args.eval.zones[z][1]}m" for z in zones])
+        axs[0,0].set_ylabel('Mean [m]')
+        axs[1,0].set_ylabel('Median [m]')
+        axs[2,0].set_ylabel('Inliers [%]')
+        axs[0,0].set_title('Sensor->GT') 
+        axs[0,1].set_title('GT->Sensor') 
+
+        fig.suptitle('Nearest Neighbour Error', fontsize=16, weight='bold')
+        plt.tight_layout()
+        plt.savefig(os.path.join(self.args.save_dir, f"metrics.pdf"))
+        plt.savefig(os.path.join(self.args.save_dir, f"metrics.png"))
+
 
     def _plotLosses(
         self,
@@ -420,7 +454,7 @@ class TrainerPlot(TrainerBase):
 
 
 # @torch.no_grad()
-#     def _plotEvaluation(
+#     def _plotMaps(
 #             self,
 #             data_w:dict,
 #             metrics_dict:dict,
@@ -864,7 +898,7 @@ class TrainerPlot(TrainerBase):
 
 
 #  @torch.no_grad()
-#     def _plotEvaluation(
+#     def _plotMaps(
 #             self,
 #             data_w:dict,
 #             metrics_dict:dict,

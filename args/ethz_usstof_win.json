@@ -38,20 +38,21 @@
     "evaluation":
     {
         "batch_size": 8192,
-        "res_map": 256,
-        "res_angular": 256,
+        "res_map": 512,
+        "res_angular": 512,
         "eval_every_n_steps": 1,
         "num_color_pts": 0,
         "num_depth_pts": 5,
         "num_plot_pts": 5,
         "num_avg_heights": 5,
-        "height_tolerance": 0.05,
+        "height_tolerance": 0.01,
         "density_map_thr": 10,
         "min_valid_depth": 0.2,
+        "inlier_threshold": 0.05,
         "zones": {
-            "safety": [0.1, 1.0],
-            "local_path_planner": [0.1, 2.0],
-            "global_path_planner": [0.1, 100.0]
+            "safety": [0, 1],
+            "local_path_planner": [0, 2],
+            "global_path_planner": [0, 100]
         },
         "sensors": ["GT", "USS", "ToF", "LiDAR", "NeRF"],
         "plot_results": true
