@@ -1,6 +1,6 @@
 import glob
 import os
-
+import sys
 import numpy as np
 import torch
 from tqdm import tqdm
@@ -18,6 +18,7 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from robotathome import RobotAtHome
 from robotathome import logger, log
 from robotathome import time_win2unixepoch, time_unixepoch2win
+from scipy.spatial.transform import Rotation
 
 from datasets.sensor_model import RGBDModel, ToFModel, USSModel
 from args.args import Args
@@ -37,7 +38,7 @@ from datasets.ray_utils import get_rays, get_ray_directions
 from datasets.dataset_base import DatasetBase
 from datasets.color_utils import read_image
 from datasets.scene_ethz import SceneETHZ
-
+from datasets.splitter_ethz import SplitterETHZ
 from ROS1.src.sensors.src.pcl_tools.pcl_transformer import PCLTransformer
 from ROS1.src.sensors.src.pcl_tools.pcl_creator import PCLCreatorUSS, PCLCreatorToF
 
@@ -50,10 +51,8 @@ class DatasetETHZ(DatasetBase):
         split:str='train',
         scene:SceneETHZ=None,
     ):
+        self.time_start = None
         
-        self.rng = np.random.RandomState(
-            seed=args.seed,
-        )
 
         super().__init__(
             args=args, 
@@ -72,10 +71,11 @@ class DatasetETHZ(DatasetBase):
             )
 
         # split dataset
-        split_masks = self.splitDataset(
-            data_dir=data_dir,
+        splitter = SplitterETHZ(
+            args=args,
+        )
+        split_masks = splitter.splitDataset(
             split=split,
-            cam_ids=self.args.ethz.cam_ids,
         )
 
         # load camera intrinsics
@@ -144,19 +144,24 @@ class DatasetETHZ(DatasetBase):
         idxs = np.where(mask)[0]
         return idxs
     
-    def getLidarPoses(
+    def getSensorNameFromIdx(
         self,
         idxs:np.ndarray,
     ):
-        data_dir = os.path.join(self.args.ethz.dataset_dir, self.args.ethz.room)
-        df_poses_sync1 = pd.read_csv(
-            filepath_or_buffer=os.path.join(data_dir, 'poses', 'poses_sync1.csv'),
-            dtype=np.float64,
+        """
+        Get the sensor name from the indices of the dataset.
+        Args:
+            idxs: indices of the dataset that belong to the sensor
+        Returns:
+            sensor_name: name of the sensor, str
+        """
+        sensor_id = self.sensor_ids[idxs].detach().clone().cpu().numpy()
+        sensor_name = sensorID2Name(
+            sensor_id=sensor_id,
+            dataset=self.args.dataset.name,
         )
-        df_poses_sync3 = pd.read_csv(
-            filepath_or_buffer=os.path.join(data_dir, 'poses', 'poses_sync3.csv'),
-            dtype=np.float64,
-        )
+        return sensor_name
+
     
     def getLidarMaps(
         self,
@@ -170,42 +175,36 @@ class DatasetETHZ(DatasetBase):
             xyzs: list of point clouds; list of length N of numpy arrays of shape (M, 3)
             poses: poses in world coordinates; list of numpy arrays of shape (N, 3, 4)
         """
-        lidar_dir = os.path.join(self.args.ethz.dataset_dir, self.args.ethz.room, 'lidars/filtered')
-
-        poses = self.poses_lidar.clone().detach().cpu().numpy() # (N, 3, 4)
-        times = self.times.clone().detach().cpu().numpy() # (N,)
-
-        # convert poses to world coordinate system
-        xyz = poses[:,:,3] # (N, 3)
-        xyz = self.scene.c2w(pos=xyz, copy=False) # (N, 3)
-        poses[:,:,3] = xyz # (N, 3, 4)
+        # get times and poses of samples in world coordinate system
+        times = self.times[img_idxs].clone().detach().cpu().numpy() # (N,)
+        poses = self.poses_lidar[img_idxs].clone().detach().cpu().numpy() # (N, 3, 4)
+        poses[:,:,3]  = self.scene.c2w(pos=poses[:,:,3], copy=False) # (N, 3)
         
         # load lidar file names and times
-        lidar_files = np.array(os.listdir(lidar_dir))
-        lidar_times = np.array([float(f[:-4]) for f in lidar_files])
+        pcl_loader = PCLLoader(
+            data_dir=os.path.join(self.args.ethz.dataset_dir, self.args.ethz.room),
+        )
+        lidar_times, lidar_files = pcl_loader.getTimes(
+            pcl_dir='lidars/filtered',
+        )
         sort_idxs = np.argsort(lidar_times)
-        lidar_files = lidar_files[sort_idxs]
+        lidar_files = np.array(lidar_files)[sort_idxs]
         lidar_times = lidar_times[sort_idxs]
-        lidar_times -= lidar_times[0]
-
-        # keep only samples of given indices
-        poses = poses[img_idxs]
-        times = times[img_idxs]
+        lidar_times = self.normalizeTimes(
+            times=lidar_times,
+        )
 
         # find corresponding lidar file to each sample
         m1, m2 = np.meshgrid(times, lidar_times, indexing='ij')
-        mask = (np.abs(m1-m2) < 1e-1)
+        mask = (np.abs(m1-m2) < 0.05)
         lidar_idxs = np.argmax(mask, axis=1)
         lidar_files = lidar_files[lidar_idxs]
         if self.args.model.debug_mode:
             if not np.all(np.sum(mask, axis=1) == np.ones((mask.shape[0]))):
                 self.args.logger.error(f"DatasetETHZ::getLidarMaps: multiple or no lidar files found for one sample")
-                print(f"num corr: {np.sum(mask, axis=1)}")
-
-        # load lidar maps in robot coordinate system
-        pcl_loader = PCLLoader(
-            data_dir=os.path.join(self.args.ethz.dataset_dir, self.args.ethz.room),
-        )
+                self.args.logger.error(f"time: {times}")
+                self.args.logger.error(f"lidar_times: {lidar_times[np.where(mask)[1]]}")
+        
         xyzs = []
         for i, f in enumerate(lidar_files):
             # load point cloud
@@ -222,147 +221,142 @@ class DatasetETHZ(DatasetBase):
                 xyz=xyz,
             )
             xyzs.append(xyz)
+
+            # h_min = poses[i,2,3] - self.args.eval.height_tolerance
+            # h_max = poses[i,2,3] + self.args.eval.height_tolerance
+
+            # xyz_gt = self.scene._point_cloud 
+            # xyz_gt = xyz_gt[(xyz_gt[:,2] >= h_min) & (xyz_gt[:,2] <= h_max)]
+            # plt.scatter(xyz_gt[:,0], xyz_gt[:,1], s=0.1, c="black")
+            
+            # xyz_plot = xyz[(xyz[:,2] >= h_min) & (xyz[:,2] <= h_max)] # (k, 3)
+            # plt.scatter(xyz_plot[:,0], xyz_plot[:,1], s=0.1, c="b")
+
+            # poses_cam = self.poses.clone().detach().cpu().numpy() # (N, 3, 4)
+            # poses_lidar = self.poses_lidar.clone().detach().cpu().numpy() # (N, 3, 4)
+            # poses_cam[:,:,3] = self.scene.c2w(pos=poses_cam[:,:,3], copy=False) # (N, 3)
+            # poses_lidar[:,:,3] = self.scene.c2w(pos=poses_lidar[:,:,3], copy=False) # (N, 3)
+            # plt.scatter(poses_lidar[:,0,3], poses_lidar[:,1,3], s=0.5, c="r")
+            # plt.scatter(poses[i,0,3], poses[i,1,3], s=20, c="pink")
+            # plt.scatter(poses_cam[:,0,3], poses_cam[:,1,3], s=0.5, c="g")
+            # plt.show()
             
         return xyzs, poses
-
-    def splitDataset(
+    
+    def getRobotPose2D(
         self,
-        data_dir:str,
-        split:str,
-        cam_ids:list,
+        img_idxs:np.ndarray,
+        pose_in_world_coords:bool,
     ):
         """
-        Split the dataset into train and test sets.
+        Get the 2D robot pose.
         Args:
-            data_dir: path to data directory; str
-            split: split type; str
-            cam_ids: list of camera ids; list of str
+            img_idxs: indices of samples; numpy array of shape (N,)
+            pose_in_world_coords: if True, return pose in world coordinates; bool
         Returns:
-            split_masks: split of dataset; dict of bool array { sensor type: bool array of shape (N_images,) }
+            pos_cam1: robot position; numpy array of shape (N, 2)
+            pos
+            angle: robot angle; numpy array of shape (N,)
         """
-        path_description = os.path.join(data_dir, 'split', 'split_description.csv')
-        path_split = os.path.join(data_dir, 'split', 'split.csv')
-        if not os.path.exists(os.path.join(data_dir, 'split')):
-            os.mkdir(os.path.join(data_dir, 'split'))
-        split_ratio = self.args.dataset.split_ratio
+        W, H = self.img_wh
+        N = img_idxs.shape[0]
 
-        # verify consistendy of dataset length
-        N_sensors = self._verifyDatasetLength(
-            data_dir=data_dir,
-            cam_ids=cam_ids,
+        # get lidar poses
+        poses_lidar = self.poses_lidar[img_idxs].detach().clone().cpu().numpy() # (N*2, 3, 4)
+        rays_o_lidar = poses_lidar[:, :3, 3] # (N*2, 3)
+        rot = Rotation.from_matrix(poses_lidar[:, :3, :3]) # (N*2,)
+        angles_lidar = rot.as_euler('zyx', degrees=False)[:,0] # (N*2,)
+
+        # get camera poses
+        sync_idxs = self.getSyncIdxs(
+            img_idxs=img_idxs,
+        ) # (N, 2)
+        sync_idxs = sync_idxs.reshape(-1) # (N*2,)
+
+        rays_o, rays_d = self._calcRayPoses(
+            directions_dict=self.directions_dict,
+            poses=self.poses,
+            sensor_ids=self.sensor_ids,
+            img_idxs=sync_idxs,
+            pix_idxs=torch.tensor(N*2 * [0.5*W*(H+1)], dtype=torch.int32, device=self.args.device)
+        ) # (N*2, 3)
+        rays_o = rays_o.detach().cpu().numpy() # (N*2, 3)
+        rays_d = rays_d.detach().cpu().numpy() # (N*2, 3)
+        angles = np.arctan2(rays_d[:,1], rays_d[:,0]) # (N*2,)
+
+        sensor_ids = self.sensor_ids[sync_idxs].detach().clone().cpu().numpy() # (N*2,)
+        pos = {
+            "LiDAR": rays_o_lidar[:,:2], # (N, 2)
+            "CAM1": rays_o[sensor_ids==1,:2], # (N, 2)
+            "CAM3": rays_o[sensor_ids==3,:2], # (N, 2)
+        }
+        orientation = {
+            "LiDAR": angles_lidar, # (N,)
+            "CAM1": angles[sensor_ids==1], # (N,)
+            "CAM3": angles[sensor_ids==3], # (N,)
+        }
+
+        if pose_in_world_coords:
+            for k in pos.keys():
+                pos[k] = self.scene.c2w(pos=pos[k], copy=False) # (N, 2)
+
+        if self.args.model.debug_mode:
+            for p, o in zip(pos.values(), orientation.values()):
+                if (o.shape[0] != N) or (p.shape[0] != N):
+                    self.args.logger.error(f"DatasetETHZ::getRobotPose2D: mask should size of N")
+                    sys.exit()
+
+        return pos, orientation
+
+    def getFieldOfView(
+        self,
+        img_idxs:np.ndarray,
+    ):
+        """
+        Get the field of view of a sensor.
+        Args:
+            sensor_name: name of the sensor, str
+            img_idxs: indices of samples; numpy array of shape (N,)
+        Returns:
+            fov: field of view of the sensors; dict of { sensor: { camera: array of shape (N,) } }
+            pos: robot position; dict of { camera: array of shape (N, 2) }
+            orientation: robot orientation; dict of { camera: array of shape (N,) }
+        """
+        # get 2D pose of lidar and cameras
+        pos, orientation = self.getRobotPose2D(
+            img_idxs=img_idxs,
+            pose_in_world_coords=True,
         )
 
-        # load split if it exists already
-        df_description = None
-        if os.path.exists(path_description) and os.path.exists(path_split):    
-            df_description = pd.read_csv(
-                filepath_or_buffer=path_description,
-                dtype={'info':str,'train':float, 'val':float, 'test':float},
-            )
-        
-            # split ratio must be the same as in description (last split)
-            if df_description['train'].values[0]==split_ratio['train'] \
-                and df_description['val'].values[0]==split_ratio['val'] \
-                and df_description['test'].values[0]==split_ratio['test'] \
-                and df_description['keep_N_observations'].values[0] == str(self.args.dataset.keep_N_observations):
+        # get field of view
+        fov_tof = np.deg2rad([-self.args.tof.angle_of_view[0]/2, self.args.tof.angle_of_view[0]/2]) # (2,)
+        fov_uss = np.deg2rad([-self.args.uss.angle_of_view[0]/2, self.args.uss.angle_of_view[0]/2]) # (2,)
+        fov_lidar = np.deg2rad(self.args.lidar.angle_min_max[self.args.ethz.room]) # (2,)
 
-                # load split and merge with df
-                df_split = pd.read_csv(
-                    filepath_or_buffer=path_split,
-                    dtype={'split1':str, 'split3':str},
-                )
-
-                # verify if split has same length as dataset
-                if (df_split['split1'].shape[0] == N_sensors['CAM1']) and (df_split['split3'].shape[0] == N_sensors['CAM3']):
-                    split_masks = {}
-                    for cam_id in cam_ids:
-                        id = sensorName2ID(
-                            sensor_name=cam_id,
-                            dataset=self.args.dataset.name,
-                        )
-                        split_values = df_split['split'+str(id)].values
-                        split_valid = (split_values != 'None')
-                        split_masks[cam_id] = (split_values[split_valid] == split)
-                    return split_masks
-                
-        # verify that split ratio is correct
-        if split_ratio['train'] + split_ratio['val'] + split_ratio['test'] != 1.0:
-            self.args.logger.error(f"split ratios do not sum up to 1.0")
-
-        split_arrs = {}
-        split_masks = {}
-        for cam_id in cam_ids:
-            id = sensorName2ID(
-                sensor_name=cam_id,
-                dataset=self.args.dataset.name,
-            )
-            # skip images for testing
-            if self.args.dataset.keep_N_observations != 'all':
-                N_used = self.args.dataset.keep_N_observations // len(cam_ids)
-                if N_used > N_sensors[cam_id]:
-                    self.args.logger.error(f"keep_N_observations is larger than dataset length")
-            else:
-                N_used = N_sensors[cam_id]
-
-            # create new split
-            N_train = int(split_ratio['train']*N_used)
-            N_val = int(split_ratio['val']*N_used)
-            N_test = int(split_ratio['test']*N_used)
-
-            rand_idxs = self.rng.permutation(N_sensors[cam_id])
-            train_idxs = rand_idxs[:N_train]
-            val_idxs = rand_idxs[N_train:N_train+N_val]
-            test_idxs = rand_idxs[N_train+N_val:N_train+N_val+N_test]
-
-            split_arr = N_sensors[cam_id] * ["skip"]
-            for i in train_idxs:
-                split_arr[i] = "train"
-            for i in val_idxs:
-                split_arr[i] = "val"
-            for i in test_idxs:
-                split_arr[i] = "test"
-
-            split_arrs['split'+str(id)] = np.array(split_arr)
-            split_masks['CAM'+str(id)] = (np.array(split_arr) == split)
-
-        N_max = 0
-        for cam_id in cam_ids:
-            N_max = max(N_max, len(split_masks[cam_id]))
-
-        # fill up with None
-        for cam_id in cam_ids:
-            id = sensorName2ID(
-                sensor_name=cam_id,
-                dataset=self.args.dataset.name,
-            )
-            N = len(split_arrs['split'+str(id)])
-            if N < N_max:
-                split_arrs['split'+str(id)] = np.concatenate((split_arrs['split'+str(id)], (N_max-N)*["None"]), axis=0)
-
-        # save split and description
-        pd.DataFrame(
-            data=split_arrs,
-            dtype=str,
-        ).to_csv(
-            path_or_buf=path_split,
-            index=False,
-        )
-        pd.DataFrame(
-            data={
-                'train':split_ratio['train'], 
-                'val':split_ratio['val'], 
-                'test':split_ratio['test'], 
-                'keep_N_observations':str(self.args.dataset.keep_N_observations),
-                'info':"This file contains the split ratios for this dataset. "
+        fov = {
+            "USS": {
+                "CAM1": orientation["CAM1"][:,None] + fov_uss, # (N,2)
+                "CAM3": orientation["CAM3"][:,None] + fov_uss, # (N,2)
             },
-            index=[0],
-        ).to_csv(
-            path_or_buf=path_description,
-            index=False,
-        )
+            "ToF": {
+                "CAM1": orientation["CAM1"][:,None] + fov_tof, # (N,2)
+                "CAM3": orientation["CAM3"][:,None] + fov_tof, # (N,2)
+            },
+            "LiDAR": {
+                "LiDAR": orientation["LiDAR"][:,None] + fov_lidar, # (N,2)
+            },
+            "NeRF": { 
+                "LiDAR": np.ones((img_idxs.shape[0], 2)) * np.deg2rad([-180, 180]), # (N,2)
+            },
+        }
 
-        return split_masks
+        # normalize angles
+        for sensor in fov.keys():
+            for camera in fov[sensor].keys():
+                fov[sensor][camera][fov[sensor][camera] > np.pi] -= 2*np.pi
+                fov[sensor][camera][fov[sensor][camera] < -np.pi] += 2*np.pi
 
+        return fov, pos, orientation
 
     def readIntrinsics(
         self,
@@ -399,10 +393,15 @@ class DatasetETHZ(DatasetBase):
                                         [0.0, df_cam['fy'].values[0], df_cam['cy'].values[0]], 
                                         [0.0, 0.0, 1.0]]) # (3, 3)
 
-        # get ray directions
+        # get ray directions and normalize them
         directions_dict = {}
         for cam_id in cam_ids:
-            directions_dict[cam_id] = get_ray_directions(h, w, K_dict[cam_id]) # (H*W, 3)
+            directions = get_ray_directions(h, w, K_dict[cam_id]) # (H*W, 3)
+            directions_dict[cam_id] = directions / np.linalg.norm(directions, axis=1, keepdims=True) # (H*W, 3)
+
+            if self.args.model.debug_mode:
+                if not torch.allclose(torch.norm(directions_dict[cam_id], dim=1), torch.ones((directions_dict[cam_id].shape[0]))):
+                    self.args.logger.error(f"DatasetETHZ::readIntrinsics: directions are not normalized")
 
         # convert numpy arrays to tensors
         for cam_id in cam_ids:
@@ -574,11 +573,9 @@ class DatasetETHZ(DatasetBase):
             )
 
             time = df["time"].to_numpy()
-            time -= time[0]
             time = time[split_masks[cam_id]]
 
             time_lidar = df_lidar["time"].to_numpy()
-            time_lidar -= time_lidar[0]
             time_lidar = time_lidar[split_masks[cam_id]]
 
             # verify time
@@ -618,6 +615,10 @@ class DatasetETHZ(DatasetBase):
             poses_lidar = np.concatenate((poses_lidar, pose_lidar), axis=0) # (N, 3, 4)
             sensor_ids = np.concatenate((sensor_ids, np.ones((pose.shape[0]))*int(cam_id[-1])), axis=0) # (N,)
             times = np.concatenate((times, time), axis=0) # (N,)
+
+        times = self.normalizeTimes(
+            times=times,
+        )
 
         return poses, poses_lidar, sensor_ids, times
     
@@ -739,12 +740,15 @@ class DatasetETHZ(DatasetBase):
             meass_temp = meass_temp[split_masks[cam_id]]
 
             time = df["time"].to_numpy()
-            time -= time[0]
             time = time[split_masks[cam_id]]
 
             meass = np.concatenate((meass, meass_temp), axis=0) # (N,)
             sensor_ids = np.concatenate((sensor_ids, np.ones((meass_temp.shape[0]))*int(cam_id[-1])), axis=0) # (N,)
             times = np.concatenate((times, time), axis=0) # (N,)
+
+        times = self.normalizeTimes(
+            times=times,
+        )
 
         return meass, sensor_ids, times
     
@@ -781,7 +785,6 @@ class DatasetETHZ(DatasetBase):
             )
 
             time = df["time"].to_numpy()
-            time -= time[0]
             time = time[split_masks[cam_id]]
 
             meass_temp = np.zeros((df.shape[0], 64))
@@ -809,6 +812,10 @@ class DatasetETHZ(DatasetBase):
         # im = axs[2].imshow(img3, cmap='jet')
         # fig.colorbar(im, ax=axs[2])
         # plt.show()
+            
+        times = self.normalizeTimes(
+            times=times,
+        )
 
         return meass, meas_stds, sensor_ids, times
     
@@ -1081,55 +1088,23 @@ class DatasetETHZ(DatasetBase):
             )
         return depths, stds, sensor_model
     
-    def _verifyDatasetLength(
+    def normalizeTimes(
         self,
-        data_dir:str,
-        cam_ids:list,
+        times:np.ndarray,
     ):
         """
-        Verify that the dataset length is the same for all sensors.
+        Normalize times that it starts with 0.
         Args:
-            data_dir: path to data directory; str
-            cam_ids: list of camera ids; list of str
+            times: time of sample in seconds starting at 0; array of shape (N,)
         Returns:
-            Ns: lengths of measurements per sensor stack; dict of { cam_id: int }
+            times: normalized time; array of shape (N,)
         """
-        Ns = {}
-        for cam_id in cam_ids:
-            N = None # length of dataset
-            id = sensorName2ID(
-                sensor_name=cam_id,
-                dataset=self.args.dataset.name,
-            )
-            df_names = [
-                'measurements/USS'+str(id)+'.csv',
-                'measurements/TOF'+str(id)+'.csv',
-            ]
-            for name in df_names:
-                df = pd.read_csv(
-                    filepath_or_buffer=os.path.join(data_dir, name),
-                    dtype={'time':str, 'meas':np.float32},
-                )
-                if N is None:
-                    N = df.shape[0]
-                elif N != df.shape[0]:
-                    self.args.logger.error(f"DatasetETHZ::_verifyDatasetLength: dataset length "
-                                        + f"is not the same for all sensors!")
-                    return None
-                    
-            dir_names = [
-                'measurements/CAM'+str(id)+'_color_image_raw',
-                'measurements/CAM'+str(id)+'_aligned_depth_to_color_image_raw',
-            ]
-            for name in dir_names:
-                files = os.listdir(os.path.join(data_dir, name))
-                if N != len(files):
-                    self.args.logger.error(f"DatasetETHZ::_verifyDatasetLength: dataset length "
-                                        + f"is not the same for all sensors!")
-                    return None
-            Ns[cam_id] = N
+        if self.time_start is None:
+            self.time_start = np.min(times)
 
-        return Ns
+        times -= self.time_start
+        return times
+    
 
     
 

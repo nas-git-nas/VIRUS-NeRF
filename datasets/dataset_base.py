@@ -244,6 +244,9 @@ class DatasetBase(Dataset):
             if torch.any(torch.isnan(rays_o)) or torch.any(torch.isnan(rays_d)):
                 self.args.logger.error(f"DatasetBase:_calcRayPoses: some rays were not calculated correctly")
 
+            if not torch.allclose(torch.norm(rays_d, dim=1), torch.ones((rays_d.shape[0]))):
+                self.args.logger.error(f"DatasetBase::_calcRayPoses: directions are not normalized")
+
         return rays_o, rays_d
 
 

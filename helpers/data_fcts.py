@@ -321,6 +321,8 @@ def downsampleData(
     Returns:
         datas: list of downsampled data; list of torch tensors [(N_down*M, ...), ...] or [(N_down, M, ...), ...]
     """
+    datas = [np.copy(data) for data in datas]
+    
     N = num_imgs
     N_down = num_imgs_downsampled
     if N < num_imgs_downsampled:

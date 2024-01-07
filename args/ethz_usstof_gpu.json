@@ -47,7 +47,6 @@
         "num_avg_heights": 5,
         "height_tolerance": 0.1,
         "density_map_thr": 10,
-        "min_valid_depth": 0.2,
         "plot_results": true
     },
     "occ_grid":

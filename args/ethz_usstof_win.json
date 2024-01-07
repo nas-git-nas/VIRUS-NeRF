@@ -5,7 +5,7 @@
         "name": "ETHZ",
         "split_ratio": {"train": 0.8, "val": 0.1, "test": 0.1},
         "downsample": 1.0,
-        "keep_N_observations": 60,
+        "keep_N_observations": 70,
         "keep_sensor": "all",
         "keep_pixels_in_angle_range": "all",
         "sensors": ["RGBD", "USS", "ToF"]
@@ -29,7 +29,7 @@
             "pixs": {"closest":0.05, "valid_uss":0.4, "valid_tof":0.4}
         },
         "sensors": ["USS", "ToF"],
-        "max_steps": 2,
+        "max_steps": 5,
         "lr": 5e-3,
         "depth_loss_w": 100.0,
         "random_bg": false,
@@ -38,16 +38,23 @@
     "evaluation":
     {
         "batch_size": 8192,
-        "res_map": 256,
-        "res_angular": 256,
+        "res_map": 512,
+        "res_angular": 512,
         "eval_every_n_steps": 1,
         "num_color_pts": 0,
         "num_depth_pts": 5,
-        "num_plot_pts": 3,
+        "num_depth_pts_per_step": 5,
+        "num_plot_pts": 5,
         "num_avg_heights": 5,
         "height_tolerance": 0.05,
         "density_map_thr": 10,
-        "min_valid_depth": 0.2,
+        "inlier_threshold": 0.1,
+        "zones": {
+            "zone1": [0, 1],
+            "zone2": [0, 2],
+            "zone3": [0, 100]
+        },
+        "sensors": ["GT", "USS", "ToF", "LiDAR", "NeRF"],
         "plot_results": true
     },
     "occ_grid":
@@ -96,6 +103,14 @@
     },
     "LiDAR":
     {
-        "height_offset": 0.0
+        "height_offset": 0.0,
+        "angle_min_max": {
+            "office": [-120, 120],
+            "office2": [-80, 80],
+            "commonroom": [-140, 60],
+            "commonroom2": [-90, 45],
+            "corridor": [-80, 80]
+
+        }
     }
 }
