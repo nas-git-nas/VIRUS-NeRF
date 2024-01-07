@@ -1,6 +1,6 @@
 import glob
 import os
-
+import sys
 import numpy as np
 import torch
 from tqdm import tqdm
@@ -18,6 +18,7 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from robotathome import RobotAtHome
 from robotathome import logger, log
 from robotathome import time_win2unixepoch, time_unixepoch2win
+from scipy.spatial.transform import Rotation
 
 from datasets.sensor_model import RGBDModel, ToFModel, USSModel
 from args.args import Args
@@ -143,19 +144,24 @@ class DatasetETHZ(DatasetBase):
         idxs = np.where(mask)[0]
         return idxs
     
-    def getLidarPoses(
+    def getSensorNameFromIdx(
         self,
         idxs:np.ndarray,
     ):
-        data_dir = os.path.join(self.args.ethz.dataset_dir, self.args.ethz.room)
-        df_poses_sync1 = pd.read_csv(
-            filepath_or_buffer=os.path.join(data_dir, 'poses', 'poses_sync1.csv'),
-            dtype=np.float64,
+        """
+        Get the sensor name from the indices of the dataset.
+        Args:
+            idxs: indices of the dataset that belong to the sensor
+        Returns:
+            sensor_name: name of the sensor, str
+        """
+        sensor_id = self.sensor_ids[idxs].detach().clone().cpu().numpy()
+        sensor_name = sensorID2Name(
+            sensor_id=sensor_id,
+            dataset=self.args.dataset.name,
         )
-        df_poses_sync3 = pd.read_csv(
-            filepath_or_buffer=os.path.join(data_dir, 'poses', 'poses_sync3.csv'),
-            dtype=np.float64,
-        )
+        return sensor_name
+
     
     def getLidarMaps(
         self,
@@ -236,6 +242,121 @@ class DatasetETHZ(DatasetBase):
             # plt.show()
             
         return xyzs, poses
+    
+    def getRobotPose2D(
+        self,
+        img_idxs:np.ndarray,
+        pose_in_world_coords:bool,
+    ):
+        """
+        Get the 2D robot pose.
+        Args:
+            img_idxs: indices of samples; numpy array of shape (N,)
+            pose_in_world_coords: if True, return pose in world coordinates; bool
+        Returns:
+            pos_cam1: robot position; numpy array of shape (N, 2)
+            pos
+            angle: robot angle; numpy array of shape (N,)
+        """
+        W, H = self.img_wh
+        N = img_idxs.shape[0]
+
+        # get lidar poses
+        poses_lidar = self.poses_lidar[img_idxs].detach().clone().cpu().numpy() # (N*2, 3, 4)
+        rays_o_lidar = poses_lidar[:, :3, 3] # (N*2, 3)
+        rot = Rotation.from_matrix(poses_lidar[:, :3, :3]) # (N*2,)
+        angles_lidar = rot.as_euler('zyx', degrees=False)[:,0] # (N*2,)
+
+        # get camera poses
+        sync_idxs = self.getSyncIdxs(
+            img_idxs=img_idxs,
+        ) # (N, 2)
+        sync_idxs = sync_idxs.reshape(-1) # (N*2,)
+
+        rays_o, rays_d = self._calcRayPoses(
+            directions_dict=self.directions_dict,
+            poses=self.poses,
+            sensor_ids=self.sensor_ids,
+            img_idxs=sync_idxs,
+            pix_idxs=torch.tensor(N*2 * [0.5*W*(H+1)], dtype=torch.int32, device=self.args.device)
+        ) # (N*2, 3)
+        rays_o = rays_o.detach().cpu().numpy() # (N*2, 3)
+        rays_d = rays_d.detach().cpu().numpy() # (N*2, 3)
+        angles = np.arctan2(rays_d[:,1], rays_d[:,0]) # (N*2,)
+
+        sensor_ids = self.sensor_ids[sync_idxs].detach().clone().cpu().numpy() # (N*2,)
+        pos = {
+            "LiDAR": rays_o_lidar[:,:2], # (N, 2)
+            "CAM1": rays_o[sensor_ids==1,:2], # (N, 2)
+            "CAM3": rays_o[sensor_ids==3,:2], # (N, 2)
+        }
+        orientation = {
+            "LiDAR": angles_lidar, # (N,)
+            "CAM1": angles[sensor_ids==1], # (N,)
+            "CAM3": angles[sensor_ids==3], # (N,)
+        }
+
+        if pose_in_world_coords:
+            for k in pos.keys():
+                pos[k] = self.scene.c2w(pos=pos[k], copy=False) # (N, 2)
+
+        if self.args.model.debug_mode:
+            for p, o in zip(pos.values(), orientation.values()):
+                if (o.shape[0] != N) or (p.shape[0] != N):
+                    self.args.logger.error(f"DatasetETHZ::getRobotPose2D: mask should size of N")
+                    sys.exit()
+
+        return pos, orientation
+
+    def getFieldOfView(
+        self,
+        img_idxs:np.ndarray,
+    ):
+        """
+        Get the field of view of a sensor.
+        Args:
+            sensor_name: name of the sensor, str
+            img_idxs: indices of samples; numpy array of shape (N,)
+        Returns:
+            fov: field of view of the sensors; dict of { sensor: { camera: array of shape (N,) } }
+            pos: robot position; dict of { camera: array of shape (N, 2) }
+            orientation: robot orientation; dict of { camera: array of shape (N,) }
+        """
+        # get 2D pose of lidar and cameras
+        pos, orientation = self.getRobotPose2D(
+            img_idxs=img_idxs,
+            pose_in_world_coords=True,
+        )
+
+        # get field of view
+        fov_tof = np.deg2rad([-self.args.tof.angle_of_view[0]/2, self.args.tof.angle_of_view[0]/2]) # (2,)
+        fov_uss = np.deg2rad([-self.args.uss.angle_of_view[0]/2, self.args.uss.angle_of_view[0]/2]) # (2,)
+        fov_lidar = np.deg2rad(self.args.lidar.angle_min_max[self.args.ethz.room]) # (2,)
+
+        fov = {
+            "USS": {
+                "CAM1": orientation["CAM1"][:,None] + fov_uss, # (N,2)
+                "CAM3": orientation["CAM3"][:,None] + fov_uss, # (N,2)
+            },
+            "ToF": {
+                "CAM1": orientation["CAM1"][:,None] + fov_tof, # (N,2)
+                "CAM3": orientation["CAM3"][:,None] + fov_tof, # (N,2)
+            },
+            "LiDAR": {
+                "LiDAR": orientation["LiDAR"][:,None] + fov_lidar, # (N,2)
+            },
+            "NeRF": { 
+                "LiDAR": np.ones((img_idxs.shape[0], 2)) * np.deg2rad([-180, 180]), # (N,2)
+            },
+        }
+
+        # normalize angles
+        for sensor in fov.keys():
+            for camera in fov[sensor].keys():
+                fov[sensor][camera][fov[sensor][camera] > np.pi] -= 2*np.pi
+                fov[sensor][camera][fov[sensor][camera] < -np.pi] += 2*np.pi
+
+        return fov, pos, orientation
 
     def readIntrinsics(
         self,

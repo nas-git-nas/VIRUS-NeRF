@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches 
 import os
 import cv2 as cv
 
@@ -37,7 +38,7 @@ class TrainerPlot(TrainerBase):
         )
 
         self.colors = {
-            'point':    'red',
+            'robot':    'red',
             'GT_map':   'grey', 
             'GT_scan':  'black',
             'NeRF':     'orange',
@@ -181,14 +182,17 @@ class TrainerPlot(TrainerBase):
         scale = self.args.model.scale
         extent = self.test_dataset.scene.c2w(pos=np.array([[-scale,-scale],[scale,scale]]), copy=False)
         extent = extent.T.flatten()
-        num_ray_steps = 64
+        num_ray_steps = 512
         max_error_m = 4.0
         bin_size = 0.2
         hist_bins = np.linspace(0, max_error_m, int(max_error_m/bin_size+1))
         kernel = np.ones((3,3),np.uint8)
+        orientation_arrow_length = 0.4
+        orientation_arrow_width = 0.001
+        pos_circle_radius = 0.06
 
         for i in np.linspace(0, N-1, N_down, dtype=int):
-            fig, axes = plt.subplots(ncols=3, nrows=len(data_dict)-1, figsize=(9,10))
+            fig, axes = plt.subplots(ncols=3, nrows=len(self.args.eval.sensors)-1, figsize=(9,10))
 
             map_gt = self.test_dataset.scene.getSliceMap(
                 height=data_dict['GT']['rays_o'].reshape(N, -1, 3)[i,0,2], 
@@ -197,34 +201,41 @@ class TrainerPlot(TrainerBase):
                 height_in_world_coord=True
             )
 
-            # determine robot position of lidar and two cameras
-            mask = (data_dict['USS']['pos_o'].reshape(N, -1, 2)[i,1:,0] != data_dict['USS']['pos_o'].reshape(N, -1, 2)[i,0,0]) \
-                    | (data_dict['USS']['pos_o'].reshape(N, -1, 2)[i,1:,1] != data_dict['USS']['pos_o'].reshape(N, -1, 2)[i,0,1])
-            idx = np.argmin(~mask) + 1
-            pos_robot = np.array([
-                data_dict['LiDAR']['pos_o'].reshape(N, -1, 2)[i,0],
-                data_dict['USS']['pos_o'].reshape(N, -1, 2)[i,0],
-                data_dict['USS']['pos_o'].reshape(N, -1, 2)[i,idx],
-            ]) # (3,2)
+            robot_pos = np.array([
+                data_dict['robot']['pos']['LiDAR'][i],
+                data_dict['robot']['pos']['CAM1'][i],
+                data_dict['robot']['pos']['CAM3'][i],
+            ])
+            robot_orientation = np.array([
+                data_dict['robot']['orientation']['LiDAR'][i],
+                data_dict['robot']['orientation']['CAM1'][i],
+                data_dict['robot']['orientation']['CAM3'][i],
+            ])
 
-            scan_gt = None
-            for s, (sensor, data) in enumerate(data_dict.items()):
-                pos = data['pos'].reshape(N, -1, 2)[i] # (M, 2)
-                pos_o = data['pos_o'].reshape(N, -1, 2)[i] # (M, 2)
+            for s, sensor in enumerate(self.args.eval.sensors):
+
+                if sensor == 'GT':
+                    continue
+        
+                pos = data_dict[sensor]['pos'].reshape(N, -1, 2)[i] # (M, 2)
+                pos_o = data_dict[sensor]['pos_o'].reshape(N, -1, 2)[i] # (M, 2)
+                pos_gt = data_dict[sensor]['pos_gt'].reshape(N, -1, 2)[i] # (M, 2)
 
                 scan = self.test_dataset.scene.pos2map(
                     pos=pos,
                     num_points=1,
                 ) # (1, L, L)
+                scan_gt = self.test_dataset.scene.pos2map(
+                    pos=pos_gt,
+                    num_points=1,
+                ) # (1, L, L)
                 scan = cv.dilate(scan[0].astype(np.uint8), kernel, iterations=1) # (L, L)
-
-                if sensor == 'GT':
-                    scan_gt = scan
-                    continue
+                scan_gt = cv.dilate(scan_gt[0].astype(np.uint8), kernel, iterations=1) # (L, L)
 
                 img = combineImgs(
                     bool_imgs=[map_gt, scan_gt, scan],
                     colors=[self.colors['GT_map'], self.colors['GT_scan'], self.colors[sensor]],
+                    upsample=1,
                 ) # (L, L)
 
                 nn_dists = metrics_dict[sensor]['nn_dists'].reshape(N, -1)[i] # (M,)
@@ -237,8 +248,17 @@ class TrainerPlot(TrainerBase):
                 for j in np.linspace(0, pos_o.shape[0]-1, num_ray_steps, dtype=int):
                     xs = [pos_o[j,0], pos[j,0]]
                     ys = [pos_o[j,1], pos[j,1]]
-                    ax.plot(xs, ys, c=self.colors[sensor], linewidth=0.1)
-                ax.scatter(pos_robot[:,0], pos_robot[:,1], c=self.colors['point'], s=1)
+                    ax.plot(xs, ys, c=self.colors[sensor], linewidth=0.1, alpha=0.2)
+                for j in range(robot_pos.shape[0]):
+                    ax.add_patch(
+                        mpatches.Circle((robot_pos[j,0], robot_pos[j,1]), radius=pos_circle_radius, color=self.colors['robot'])
+                    )
+                    ax.add_patch(
+                        mpatches.Arrow(robot_pos[j,0], robot_pos[j,1], orientation_arrow_length*np.cos(robot_orientation[j]), 
+                                        orientation_arrow_length*np.sin(robot_orientation[j]), color=self.colors['robot'],
+                                        width=orientation_arrow_width)
+                    )
+
                 if s == 0:
                     ax.set_title(f'Scan', fontsize=15, weight='bold')
                 ax.set_xlabel(f'x [m]')
@@ -308,7 +328,7 @@ class TrainerPlot(TrainerBase):
                             label=sensor, color=self.colors[sensor])
                 
             ax.set_xlim([-0.75*width, np.max(x)+2.0*width])
-            ax.set_xticks(x)
+            ax.set_xticks(x, [])
             ax.legend()
 
         axs[2,0].set_xticks(x, [f"{self.args.eval.zones[z][0]}-{self.args.eval.zones[z][1]}m" for z in zones])
@@ -316,10 +336,10 @@ class TrainerPlot(TrainerBase):
         axs[0,0].set_ylabel('Mean [m]')
         axs[1,0].set_ylabel('Median [m]')
         axs[2,0].set_ylabel('Inliers [%]')
-        axs[0,0].set_title('Sensor->GT') 
-        axs[0,1].set_title('GT->Sensor') 
+        axs[0,0].set_title('Accuracy: NNE Sensor->GT') 
+        axs[0,1].set_title('Range: NNE GT->Sensor') 
 
-        fig.suptitle('Nearest Neighbour Error', fontsize=16, weight='bold')
+        fig.suptitle('Nearest Neighbour Distance', fontsize=16, weight='bold')
         plt.tight_layout()
         plt.savefig(os.path.join(self.args.save_dir, f"metrics.pdf"))
         plt.savefig(os.path.join(self.args.save_dir, f"metrics.png"))
@@ -385,7 +405,7 @@ class TrainerPlot(TrainerBase):
             color = 'tab:blue'
             not_nan = ~np.isnan(logs['mnn'])
             lns1 = ax.plot(np.array(logs['step'])[not_nan], np.array(logs['mnn'])[not_nan], c=color, label='mnn')
-            hln1 = ax.axhline(metrics_dict['NeRF']['mnn'], linestyle="--", c=color, label='mnn final')
+            hln1 = ax.axhline(metrics_dict['NeRF']['nn_mean']['zone3'], linestyle="--", c=color, label='mnn final')
             ax.set_ylabel('mnn')
             ax.set_ylim([0, 0.5])
             ax.yaxis.label.set_color('blue') 
@@ -393,7 +413,7 @@ class TrainerPlot(TrainerBase):
 
             idx1 = dataConverged(
                 arr=np.array(logs['mnn'])[not_nan],
-                threshold=1.5 * metrics_dict['NeRF']['mnn'],
+                threshold=1.5 * metrics_dict['NeRF']['nn_mean']['zone3'],
                 data_increasing=False,
             )
             if idx1 != -1:
@@ -403,7 +423,7 @@ class TrainerPlot(TrainerBase):
 
             idx2 = dataConverged(
                 arr=np.array(logs['mnn'])[not_nan],
-                threshold=1.25 * metrics_dict['NeRF']['mnn'],
+                threshold=1.25 * metrics_dict['NeRF']['nn_mean']['zone3'],
                 data_increasing=False,
             )
             if idx2 != -1:
@@ -412,7 +432,7 @@ class TrainerPlot(TrainerBase):
 
             idx3 = dataConverged(
                 arr=np.array(logs['mnn'])[not_nan],
-                threshold=1.1 * metrics_dict['NeRF']['mnn'],
+                threshold=1.1 * metrics_dict['NeRF']['nn_mean']['zone3'],
                 data_increasing=False,
             )
             if idx3 != -1:

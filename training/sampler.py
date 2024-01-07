@@ -67,6 +67,30 @@ class Sampler():
         )
         return img_idxs, pix_idxs
     
+    def getValidImgIdxs(
+        self,
+        elapse_time:float,
+    ):
+        """
+        Simulate real-time behaviour by sampling only from measurements that are already made.
+        Args:
+            elapse_time: elapse time since training start in seconds; float
+        Return:
+            valid_img_idxs: valid image indices; tensor of ints (N,)
+        """
+        valid_img_idxs = torch.arange(self.dataset_len, device=self.args.device, dtype=torch.int32)
+
+        if self.args.training.real_time_simulation:
+            mask = (elapse_time <= self.times)
+            valid_img_idxs = valid_img_idxs[mask]
+
+        if self.args.model.debug_mode:
+            if valid_img_idxs.shape[0] == 0:
+                self.args.logger.error(f"no valid images found")
+                sys.exit()
+            
+        return valid_img_idxs
+    
     def _imgIdxs(
             self,
             batch_size:int,
@@ -82,7 +106,7 @@ class Sampler():
         Returns:
             img_idxs: indices of images to be used for training; tensor of int64 (batch_size,)
         """
-        valid_img_idxs = self._realTimeSimulation(
+        valid_img_idxs = self.getValidImgIdxs(
             elapse_time=elapse_time,
         )
 
@@ -241,29 +265,7 @@ class Sampler():
         pix_idxs = mask_idxs[rand_ints]
         return pix_idxs
     
-    def _realTimeSimulation(
-        self,
-        elapse_time:float,
-    ):
-        """
-        Simulate real-time behaviour by sampling only from measurements that are already made.
-        Args:
-            elapse_time: elapse time since training start in seconds; float
-        Return:
-            valid_img_idxs: valid image indices; tensor of ints (N,)
-        """
-        valid_img_idxs = torch.arange(self.dataset_len, device=self.args.device, dtype=torch.int32)
 
-        if self.args.training.real_time_simulation:
-            mask = (elapse_time <= self.times)
-            valid_img_idxs = valid_img_idxs[mask]
-
-        if self.args.model.debug_mode:
-            if valid_img_idxs.shape[0] == 0:
-                self.args.logger.error(f"no valid images found")
-                sys.exit()
-            
-        return valid_img_idxs
 
         
 

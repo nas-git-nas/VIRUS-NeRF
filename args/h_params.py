@@ -76,11 +76,11 @@ class HParamsEvaluation(HParams):
         self.eval_every_n_steps = None
         self.num_color_pts = None
         self.num_depth_pts = None
+        self.num_depth_pts_per_step = None
         self.num_plot_pts = None
         self.num_avg_heights = None
         self.height_tolerance = None
         self.density_map_thr = None
-        self.min_valid_depth = None
         self.inlier_threshold = None
         self.zones = None
         self.sensors = None
@@ -160,5 +160,6 @@ class HParamsLiDAR(HParams):
     def __init__(self):
         # hyper parameters
         self.height_offset = None
+        self.angle_min_max = None
 
         HParams.__init__(self, name="LiDAR")

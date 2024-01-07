@@ -260,7 +260,7 @@ class Trainer(TrainerPlot):
             f"evaluation: " \
             + f"psnr_avg={np.round(metrics_dict['NeRF']['psnr'],2)} | " \
             + f"ssim_avg={metrics_dict['NeRF']['ssim']:.3} | " \
-            + f"depth_mnn={metrics_dict['NeRF']['nn_mean']['global_path_planner']:.3} | " \
+            + f"depth_mnn={metrics_dict['NeRF']['nn_mean']['zone3']:.3} | " \
         )
 
         metric_df = {key:[] for key in metrics_dict["NeRF"].keys()}
@@ -326,9 +326,12 @@ class Trainer(TrainerPlot):
 
         # make intermediate evaluation
         if step % self.args.eval.eval_every_n_steps == 0:
-            # evaluate color and depth of one random image
-            img_idxs = np.array(np.random.randint(0, len(self.test_dataset), size=8))
-            depth_metrics, data_w = self._evaluateDepth(
+            # evaluate depth of one random image
+            valid_img_idxs = self.test_dataset.sampler.getValidImgIdxs(
+                elapse_time=time.time()-tic,
+            )
+            img_idxs = self.rng.choice(valid_img_idxs, size=self.args.eval.num_depth_pts_per_step)
+            depth_metrics, _ = self._evaluateDepth(
                 img_idxs=img_idxs,
                 sensor_names=["GT", "NeRF"],
             )
@@ -338,7 +341,7 @@ class Trainer(TrainerPlot):
             psnr = -10.0 * torch.log(mse) / np.log(10.0)
 
             self.logs['psnr'][-1] = psnr.item()
-            self.logs['mnn'][-1] = depth_metrics['mnn']
+            self.logs['mnn'][-1] = depth_metrics['NeRF']['nn_mean']['zone3']
             print(
                 f"time={(time.time()-tic):.2f}s | "
                 f"step={step} | "
@@ -347,7 +350,7 @@ class Trainer(TrainerPlot):
                 f"color_loss={loss_dict['color']:.4f} | "
                 f"depth_loss={loss_dict['depth']:.4f} | "
                 f"psnr={psnr:.2f} | "
-                f"depth_mnn={(depth_metrics['mnn']):.3f} | "
+                f"depth_mnn={(depth_metrics['NeRF']['nn_mean']['zone3']):.3f} | "
             )  
 
     @torch.no_grad()
@@ -448,12 +451,26 @@ class Trainer(TrainerPlot):
         """
         metrics_dict = {}
         data_dict = {}
+
+        robot_pos, robot_orientation = self.test_dataset.getRobotPose2D(
+            img_idxs=img_idxs,
+            pose_in_world_coords=True,
+        )
+        data_dict["robot"] = {
+            'pos':robot_pos,
+            'orientation':robot_orientation,
+        }
+
+        fov, robot_pos, robot_orientation = self.test_dataset.getFieldOfView(
+            img_idxs=img_idxs,
+        )
+
         for sensor in sensor_names:
             # get data for evaluation
             rays_o, rays_d, depths = self._getEvaluationData(
                 img_idxs=img_idxs,
                 sensor=sensor,
-            ) # (N*K, 3), (N*K, 3), (N*K,)
+            ) # (N*K, 3), (N*K, 3), (N*K,), (N, 2)
 
             # convert depth to positions: 3D -> 2D space
             pos, pos_o = self.test_dataset.scene.depth2pos(
@@ -462,39 +479,47 @@ class Trainer(TrainerPlot):
                 rays_d=rays_d,
             ) # (N*K, 2), (N*K, 2)
 
-            # sample evaluation data for every angle range
-            pos, pos_o = self._sampleEvaluationData(
-                pos=pos,
-                pos_o=pos_o,
-                num_points=img_idxs.shape[0],
-            ) # (N*M, 2), (N*M, 2)
-
-            data_dict[sensor] = {
-                'pos': pos,
-                'pos_o': pos_o,
-                'depths': depths,
-            }
-
             if sensor == "GT":
-                data_dict[sensor]['rays_o'] = rays_o
+                data_dict[sensor] = {
+                    'pos': pos,
+                    'pos_o': pos_o,
+                    'depths': depths,
+                    'rays_o': rays_o,
+                }
                 continue
+
+            pos_gt, pos_o_gt = self._limitFoV(
+                pos=data_dict["GT"]["pos"],
+                pos_o=data_dict["GT"]["pos_o"],
+                fov_sensor=fov[sensor],
+                num_points=img_idxs.shape[0],
+                robot_pos=robot_pos,
+            ) # (N*M, 2), (N*M, 2)
 
             # calculate metrics
             nn_dists, nn_mean, nn_median, nn_inlier = self.metrics.nn(
                 pos=pos,
-                pos_ref=data_dict["GT"]["pos"],
+                pos_ref=pos_gt,
                 depths_gt=data_dict["GT"]["depths"],
                 num_points=img_idxs.shape[0],
                 ref_pos_is_gt=True,
             ) # (N*K,), (N*K,)
 
             nn_dists_inv, nn_mean_inv, nn_median_inv, nn_inlier_inv = self.metrics.nn(
-                pos=data_dict["GT"]["pos"],
+                pos=pos_gt,
                 pos_ref=pos,
                 depths_gt=data_dict["GT"]["depths"],
                 num_points=img_idxs.shape[0],
                 ref_pos_is_gt=False,
             ) # (N*M,), (N*M,)
+
+            data_dict[sensor] = {
+                'pos': pos,
+                'pos_o': pos_o,
+                'depths': depths,
+                'pos_gt': pos_gt,
+                'pos_o_gt': pos_o_gt,
+            }
 
             metrics_dict[sensor] = {
                 'nn_dists': nn_dists,
@@ -588,7 +613,6 @@ class Trainer(TrainerPlot):
         # convert rays to world coordinates
         rays_o = self.test_dataset.scene.c2w(pos=rays_o, copy=False) # (N*M, 3)
         depths = self.test_dataset.scene.c2w(pos=depths, only_scale=True, copy=False) # (N*M,)
-
         return rays_o, rays_d, depths
 
     @torch.no_grad()
@@ -670,6 +694,7 @@ class Trainer(TrainerPlot):
             rays_o: ray origins; array of shape (N*M, 3)
             rays_d: ray directions; array of shape (N*M, 3)
             depth: depth; array of shape (N*M,)
+            fov: field of view [min, max]; array of shape (N, 2)
         """
         xyzs, poses_lidar_w = self.test_dataset.getLidarMaps(
             img_idxs=img_idxs,
@@ -856,6 +881,69 @@ class Trainer(TrainerPlot):
         pos[~valid_mask.flatten()] = np.nan # (N*M, 2)
         pos_o[~valid_mask.flatten()] = np.nan # (N*M, 2)
         return pos, pos_o
+    
+    @torch.no_grad()
+    def _limitFoV(
+        self,
+        fov_sensor:np.ndarray,
+        pos:np.ndarray,
+        pos_o:np.ndarray,
+        num_points:int,
+        robot_pos:dict,
+    ):
+        """
+        Sample evaluation data for ground truth according to field of view of sensor.
+        Args:
+            fov_sensor: field of view [min, max]; dict {camera_name: array of shape (N, 2)}
+            pos: positions; array of shape (N*M, 2)
+            pos_o: positions of ray origins; array of shape (N*M, 2)
+            num_points: number of points to sample; int
+            robot_pos: robot positions; dict {camera_name: array of shape (N, 2)}
+        Returns:
+            pos: positions; array of shape (N*M, 2)
+            pos_o: positions of ray origins; array of shape (N*M, 2)
+        """
+        # return pos, pos_o
+
+        pos = pos.copy() # (N*M, 2)
+        pos_o = pos_o.copy() # (N*M, 2)
+        N = num_points 
+        M = pos.shape[0] // N
+
+        mask = np.zeros((N, M), dtype=bool) # (N, M)
+        for name, fov in fov_sensor.items():
+            # print(f"Sensor {name} has FoV")
+            # for i in range(fov.shape[0]):
+            #     print(f"     i={i}: {np.rad2deg(fov[i,0]):.2f} - {np.rad2deg(fov[i,1]):.2f}")
+
+            if np.allclose(fov[:,0], -np.pi) and np.allclose(fov[:,1], np.pi):
+                mask = np.ones((N, M), dtype=bool) # (N, M)
+                break
+
+            # calculate angles
+            pos_o_temp = np.repeat(robot_pos[name], M, axis=0) # (N*M, 2)
+            angles = np.arctan2((pos - pos_o_temp)[:,1], (pos - pos_o_temp)[:,0]) # (N*M,)
+            angles = angles.reshape(N, M) # (N, M)
+
+            angles_temp = angles - fov[:,0][:,None] # (N, M)
+            upper_limit = fov[:,1] - fov[:,0] # (N,)
+            angles_temp[angles_temp < 0] += 2*np.pi # (N, M)
+            upper_limit[upper_limit < 0] += 2*np.pi # (N,)
+
+            # add mask
+            mask_temp = (angles_temp <= upper_limit[:,None]) # (N, M)
+            mask = mask | mask_temp # (N, M)
+
+        mask = mask.flatten() # (N*M,)
+        pos[~mask] = np.nan # (N*M, 2)
+        pos_o[~mask] = np.nan # (N*M, 2)
+
+        return pos, pos_o
+
+
+
+
+
 
     # @torch.no_grad()
     # def _evaluateLidar(
