@@ -30,7 +30,7 @@
         },
         "sensors": ["USS", "ToF"],
         "max_steps": 700,
-        "lr": 1e-2,
+        "lr": 5e-3,
         "depth_loss_w": 100.0,
         "random_bg": false,
         "real_time_simulation": false
@@ -66,7 +66,7 @@
     "ethz":
     {
         "dataset_dir": "/media/scratch1/schmin/data/ETHZDataset",
-        "room": "office_2",
+        "room": "office",
         "cam_ids": ["CAM1", "CAM3"]
     },
     "RH2":
