@@ -350,24 +350,27 @@ class SceneBase():
         Returns:
             pos: position of scan rays; numpy array of shape (N, 2)
             pos_o: origin of scan rays in plane; numpy array of shape (N, 2)
+            dists: distance of scan rays; numpy array of shape (N,)
         """
         # valid mask
         mask = (~np.isnan(depths)) & np.all(~np.isnan(rays_o), axis=1) & np.all(~np.isnan(rays_d), axis=1)
 
         # collapse rays from 3D to 2D
-        pos_o_temp, angles, dists = self.space2plane(
+        pos_o_temp, angles, dists_temp = self.space2plane(
             rays_o=rays_o[mask],
             rays_d=rays_d[mask],
             depths=depths[mask],
         )
-        pos_temp = pos_o_temp + np.stack((dists * np.cos(angles), dists * np.sin(angles)), axis=1)
+        pos_temp = pos_o_temp + np.stack((dists_temp * np.cos(angles), dists_temp * np.sin(angles)), axis=1)
 
         # recover nan values
         pos = np.full((mask.shape[0], 2), np.nan)
         pos_o = np.full((mask.shape[0], 2), np.nan)
+        dists = np.full(mask.shape[0], np.nan)
         pos[mask] = pos_temp
         pos_o[mask] = pos_o_temp
-        return pos, pos_o
+        dists[mask] = dists_temp
+        return pos, pos_o, dists
     
     def space2plane(
         self,

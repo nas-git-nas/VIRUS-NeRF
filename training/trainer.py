@@ -470,10 +470,10 @@ class Trainer(TrainerPlot):
             rays_o, rays_d, depths = self._getEvaluationData(
                 img_idxs=img_idxs,
                 sensor=sensor,
-            ) # (N*K, 3), (N*K, 3), (N*K,), (N, 2)
+            ) # (N*K, 3), (N*K, 3), (N*K,)
 
             # convert depth to positions: 3D -> 2D space
-            pos, pos_o = self.test_dataset.scene.depth2pos(
+            pos, pos_o, dists = self.test_dataset.scene.depth2pos(
                 depths=depths,
                 rays_o=rays_o,
                 rays_d=rays_d,
@@ -483,7 +483,7 @@ class Trainer(TrainerPlot):
                 data_dict[sensor] = {
                     'pos': pos,
                     'pos_o': pos_o,
-                    'depths': depths,
+                    'depths': dists,
                     'rays_o': rays_o,
                 }
                 continue
@@ -497,17 +497,19 @@ class Trainer(TrainerPlot):
             ) # (N*M, 2), (N*M, 2)
 
             # calculate metrics
-            nn_dists, nn_mean, nn_median, nn_inlier = self.metrics.nn(
+            nn_dists, nn_mean, nn_median, nn_inlier, nn_outlier_too_close = self.metrics.nn(
                 pos=pos,
                 pos_ref=pos_gt,
+                depths=dists,
                 depths_gt=data_dict["GT"]["depths"],
                 num_points=img_idxs.shape[0],
                 ref_pos_is_gt=True,
             ) # (N*K,), (N*K,)
 
-            nn_dists_inv, nn_mean_inv, nn_median_inv, nn_inlier_inv = self.metrics.nn(
+            nn_dists_inv, nn_mean_inv, nn_median_inv, nn_inlier_inv, nn_outlier_too_close_inv = self.metrics.nn(
                 pos=pos_gt,
                 pos_ref=pos,
+                depths=dists,
                 depths_gt=data_dict["GT"]["depths"],
                 num_points=img_idxs.shape[0],
                 ref_pos_is_gt=False,
@@ -516,7 +518,7 @@ class Trainer(TrainerPlot):
             data_dict[sensor] = {
                 'pos': pos,
                 'pos_o': pos_o,
-                'depths': depths,
+                'depths': dists,
                 'pos_gt': pos_gt,
                 'pos_o_gt': pos_o_gt,
             }
@@ -526,10 +528,12 @@ class Trainer(TrainerPlot):
                 'nn_dists_inv': nn_dists_inv,
                 'nn_mean': nn_mean,
                 'nn_mean_inv': nn_mean_inv,
-                'nn_inlier': nn_inlier,
-                'nn_inlier_inv': nn_inlier_inv,
                 'nn_median': nn_median,
                 'nn_median_inv': nn_median_inv,
+                'nn_inlier': nn_inlier,
+                'nn_inlier_inv': nn_inlier_inv,
+                'nn_outlier_too_close': nn_outlier_too_close,
+                'nn_outlier_too_close_inv': nn_outlier_too_close_inv,
             }
 
         return metrics_dict, data_dict
