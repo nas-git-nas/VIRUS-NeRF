@@ -91,7 +91,7 @@ class SplitterETHZ(Splitter):
         
         df_description = pd.read_csv(
             filepath_or_buffer=self.description_path,
-            dtype={'info':str,'train':float, 'val':float, 'test':float, 'keep_N_observations':int},
+            dtype={'info':str,'train':float, 'val':float, 'test':float, 'keep_N_observations':str},
         )
         df_split = pd.read_csv(
             filepath_or_buffer=self.split_path,
@@ -103,7 +103,7 @@ class SplitterETHZ(Splitter):
         if (df_description['train'].values[0]!=split_ratio['train']) \
             or (df_description['val'].values[0]!=split_ratio['val']) \
             or (df_description['test'].values[0]!=split_ratio['test']) \
-            or (df_description['keep_N_observations'].values[0] != self.args.dataset.keep_N_observations):
+            or (df_description['keep_N_observations'].values[0] != str(self.args.dataset.keep_N_observations)):
             return None         
 
         # verify that split has same length as dataset

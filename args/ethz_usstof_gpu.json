@@ -38,15 +38,23 @@
     "evaluation":
     {
         "batch_size": 16384,
-        "res_map": 256,
-        "res_angular": 256,
+        "res_map": 512,
+        "res_angular": 512,
         "eval_every_n_steps": 25,
-        "num_color_pts": 10,
+        "num_color_pts": 8,
         "num_depth_pts": "all",
-        "num_plot_pts": 3,
+        "num_depth_pts_per_step": 16,
+        "num_plot_pts": 8,
         "num_avg_heights": 5,
-        "height_tolerance": 0.1,
+        "height_tolerance": 0.05,
         "density_map_thr": 10,
+        "inlier_threshold": 0.1,
+        "zones": {
+            "zone1": [0, 1],
+            "zone2": [0, 2],
+            "zone3": [0, 100]
+        },
+        "sensors": ["GT", "USS", "ToF", "LiDAR", "NeRF"],
         "plot_results": true
     },
     "occ_grid":
@@ -67,7 +75,8 @@
     {
         "dataset_dir": "/media/scratch1/schmin/data/ETHZDataset",
         "room": "office",
-        "cam_ids": ["CAM1", "CAM3"]
+        "cam_ids": ["CAM1", "CAM3"],
+        "use_optimized_poses": true
     },
     "RH2":
     {
@@ -94,7 +103,15 @@
     },
     "LiDAR":
     {
-        "height_offset": 0.0
+        "height_offset": 0.0,
+        "angle_min_max": {
+            "office": [-120, 120],
+            "office2": [-80, 80],
+            "commonroom": [-140, 60],
+            "commonroom2": [-90, 45],
+            "corridor": [-80, 80]
+
+        }
     }
     
 }

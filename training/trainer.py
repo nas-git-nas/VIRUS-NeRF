@@ -330,7 +330,8 @@ class Trainer(TrainerPlot):
             valid_img_idxs = self.test_dataset.sampler.getValidImgIdxs(
                 elapse_time=time.time()-tic,
             )
-            img_idxs = self.rng.choice(valid_img_idxs, size=self.args.eval.num_depth_pts_per_step)
+            rand_ints = torch.randint(0, len(valid_img_idxs), (self.args.eval.num_depth_pts_per_step,), device=self.args.device)
+            img_idxs = valid_img_idxs[rand_ints]
             depth_metrics, _ = self._evaluateDepth(
                 img_idxs=img_idxs,
                 sensor_names=["GT", "NeRF"],
