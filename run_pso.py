@@ -21,9 +21,9 @@ def main():
     # define paraeters
     T = 36000 # if termination_by_time: T is time in seconds, else T is number of iterations
     termination_by_time = True # whether to terminate by time or iterations
-    hparams_file = "ethz_usstof_win.json" 
+    hparams_file = "ethz_usstof_gpu.json" 
     hparams_lims_file = "optimization/hparams_lims.json"
-    save_dir = "results/pso/opt3"
+    save_dir = "results/pso/opt9"
 
     # get hyper-parameters and other variables
     args = Args(
@@ -33,6 +33,9 @@ def main():
     args.eval.plot_results = False
     args.model.save = False
     args.eval.sensors = ["GT", "NeRF"]
+    args.eval.num_color_pts = 0
+    args.eval.batch_size = 8192
+    args.training.batch_size = 4096
 
     # datasets   
     if args.dataset.name == 'RH2':
@@ -95,25 +98,26 @@ def main():
         trainer.train()
         metrics_dict = trainer.evaluate()
 
-        # save state
-        pso.saveState(
-            score=metrics_dict['NeRF']["nn_mean"]['zone3'],
-        )
-
         # update particle swarm
         terminate = pso.update(
             score=metrics_dict['NeRF']["nn_mean"]['zone3'],
         ) # bool
 
+        # save state
+        pso.saveState(
+            score=metrics_dict['NeRF']["nn_mean"]['zone3'],
+        )
+
+        del trainer
         # watch memory usage
-        if args.device == "cuda":
+        if torch.cuda.is_available():
             nvidia_smi.nvmlInit()
 
             handle = nvidia_smi.nvmlDeviceGetHandleByIndex(0) # gpu id 0
             info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
 
-            print(f"Free memory: {info.free}/{info.total}")
-            if info.used > 11e9:
+            print(f"Free memory: {(info.free/1e6):.2f}Mb / {(info.total/1e6):.2f}Mb = {(info.free/info.total):.3f}%")
+            if info.free < 2e9:
                 print("Run PSO: Used memory is too high. Exiting...")
                 terminate = True
 

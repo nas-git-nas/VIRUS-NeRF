@@ -29,7 +29,7 @@
             "pixs": {"closest":0.05, "valid_uss":0.4, "valid_tof":0.4}
         },
         "sensors": ["USS", "ToF"],
-        "max_steps": 700,
+        "max_steps": 400,
         "lr": 5e-3,
         "depth_loss_w": 100.0,
         "random_bg": false,
@@ -76,7 +76,7 @@
         "dataset_dir": "/media/scratch1/schmin/data/ETHZDataset",
         "room": "office",
         "cam_ids": ["CAM1", "CAM3"],
-        "use_optimized_poses": true
+        "use_optimized_poses": false
     },
     "RH2":
     {

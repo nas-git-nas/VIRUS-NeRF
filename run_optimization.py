@@ -11,10 +11,13 @@ def main():
     # run_pso_path = os.path.join(cwd, "test_scripts/optimization", "test_run_pso.py")
 
     while True:
-        exit_code = subprocess.call(["python", run_pso_path])
+        print("running pso")
+        exit_code = subprocess.call(["python3", run_pso_path])
+        print("exit code:", exit_code)
 
-        if exit_code != 0:
-            break
+        # print("exit code:", exit_code)
+        # if exit_code != 0:
+        #     break
 
 if __name__ == "__main__":
     main()
