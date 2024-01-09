@@ -29,7 +29,7 @@
             "pixs": {"closest":0.05, "valid_uss":0.4, "valid_tof":0.4}
         },
         "sensors": ["USS", "ToF"],
-        "max_steps": 3,
+        "max_steps": 5,
         "lr": 5e-3,
         "depth_loss_w": 100.0,
         "random_bg": false,
@@ -45,7 +45,7 @@
         "num_depth_pts": 5,
         "num_depth_pts_per_step": 5,
         "num_plot_pts": 5,
-        "num_avg_heights": 5,
+        "num_avg_heights": "None",
         "height_tolerance": 0.05,
         "density_map_thr": 10,
         "inlier_threshold": 0.1,
@@ -77,7 +77,7 @@
         "dataset_dir": "../ETHZDataset",
         "room": "office",
         "cam_ids": ["CAM1", "CAM3"],
-        "use_optimized_poses": true
+        "use_optimized_poses": false
     },
     "RH2":
     {

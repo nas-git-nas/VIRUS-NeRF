@@ -1,14 +1,15 @@
+import os
+os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+
 import numpy as np
 import time
-import sys
-import os
-import gc
 import torch
 import taichi as ti
 
 from optimization.particle_swarm_optimization_wrapper import ParticleSwarmOptimizationWrapper
 from args.args import Args
 from datasets.dataset_rh import DatasetRH
+from datasets.dataset_ethz import DatasetETHZ
 from training.trainer import Trainer
 from helpers.system_fcts import get_size, moveToRecursively
 
@@ -19,7 +20,7 @@ def main():
     # define paraeters
     T = 36000 # if termination_by_time: T is time in seconds, else T is number of iterations
     termination_by_time = True # whether to terminate by time or iterations
-    hparams_file = "rh_windows.json" 
+    hparams_file = "ethz_usstof_win.json" 
     hparams_lims_file = "optimization/hparams_lims.json"
     save_dir = "results/pso/opt3"
 
@@ -30,10 +31,15 @@ def main():
     args.eval.eval_every_n_steps = args.training.max_steps + 1
     args.eval.plot_results = False
     args.model.save = False
+    args.eval.sensors = ["GT", "NeRF"]
 
     # datasets   
     if args.dataset.name == 'RH2':
-        dataset = DatasetRH    
+        dataset = DatasetRH
+    elif args.dataset.name == 'ETHZ':
+        dataset = DatasetETHZ
+    else:
+        args.logger.error("Invalid dataset name.")    
     train_dataset = dataset(
         args = args,
         split="train",
@@ -55,7 +61,10 @@ def main():
 
     # run optimization
     terminate = False
+    iter = 0
     while not terminate:
+        iter += 1
+
         # get hparams to evaluate
         hparams_dict = pso.nextHparams(
             group_dict_layout=True,
@@ -63,12 +72,12 @@ def main():
         ) # np.array (M,)
 
         print("\n\n----- NEW PARAMETERS -----")
-        print(f"Time: {time.time()-pso.start_time:.1f}/{T_time}, param: {hparams_dict}")
+        print(f"Time: {time.time()-pso.start_time:.1f}/{T}, param: {hparams_dict}")
         print(f"Current best mnn: {np.min(pso.best_score):.3f}")
 
         # set hparams
         args.setRandomSeed(
-            seed=args.seed+1,
+            seed=args.seed+iter,
         )
         for key, value in hparams_dict["occ_grid"].items():
             setattr(args.occ_grid, key, value)
@@ -86,12 +95,12 @@ def main():
 
         # save state
         pso.saveState(
-            score=metrics_dict["mnn"],
+            score=metrics_dict['NeRF']["nn_mean"],
         )
 
         # update particle swarm
         terminate = pso.update(
-            score=metrics_dict["mnn"],
+            score=metrics_dict['NeRF']["nn_mean"],
         ) # bool
 
         # watch memory usage

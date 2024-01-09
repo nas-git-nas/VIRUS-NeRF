@@ -254,26 +254,11 @@ class Trainer(TrainerPlot):
         )
 
         # print and save metrics
-        for key in metrics_dict.keys():
-            metrics_dict[key].update(color_dict)
-        print(
-            f"evaluation: " \
-            + f"psnr_avg={np.round(metrics_dict['NeRF']['psnr'],2)} | " \
-            + f"ssim_avg={metrics_dict['NeRF']['ssim']:.3} | " \
-            + f"depth_mnn={metrics_dict['NeRF']['nn_mean']['zone3']:.3} | " \
+        metrics_dict = self._printAndSaveMetrics(
+            metrics_dict=metrics_dict,
+            color_dict=color_dict,
         )
-
-        metric_df = {key:[] for key in metrics_dict["NeRF"].keys()}
-        metric_idxs = []
-        for key in metrics_dict.keys():
-            for metric, value in metrics_dict[key].items():
-                metric_df[metric].append(value)
-            metric_idxs.append(key)
-
-        pd.DataFrame(
-            data=metric_df,
-            index=metric_idxs,
-        ).to_csv(os.path.join(self.args.save_dir, "metrics.csv"), index=True)
+        
         return metrics_dict
 
     @torch.no_grad()
@@ -945,7 +930,37 @@ class Trainer(TrainerPlot):
 
         return pos, pos_o
 
+    def _printAndSaveMetrics(
+            self,
+            metrics_dict:dict,
+            color_dict:dict,
 
+    ):
+        for key in metrics_dict.keys():
+            metrics_dict[key].update(color_dict)
+        print(
+            f"evaluation: " \
+            + f"psnr_avg={np.round(metrics_dict['NeRF']['psnr'],2)} | " \
+            + f"ssim_avg={metrics_dict['NeRF']['ssim']:.3} | " \
+            + f"depth_mnn={metrics_dict['NeRF']['nn_mean']['zone3']:.3} | " \
+        )
+
+        if not self.args.model.save:
+            return metrics_dict
+
+        metric_df = {key:[] for key in metrics_dict["NeRF"].keys()}
+        metric_idxs = []
+        for key in metrics_dict.keys():
+            for metric, value in metrics_dict[key].items():
+                metric_df[metric].append(value)
+            metric_idxs.append(key)
+
+        pd.DataFrame(
+            data=metric_df,
+            index=metric_idxs,
+        ).to_csv(os.path.join(self.args.save_dir, "metrics.csv"), index=True)
+
+        return metrics_dict
 
 
 

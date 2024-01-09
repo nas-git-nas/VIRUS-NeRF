@@ -1,19 +1,20 @@
-import subprocess
 import os
+os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+
+import subprocess
+
 
 def main():
-    print("Start main")
-
     # run pso optimization
     cwd = os.getcwd()
-    # run_pso_path = os.path.join(cwd, "optimization", "run_pso.py")
-    run_pso_path = os.path.join(cwd, "test_scripts/optimization", "test_run_pso.py")
+    run_pso_path = os.path.join(cwd, "run_pso.py")
+    # run_pso_path = os.path.join(cwd, "test_scripts/optimization", "test_run_pso.py")
 
+    while True:
+        exit_code = subprocess.call(["python", run_pso_path])
 
-    exit_code = subprocess.call(["python", run_pso_path])
-    print(f"exit_code={exit_code}")
-
-    print("End main")
+        if exit_code != 0:
+            break
 
 if __name__ == "__main__":
     main()

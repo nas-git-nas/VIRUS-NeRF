@@ -306,6 +306,9 @@ class TrainerPlot(TrainerBase):
         Args:
             metrics_dict: dict of metrics
         """
+        if not self.args.eval.plot_results:
+            return
+        
         categories = list(metrics_dict.keys())
         sensors = list(metrics_dict[categories[0]].keys())
 
