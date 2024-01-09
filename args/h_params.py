@@ -113,6 +113,7 @@ class HParamsETHZ(HParams):
         self.dataset_dir = None
         self.room = None
         self.cam_ids = None
+        self.use_optimized_poses = None
 
         HParams.__init__(self, name="ethz")
 

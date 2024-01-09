@@ -563,12 +563,20 @@ class DatasetETHZ(DatasetBase):
                 sensor_name=cam_id,
                 dataset=self.args.dataset.name,
             )
+
+            if self.args.ethz.use_optimized_poses:
+                poses_name = 'poses_cam_balm_sync' + str(id) + '.csv'
+                poses_lidar_name = 'poses_lidar_balm_sync' + str(id) + '.csv'
+            else:
+                poses_name = 'poses_cam_sync' + str(id) + '.csv'
+                poses_lidar_name = 'poses_lidar_sync' + str(id) + '.csv'
+
             df = pd.read_csv(
-                filepath_or_buffer=os.path.join(data_dir, 'poses', 'poses_cam_sync'+str(id)+'.csv'),
+                filepath_or_buffer=os.path.join(data_dir, 'poses', poses_name),
                 dtype=np.float64,
             )
             df_lidar = pd.read_csv(
-                filepath_or_buffer=os.path.join(data_dir, 'poses', 'poses_lidar_sync'+str(id)+'.csv'),
+                filepath_or_buffer=os.path.join(data_dir, 'poses', poses_lidar_name),
                 dtype=np.float64,
             )
 

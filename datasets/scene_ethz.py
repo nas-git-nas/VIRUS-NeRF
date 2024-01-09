@@ -21,7 +21,7 @@ class SceneETHZ(SceneBase):
             data_dir: path to data directory; str
         """ 
         self.data_dir = data_dir
-        self.map_name = "maps/map_kiss.pcd"
+        self.map_name = "maps/map_balm.pcd"
 
         if args.ethz.room == "office":
             self.xyz_min = np.array([-2.0, -1.0, -0.4])
