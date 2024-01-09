@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches 
+import matplotlib.ticker as mtick
 import os
 import cv2 as cv
 
@@ -41,10 +42,10 @@ class TrainerPlot(TrainerBase):
             'robot':    'red',
             'GT_map':   'grey', 
             'GT_scan':  'black',
-            'NeRF':     'orange',
+            'NeRF':     'darkorange',
             'LiDAR':    'darkmagenta',
             'USS':      'blue',
-            'ToF':      'lime',
+            'ToF':      'green',
         }
     
 
@@ -258,9 +259,6 @@ class TrainerPlot(TrainerBase):
                                         orientation_arrow_length*np.sin(robot_orientation[j]), color=self.colors['robot'],
                                         width=orientation_arrow_width)
                     )
-
-                if s == 0:
-                    ax.set_title(f'Scan', fontsize=15, weight='bold')
                 ax.set_xlabel(f'x [m]')
                 ax.set_ylabel(sensor, fontsize=15, weight='bold', labelpad=20)
                 ax.text(-0.17, 0.5, 'y [m]', fontsize=10, va='center', rotation='vertical', transform=ax.transAxes)
@@ -269,11 +267,9 @@ class TrainerPlot(TrainerBase):
                 if len(nn_dists_inv) > 0:
                     bin_counts, _, _ = ax.hist(nn_dists, bins=hist_bins, color=self.colors[sensor])
                     ax.vlines(np.mean(nn_dists), ymin=0, ymax=np.max(bin_counts)+1, colors='r', linestyles='dashed', 
-                            label=f"Mean: {np.mean(nn_dists):.2f}m")
-                if s == 0:
-                    ax.set_title(f'NNE Sensor->GT', weight='bold')
+                            label=f"Mean: {np.mean(nn_dists):.2f}m")   
                 ax.set_ylabel(f'# elements')
-                ax.set_xlabel(f'NNE [m]')
+                ax.set_xlabel(f'NND [m]')
                 if len(ax.get_legend_handles_labels()[1]) > 0:
                     ax.legend()
                 ax.set_box_aspect(1)
@@ -285,15 +281,17 @@ class TrainerPlot(TrainerBase):
                     bin_counts_inv, _, _ = ax.hist(nn_dists_inv, bins=hist_bins, color=self.colors[sensor])
                     ax.vlines(np.mean(nn_dists_inv), ymin=0, ymax=np.max(bin_counts_inv)+1, colors='r', linestyles='dashed', 
                             label=f"Mean: {np.mean(nn_dists_inv):.2f}m")
-                if s == 0:
-                    ax.set_title(f'NNE GT->Sensor', weight='bold')
                 ax.set_ylabel(f'# elements')
-                ax.set_xlabel(f'NNE [m]')
+                ax.set_xlabel(f'NND [m]')
                 if len(ax.get_legend_handles_labels()[1]) > 0:
                     ax.legend()
                 ax.set_box_aspect(1)
                 ax.set_xlim([0, 1.2*np.max(nn_dists_inv, initial=0.2)])
                 ax.set_ylim([0, 1.2*np.max(bin_counts_inv, initial=1.0)])
+
+            axes[0,0].set_title(f'Scan', weight='bold')
+            axes[0,1].set_title(f'NND Sensor->GT', weight='bold')
+            axes[0,2].set_title(f'NND GT->Sensor', weight='bold')
 
             plt.tight_layout()
             plt.savefig(os.path.join(save_dir, f"map{i}.pdf"))
@@ -320,24 +318,47 @@ class TrainerPlot(TrainerBase):
         fig, axs = plt.subplots(ncols=2, nrows=3, figsize=(10,8))
         metrics = ['nn_mean', 'nn_mean_inv', 'nn_median', 'nn_median_inv', 'nn_inlier', 'nn_inlier_inv']
 
-        for ax, metric in zip(axs.flatten(), metrics):
+        for i, (ax, metric) in enumerate(zip(axs.flatten(), metrics)):
 
             for j, sensor in enumerate(sensors):
-                performances = [metrics_dict[sensors[j]][metric][z] for z in zones]
-                ax.bar(x - width/2 + (j+0.5)*width/len(sensors), performances, width/len(sensors), 
-                            label=sensor, color=self.colors[sensor])
+
+                x_axis = x - width/2 + (j+0.5)*width/len(sensors)
+                performances = np.array([metrics_dict[sensors[j]][metric][z] for z in zones])
+                if not 'inlier' in metric:
+                    ax.bar(x_axis, performances, width/len(sensors), label=sensor, color=self.colors[sensor])
+                    continue
+
+                nn_outlier_too_close = np.array([metrics_dict[sensors[j]]['nn_outlier_too_close'][z] for z in zones])
+                nn_outlier_too_far = 1 - performances - nn_outlier_too_close
                 
-            ax.set_xlim([-0.75*width, np.max(x)+2.0*width])
+                if ((i + j) % 2) == 0:
+                    ax.bar(x_axis, performances, width/len(sensors), label='Inliers', color=self.colors[sensor])
+                    ax.bar(x_axis, nn_outlier_too_close, width/len(sensors), bottom=performances, 
+                            label='Outliers \ntoo close', color=self.colors[sensor], alpha=0.4)
+                    ax.bar(x_axis, nn_outlier_too_far, width/len(sensors), bottom=1-nn_outlier_too_far, 
+                            label='Outliers \ntoo far', color=self.colors[sensor], alpha=0.1)
+                else:
+                    ax.bar(x_axis, performances, width/len(sensors), color=self.colors[sensor])
+                    ax.bar(x_axis, nn_outlier_too_close, width/len(sensors), bottom=performances, 
+                            color=self.colors[sensor], alpha=0.4)
+                    ax.bar(x_axis, nn_outlier_too_far, width/len(sensors), bottom=1-nn_outlier_too_far, 
+                            color=self.colors[sensor], alpha=0.1)
+                
+            ax.set_xlim([-0.75*width, np.max(x)+2.5*width])
             ax.set_xticks(x, [])
             ax.legend()
 
         axs[2,0].set_xticks(x, [f"{self.args.eval.zones[z][0]}-{self.args.eval.zones[z][1]}m" for z in zones])
         axs[2,1].set_xticks(x, [f"{self.args.eval.zones[z][0]}-{self.args.eval.zones[z][1]}m" for z in zones])
+        axs[2,0].yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1, decimals=None, symbol='%', is_latex=False))
+        axs[2,1].yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1, decimals=None, symbol='%', is_latex=False))
+        axs[2,0].set_ylim([0.0, 1.05])
+        axs[2,1].set_ylim([0.0, 1.05])
         axs[0,0].set_ylabel('Mean [m]')
         axs[1,0].set_ylabel('Median [m]')
         axs[2,0].set_ylabel('Inliers [%]')
-        axs[0,0].set_title('Accuracy: NNE Sensor->GT') 
-        axs[0,1].set_title('Range: NNE GT->Sensor') 
+        axs[0,0].set_title('Accuracy: NND Sensor->GT') 
+        axs[0,1].set_title('Coverage: NND GT->Sensor') 
 
         fig.suptitle('Nearest Neighbour Distance', fontsize=16, weight='bold')
         plt.tight_layout()
