@@ -41,7 +41,7 @@ class ParticleSwarmOptimizationWrapper(ParticleSwarmOptimization):
         # PSO parameters
         pso_params_dict = {
             "num_dimensions": self.hparams_lims.shape[0],   # number of dimensions
-            "num_particles": 4,        # number of particles
+            "num_particles": 9,        # number of particles
             "num_neighbours": 3,        # number of neighbours to consider for social component
             "alpha_momentum": 0.6,      # momentum coefficient
             "alpha_propre": 0.2,        # propre coefficient
