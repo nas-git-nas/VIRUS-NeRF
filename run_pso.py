@@ -21,9 +21,9 @@ def main():
     # define paraeters
     T = 36000 # if termination_by_time: T is time in seconds, else T is number of iterations
     termination_by_time = True # whether to terminate by time or iterations
-    hparams_file = "ethz_usstof_gpu.json" 
+    hparams_file = "ethz_usstof_win.json" 
     hparams_lims_file = "optimization/hparams_lims.json"
-    save_dir = "results/pso/opt9"
+    save_dir = "results/pso/opt8"
 
     # get hyper-parameters and other variables
     args = Args(
@@ -70,13 +70,13 @@ def main():
         iter += 1
 
         # get hparams to evaluate
-        hparams_dict = pso.nextHparams(
+        hparams_dict = pso.getNextHparams(
             group_dict_layout=True,
             name_dict_layout=False,
         ) # np.array (M,)
 
         print("\n\n----- NEW PARAMETERS -----")
-        print(f"Time: {time.time()-pso.time_start:.1f}/{T}")
+        print(f"Time: {time.time()-pso.time_start:.1f}/{T}, particle: {pso.n}")
         ic(hparams_dict)
         print(f"Current best mnn: {np.min(pso.best_score):.3f}, best particle: {np.argmin(pso.best_score)}")
 
@@ -98,14 +98,19 @@ def main():
         trainer.train()
         metrics_dict = trainer.evaluate()
 
+        # get score
+        score = metrics_dict['NeRF']["nn_mean"]['zone3']
+        if score == np.nan:
+            score = np.inf
+
         # update particle swarm
         terminate = pso.update(
-            score=metrics_dict['NeRF']["nn_mean"]['zone3'],
+            score=score,
         ) # bool
 
         # save state
         pso.saveState(
-            score=metrics_dict['NeRF']["nn_mean"]['zone3'],
+            score=score,
         )
 
         del trainer
@@ -116,7 +121,7 @@ def main():
             handle = nvidia_smi.nvmlDeviceGetHandleByIndex(0) # gpu id 0
             info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
 
-            print(f"Free memory: {(info.free/1e6):.2f}Mb / {(info.total/1e6):.2f}Mb = {(info.free/info.total):.3f}%")
+            print(f"Run PSO: Free memory: {(info.free/1e6):.2f}Mb / {(info.total/1e6):.2f}Mb = {(info.free/info.total):.3f}%")
             if info.free < 2e9:
                 print("Run PSO: Used memory is too high. Exiting...")
                 terminate = True

@@ -41,8 +41,8 @@ class ParticleSwarmOptimizationWrapper(ParticleSwarmOptimization):
         # PSO parameters
         pso_params_dict = {
             "num_dimensions": self.hparams_lims.shape[0],   # number of dimensions
-            "num_particles": 9,        # number of particles
-            "num_neighbours": 3,        # number of neighbours to consider for social component
+            "num_particles": 8,        # number of particles
+            "num_neighbours": 2,        # number of neighbours to consider for social component
             "alpha_momentum": 0.6,      # momentum coefficient
             "alpha_propre": 0.2,        # propre coefficient
             "alpha_social": 0.2,        # social coefficient
@@ -74,9 +74,9 @@ class ParticleSwarmOptimizationWrapper(ParticleSwarmOptimization):
         
         # increase iteration counter: t=0 is the initial state
         # and optimization starts at t=1 or t+=1 w.r.t previous run
-        self.t += 1
+        # self.t += 1
 
-    def nextHparams(
+    def getNextHparams(
         self,
         group_dict_layout:bool=False,
         name_dict_layout:bool=False,
@@ -89,7 +89,7 @@ class ParticleSwarmOptimizationWrapper(ParticleSwarmOptimization):
         Returns:
             hparams: hyper parameters; np.array (M,) or dict { group: { param: val } }
         """
-        pos = self.nextPos()
+        pos = self.getNextPos()
 
         if group_dict_layout:
             return self._pos2groupDict(
@@ -115,7 +115,7 @@ class ParticleSwarmOptimizationWrapper(ParticleSwarmOptimization):
             terminate: whether to terminate optimization or not; bool
         """
         self.t += 1
-        self.updatePSO(
+        self.updateBestPos(
             score=score,
         )
         return self._checkTermination()
@@ -390,10 +390,10 @@ class ParticleSwarmOptimizationWrapper(ParticleSwarmOptimization):
             terminate: whether to terminate optimization; bool
         """
         if self.termination_by_time:
-            if ((time.time() - self.time_start) + self.time_offset) >= self.T and (self.n == 0):
+            if ((time.time() - self.time_start) + self.time_offset) >= self.T and (self.n == (self.N-1)):
                 return True
         else:
-            if (self.t >= self.T) and (self.n == 0):
+            if (self.t >= self.T) and (self.n == (self.N-1)):
                 return True
         return False
     

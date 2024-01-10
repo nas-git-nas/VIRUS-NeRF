@@ -66,7 +66,7 @@ def main():
         iter += 1
 
         # get hparams to evaluate
-        hparams_dict = pso.nextHparams(
+        hparams_dict = pso.getNextHparams(
             group_dict_layout=True,
             name_dict_layout=False,
         ) # np.array (M,)

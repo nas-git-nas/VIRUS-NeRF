@@ -14,6 +14,7 @@ from optimization.plotter import Plotter
 def optimize(
     pso:ParticleSwarmOptimizationWrapper,
     metric:Metric,
+    rand_termination:float=0.0,
 ):
     """
     Run optimization.
@@ -23,11 +24,13 @@ def optimize(
     Args:
         pso: particle swarm optimization; ParticleSwarmOptimizationWrapper
         metric: metric to optimize; Metric
+        rand_termination: probability of random termination; float
     """
+    
     terminate = pso._checkTermination()
     while not terminate:
         # get hparams to evaluate
-        X = pso.nextHparams(
+        X = pso.getNextHparams(
             group_dict_layout=False,
             name_dict_layout=False,
         ) # np.array (M,)
@@ -38,24 +41,32 @@ def optimize(
             X=X,
         ) # float
 
-        # save state
-        pso.saveState(
-            score=score,
-        )
-
         # update particle swarm
         terminate = pso.update(
             score=score,
         ) # bool
 
+        # save state
+        pso.saveState(
+            score=score,
+        )
+
+        if rand_termination:
+            rand_num = np.random.random()
+            if rand_num < rand_termination:
+                sys.exit()
+
+
+
 def test_pso():
     # define optimization algorithm
-    seeds = np.arange(1)
-    T = 6
+    seeds = np.arange(9)
+    T = 3
     termination_by_time = True
     hparams_lims_file = "test_scripts/optimization/hparams_lims.json"
     save_dirs = ["results/pso/test/opt"+str(i) for i in range(len(seeds))]
     metric_name = "rand"
+    rand_termination = 0.0
 
     # plotter
     plotter = Plotter(
@@ -85,6 +96,7 @@ def test_pso():
         optimize(
             pso=pso,
             metric=metric,
+            rand_termination=rand_termination,
         ) # (N, T, M), (N, T)
 
         # plot results

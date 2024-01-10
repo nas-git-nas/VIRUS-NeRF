@@ -8,11 +8,10 @@ def main():
     # run pso optimization
     cwd = os.getcwd()
     run_pso_path = os.path.join(cwd, "run_pso.py")
-    # run_pso_path = os.path.join(cwd, "test_scripts/optimization", "test_run_pso.py")
 
     while True:
         print("running pso")
-        exit_code = subprocess.call(["python3", run_pso_path])
+        exit_code = subprocess.call(["python", run_pso_path])
         print("exit code:", exit_code)
 
         # print("exit code:", exit_code)
