@@ -31,7 +31,10 @@
         "sensors": ["USS", "ToF"],
         "max_steps": 5,
         "lr": 5e-3,
-        "depth_loss_w": 100.0,
+        "rgbd_loss_w": 100.0,
+        "tof_loss_w": 50.0,
+        "uss_loss_w": 50.0,
+        "uss_loss_min_w": 0.5,
         "random_bg": false,
         "real_time_simulation": false
     },
@@ -70,14 +73,13 @@
         "std_every_m": 0.2,
         "nerf_threshold_max": 5.91,
         "nerf_threshold_slope": 0.01
-
     },
     "ethz":
     {
         "dataset_dir": "../ETHZDataset",
         "room": "office",
         "cam_ids": ["CAM1", "CAM3"],
-        "use_optimized_poses": false
+        "use_optimized_poses": true
     },
     "RH2":
     {
