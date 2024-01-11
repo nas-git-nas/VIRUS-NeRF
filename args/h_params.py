@@ -55,7 +55,10 @@ class HParamsTraining(HParams):
         self.sensors = None
         self.max_steps = None
         self.lr = None
-        self.depth_loss_w = None
+        self.rgbd_loss_w = None
+        self.tof_loss_w = None
+        self.uss_loss_w = None
+        self.uss_loss_min_w = None
         self.random_bg = None
         self.real_time_simulation = None
 

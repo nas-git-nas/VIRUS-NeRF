@@ -70,7 +70,7 @@ class Loss():
         # calculate losses
         color_loss = self._colorLoss(results=results, data=data)
         depth_loss = self._depthLoss(results=results, data=data)
-        total_loss = color_loss + depth_loss * self.args.training.depth_loss_w
+        total_loss = color_loss + depth_loss
 
         if self.log_loss:
             self.loss_dict['total'] = total_loss.item()
@@ -111,17 +111,16 @@ class Loss():
         depth_loss = torch.tensor(0.0, device=self.args.device, dtype=torch.float32)
         for sensor_name in self.args.training.sensors:
             if sensor_name == 'RGBD':
-                depth_loss += self._depthLossRGBD(results=results, data=data)
+                depth_loss += self.args.training.rgbd_loss_w * self._depthLossRGBD(results=results, data=data)
             elif sensor_name == 'ToF':
-                depth_loss += self._depthLossToF(results=results, data=data)
+                depth_loss += self.args.training.tof_loss_w * self._depthLossToF(results=results, data=data)
             elif sensor_name == 'USS':
-                depth_loss += self._depthLossUSS(results=results, data=data)
+                depth_loss += self.args.training.uss_loss_w * self._depthLossUSS(results=results, data=data)
             else:
                 self.args.logger.error(f"sensor name '{sensor_name}' is invalid")
-        depth_loss /= len(self.args.training.sensors)
         
         if self.log_loss:
-            self.loss_dict['depth'] = depth_loss.item() * self.args.training.depth_loss_w
+            self.loss_dict['depth'] = depth_loss.item()
         return depth_loss
 
     def _depthLossRGBD(
@@ -141,7 +140,7 @@ class Loss():
         rgbd_loss = F.mse_loss(results['depth'][val_idxs], data['depth']['RGBD'][val_idxs])
 
         if self.log_loss:
-            self.loss_dict['rgbd'] = rgbd_loss.item() * self.args.training.depth_loss_w
+            self.loss_dict['rgbd'] = rgbd_loss.item() * self.args.training.rgb_loss_w
         return rgbd_loss
         
     def _depthLossToF(
@@ -166,7 +165,7 @@ class Loss():
         # print(f"num val idxs: {torch.sum(val_idxs)}")
 
         if self.log_loss:
-            self.loss_dict['ToF'] = tof_loss.item() * self.args.training.depth_loss_w
+            self.loss_dict['ToF'] = tof_loss.item() * self.args.training.tof_loss_w
         return tof_loss
 
     def _depthLossUSS(
@@ -217,11 +216,11 @@ class Loss():
         #     print(f"depth mask sum: {torch.sum(uss_mask & depth_mask)}, close mask sum: {torch.sum(uss_mask & close_mask)}, weights mean: {torch.mean(weights):.3f}")
         #     print(f"min_loss: {uss_loss_min:.5f} | close_loss: {uss_loss_close:.5f}")
 
-        uss_loss = uss_loss_close + uss_loss_min
+        uss_loss = (1 - self.args.training.uss_loss_min_w) * uss_loss_close + self.args.training.uss_loss_min_w * uss_loss_min
         if self.log_loss:
-            self.loss_dict['USS'] = uss_loss.item() * self.args.training.depth_loss_w
-            self.loss_dict['USS_close'] = uss_loss_close.item() * self.args.training.depth_loss_w
-            self.loss_dict['USS_min'] = uss_loss_min.item() * self.args.training.depth_loss_w
+            self.loss_dict['USS'] = uss_loss.item() * self.args.training.uss_loss_w
+            self.loss_dict['USS_close'] = uss_loss_close.item() * (1 - self.args.training.uss_loss_min_w) * self.args.training.uss_loss_w
+            self.loss_dict['USS_min'] = uss_loss_min.item() * self.args.training.uss_loss_min_w * self.args.training.uss_loss_w
         return uss_loss
     
     
