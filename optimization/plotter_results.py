@@ -14,11 +14,11 @@ class PlotterResults():
         self.data_dir = data_dir
 
         self.score_min = 0.15
-        self.score_max = 0.3
-        self.num_particles = 8
-        self.keep_best_n = 5
+        self.score_max = 0.24
+        self.num_particles = 16
+        self.keep_best_n_particles = 5
         self.best_symbs = ['*', 'o', 'v', 'x', '+', '^', '<', '>', 's', 'p', 'P', 'h', 'H', 'X', 'D', 'd', '|', '_']
-        self.best_symbs = self.best_symbs[:self.keep_best_n]
+        self.best_symbs = self.best_symbs[:self.keep_best_n_particles]
 
     def plot(
             self,
@@ -31,19 +31,32 @@ class PlotterResults():
         vel, parameters_vel = self._readPosData(
             read_vel=True
         )
-        best_pos, best_scores, best_iters, best_parameters = self._readBestPosData(
-            keep_best_n_particles=self.keep_best_n,
-        )
+        best_pos, best_scores, best_iters, best_parameters = self._readBestPosData()
         hparams_lims = self._readHparamsLims()
 
         # verify that parameters are the same
         assert parameters == best_parameters
         assert parameters == parameters_vel
 
-        # keep only best N scores
-        idxs = np.argsort(best_scores)
-        best_pos = best_pos[idxs[:self.keep_best_n], :]
-        best_scores = best_scores[idxs[:self.keep_best_n]]
+        # keep only best N best particles
+        pos, vel, scores, best_pos, best_scores, best_iters, best_particles = self._keepBestNParticles(
+            pos=pos,
+            vel=vel,
+            scores=scores,
+            best_pos=best_pos,
+            best_scores=best_scores,
+            best_iters=best_iters,
+        )
+
+        # print best score and best hparams
+        print(f"Best particle: {best_particles[0]}")
+        print(f"Best score: {best_scores[0]}")
+        for i, param in parameters.items():
+            print(f"{param}: {best_pos[0, i]}")
+
+        # adjust minimal score
+        if np.min(scores) < self.score_min:
+            self.score_min = np.min(scores)
 
         # reverse colotmap
         cmap = matplotlib.colormaps['jet']
@@ -51,13 +64,14 @@ class PlotterResults():
 
 
         # plot
-        fig, axes = plt.subplots(ncols=1, nrows=3, figsize=(9,10))
+        fig, axes = plt.subplots(ncols=1, nrows=3, figsize=(12,9))
 
         axes[0] = self._plotParticleSpeeds(
             vel=vel,
             scores=scores,
             best_iters=best_iters,
             best_scores=best_scores,
+            best_particles=best_particles,
             hparams_lims=hparams_lims,
             parameters=parameters,
             ax=axes[0],
@@ -103,6 +117,7 @@ class PlotterResults():
         scores:np.ndarray,
         best_scores:np.ndarray,
         best_iters:np.ndarray,
+        best_particles:np.ndarray,
         hparams_lims:dict,
         parameters:dict,
         ax:matplotlib.axes.Axes,
@@ -114,14 +129,18 @@ class PlotterResults():
 
         vel_norm = np.linalg.norm(vel, axis=2) # (N, T)
 
-        for i in range(self.keep_best_n):
+        for i in np.arange(vel.shape[0])[::-1]:
             ax.scatter(np.arange(vel.shape[1]), vel_norm[i], c=scores[i], 
                            cmap=cmap_inv, vmin=self.score_min, vmax=self.score_max, marker=self.best_symbs[i])
             ax.scatter(np.arange(vel.shape[1])[best_iters[i]], vel_norm[i, best_iters[i]], c=best_scores[i], 
-                           cmap=cmap_inv, vmin=self.score_min, vmax=self.score_max, marker=self.best_symbs[i], s=200)
+                           cmap=cmap_inv, vmin=self.score_min, vmax=self.score_max, marker=self.best_symbs[i], s=200,
+                           label=f'Particle {best_particles[i]}, best NND: {best_scores[i]:.3f}')
 
         ax.set_xlabel('Iteration')
         ax.set_ylabel('Particle Speed')
+        ax.set_ylim([0, np.nanmax(vel_norm)])
+        ax.xaxis.set_label_coords(0.5, -0.09)
+        ax.legend(loc='upper right')
 
         return ax
     
@@ -133,7 +152,7 @@ class PlotterResults():
         ax:matplotlib.axes.Axes,
         cmap_inv:matplotlib.colors.LinearSegmentedColormap,
     ):
-        for i in range(self.keep_best_n):
+        for i in np.arange(scores.shape[0])[::-1]:
             ax.scatter(np.arange(scores.shape[1]), scores[i], c=scores[i], 
                            cmap=cmap_inv, vmin=self.score_min, vmax=self.score_max, marker=self.best_symbs[i])
             ax.scatter(np.arange(scores.shape[1])[best_iters[i]], best_scores[i], c=best_scores[i], 
@@ -141,6 +160,8 @@ class PlotterResults():
 
         ax.set_xlabel('Iteration')
         ax.set_ylabel('Mean NND')
+        ax.set_ylim([self.score_min, 0.3])
+        ax.xaxis.set_label_coords(0.5, -0.09)
 
         return ax
         
@@ -168,20 +189,38 @@ class PlotterResults():
         for i, param in parameters.items():
 
             x_axis = i + column_width * np.linspace(-0.5, 0.5, T) # (T,)
-            x_axis_tile = np.tile(x_axis, (N, 1)) # (N, T)
-
-            im = ax.scatter(x_axis_tile.flatten(), pos[:, :, i].flatten(), c=scores.flatten(), 
-                            cmap=cmap_inv, vmin=self.score_min, vmax=self.score_max)
-            
-            for j in range(best_pos.shape[0]):
+            for j in np.arange(best_pos.shape[0])[::-1]:
+                im = ax.scatter(x_axis, pos[j, :, i].flatten(), c=scores[j], 
+                                cmap=cmap_inv, vmin=self.score_min, vmax=self.score_max, marker=self.best_symbs[j])
                 ax.scatter(x_axis[best_iters[j]], best_pos[j, i], c=best_scores[j], 
                            cmap=cmap_inv, vmin=self.score_min, vmax=self.score_max, marker=self.best_symbs[j], s=200)
 
         ax.set_xticks(list(parameters.keys()))
         ax.set_xticklabels([param.replace('_', ' ') + f":\n     [{hparams_lims[param][0]:.2f}, {hparams_lims[param][1]:.2f}]" 
-                            for param in parameters.values()], rotation=20, fontsize=9)
+                            for param in parameters.values()], rotation=22, fontsize=9)
         ax.set_ylabel('Normalized Hyper-Parameters')
         return ax, im
+    
+    def _keepBestNParticles(
+        self,
+        pos:np.ndarray,
+        vel:np.ndarray,
+        scores:np.ndarray,
+        best_pos:np.ndarray,
+        best_scores:np.ndarray,
+        best_iters:np.ndarray,
+    ):
+        # keep only best n particles
+        best_particles = np.argsort(best_scores)
+        best_particles = best_particles[:self.keep_best_n_particles]
+
+        pos = pos[best_particles, :, :]
+        vel = vel[best_particles, :, :]
+        scores = scores[best_particles, :]
+        best_pos = best_pos[best_particles, :]
+        best_scores = best_scores[best_particles]
+        best_iters = best_iters[best_particles]
+        return pos, vel, scores, best_pos, best_scores, best_iters, best_particles
 
     def _readPosData(
             self,
@@ -234,15 +273,14 @@ class PlotterResults():
     
     def _readBestPosData(
             self,
-            keep_best_n_particles,
         ):
         """
         Read position data from data_dir.
         Args:
             keep_best_n_particles: keep only best N particles; int
         Returns:
-            pos: particle positions; numpy array of shape (n, M)
-            scores: particle scores; numpy array of shape (n,)
+            pos: particle positions; numpy array of shape (N, M)
+            scores: particle scores; numpy array of shape (N,)
             parameters: dictionary of parameters { column_index: parameter_name}; dictionary { int: str }
         """
         # read parameters and number of iterations
@@ -265,12 +303,6 @@ class PlotterResults():
             best_pos[i] = pos_temp[-1, :]
             best_scores[i] = scores_temp[-1]
             best_iters[i] = np.argmax(scores_temp == best_scores[i])
-
-        # keep only best n particles
-        idxs = np.argsort(best_scores)
-        idxs = idxs[:keep_best_n_particles]
-        best_pos = best_pos[idxs, :]
-        best_scores = best_scores[idxs]
 
         return best_pos, best_scores, best_iters, parameters
     
@@ -302,7 +334,7 @@ class PlotterResults():
 
 
 def main():
-    data_dir = "results/pso/opt8"
+    data_dir = "results/pso/opt16"
     plotter = PlotterResults(
         data_dir=data_dir,
     )

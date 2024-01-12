@@ -11,7 +11,7 @@ def main():
 
     while True:
         print("running pso")
-        exit_code = subprocess.call(["python", run_pso_path])
+        exit_code = subprocess.call(["python3", run_pso_path])
         print("exit code:", exit_code)
 
         # print("exit code:", exit_code)

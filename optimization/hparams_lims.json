@@ -1,20 +1,20 @@
 {
     "training":
     {
-        "pixs_closest": [0.01, 0.05],
-        "pixs_valid_uss": [0.2, 0.8],
+        "pixs_closest": [0.001, 0.038],
+        "pixs_valid_uss": [0.1, 0.9],
         "tof_loss_w": [0.0, 200.0],
-        "uss_loss_w": [0.0, 200.0],
-        "uss_loss_min_w": [0.0, 1.0]
+        "uss_loss_w": [0.0, 400.0],
+        "uss_loss_min_w": [0.0, 0.2]
     },
     "occ_grid":
     {
-        "update_interval": [1, 26],
-        "decay_warmup_steps": [72, 116],
-        "batch_ratio_ray_update": [0.2, 0.8],
-        "false_detection_prob_every_m": [0.2, 0.35],
-        "std_every_m": [0.02, 0.24],
-        "nerf_threshold_max": [0.1, 14],
-        "nerf_threshold_slope": [0.001, 0.1]
+        "update_interval": [4, 32],
+        "decay_warmup_steps": [64, 128],
+        "batch_ratio_ray_update": [0.3, 0.9],
+        "false_detection_prob_every_m": [0.1, 0.5],
+        "std_every_m": [0.1, 0.3],
+        "nerf_threshold_max": [0.05, 14],
+        "nerf_threshold_slope": [0.04, 0.16]
     }
 }
