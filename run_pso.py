@@ -84,6 +84,23 @@ def main():
         args.setRandomSeed(
             seed=args.seed+iter,
         )
+
+        sampling_strategy = {
+            "imgs": "all", 
+            "pixs": {
+                "closest": hparams_dict["training"]["pixs_closest"],
+                "valid_uss": hparams_dict["training"]["pixs_valid_uss"],
+                "valid_tof": 1 - hparams_dict["training"]["pixs_valid_uss"] \
+                               - hparams_dict["training"]["pixs_closest"],
+            },
+        }
+        setattr(args.training, "sampling_strategy", sampling_strategy)
+
+        for key, value in hparams_dict["training"].items():
+            if "pixs" in key:
+                continue        
+            setattr(args.training, key, value)
+
         for key, value in hparams_dict["occ_grid"].items():
             setattr(args.occ_grid, key, value)
 
