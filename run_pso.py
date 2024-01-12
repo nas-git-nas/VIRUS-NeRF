@@ -23,7 +23,7 @@ def main():
     termination_by_time = True # whether to terminate by time or iterations
     hparams_file = "ethz_usstof_gpu.json" 
     hparams_lims_file = "optimization/hparams_lims.json"
-    save_dir = "results/pso/opt8"
+    save_dir = "results/pso/opt16"
 
     # get hyper-parameters and other variables
     args = Args(
