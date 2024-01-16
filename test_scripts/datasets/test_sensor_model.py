@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import skimage.measure
 import os
 import sys
+from scipy.ndimage import grey_dilation
  
 sys.path.insert(0, os.getcwd())
 from datasets.sensor_model import ToFModel, USSModel
@@ -13,7 +14,7 @@ from args.args import Args
 
 def test_ToFModel():
     # hyperparameters
-    num_imgs = 5
+    num_imgs = 8
 
     # create dataset
     args = Args(
@@ -26,6 +27,7 @@ def test_ToFModel():
     } 
     args.training.sensors = ["ToF", "RGBD"]
     args.dataset.sensors = ["ToF", "RGBD"]
+    args.tof.tof_pix_size = 31
 
     if args.dataset.name == "RH2":
         dataset_class = DatasetRH
@@ -44,7 +46,6 @@ def test_ToFModel():
         data = dataset(
             batch_size=W*H,
             sampling_strategy=args.training.sampling_strategy,
-            origin="nerf",
         )
         depths_rgbd[i] = data['depth']['RGBD'].detach().cpu().numpy()
         depths_tof[i] = data['depth']['ToF'].detach().cpu().numpy()
@@ -78,10 +79,14 @@ def test_ToFModel():
     vmin = 0
 
     # make single pixels visible
-    depths_tof = skimage.measure.block_reduce(depths_tof, (1,8,8), np.nanmax) # (N, H, W)
-    mask = skimage.measure.block_reduce(mask, (8,8), np.nanmax) # (H, W)
-    error_mask = skimage.measure.block_reduce(error_mask, (8,8), np.nanmax) # (H, W)
-    mask_comb = skimage.measure.block_reduce(mask_comb, (8,8), np.nanmax) # (H, W)
+    # depths_tof = skimage.measure.block_reduce(depths_tof, (1,8,8), np.nanmax) # (N, H, W)
+    # mask = skimage.measure.block_reduce(mask, (8,8), np.nanmax) # (H, W)
+    # error_mask = skimage.measure.block_reduce(error_mask, (8,8), np.nanmax) # (H, W)
+    # mask_comb = skimage.measure.block_reduce(mask_comb, (8,8), np.nanmax) # (H, W)
+
+    mask = grey_dilation(mask, size=(args.tof.tof_pix_size,args.tof.tof_pix_size)) # (H, W)
+    error_mask = grey_dilation(error_mask, size=(args.tof.tof_pix_size,args.tof.tof_pix_size)) # (H, W)
+    mask_comb = grey_dilation(mask_comb, size=(args.tof.tof_pix_size,args.tof.tof_pix_size)) # (H, W)
 
     for i in range(num_imgs):
         ax = axes[0,i]

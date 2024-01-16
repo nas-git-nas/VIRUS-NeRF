@@ -58,7 +58,7 @@ class HParamsTraining(HParams):
         self.rgbd_loss_w = None
         self.tof_loss_w = None
         self.uss_loss_w = None
-        self.uss_loss_min_w = None
+        self.color_loss_w = None
         self.random_bg = None
         self.real_time_simulation = None
 
@@ -104,6 +104,7 @@ class HParamsOccGrid(HParams):
         self.batch_ratio_ray_update = None
         self.false_detection_prob_every_m = None
         self.std_every_m = None
+        self.nerf_update_pos_noise = None
         self.nerf_threshold_max = None
         self.nerf_threshold_slope = None
 
@@ -154,6 +155,7 @@ class HParamsToF(HParams):
         # hyper parameters
         self.angle_of_view = None
         self.matrix = None
+        self.tof_pix_size = None
         self.sensor_calibration_error = None
         self.sensor_random_error = None
 

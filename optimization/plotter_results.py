@@ -16,7 +16,7 @@ class PlotterResults():
         self.score_min = 0.15
         self.score_max = 0.24
         self.num_particles = 16
-        self.keep_best_n_particles = 5
+        self.keep_best_n_particles = 32
         self.best_symbs = ['*', 'o', 'v', 'x', '+', '^', '<', '>', 's', 'p', 'P', 'h', 'H', 'X', 'D', 'd', '|', '_']
         self.best_symbs = self.best_symbs[:self.keep_best_n_particles]
 
@@ -334,7 +334,7 @@ class PlotterResults():
 
 
 def main():
-    data_dir = "results/pso/opt16"
+    data_dir = "results/pso/opt32"
     plotter = PlotterResults(
         data_dir=data_dir,
     )

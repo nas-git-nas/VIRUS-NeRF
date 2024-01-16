@@ -178,8 +178,8 @@ def main():
             )
 
             loss = F.mse_loss(results['rgb'], data['rgb'])
-            if hparams.distortion_loss_w > 0:
-                loss += hparams.distortion_loss_w * distortion_loss(results).mean()
+            # if hparams.distortion_loss_w > 0:
+            #     loss += hparams.distortion_loss_w * distortion_loss(results).mean()
 
         optimizer.zero_grad()
         grad_scaler.scale(loss).backward()

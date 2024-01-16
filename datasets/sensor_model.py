@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from abc import abstractmethod
 import skimage.measure
 from typing import TypedDict
+from scipy.ndimage import grey_dilation
 
 from args.args import Args
 from helpers.data_fcts import sensorName2ID, sensorID2Name
@@ -136,9 +137,13 @@ class ToFModel(SensorModel):
             depths: depth img converted to ToF sensor array; array of shape (N, H*W)
         """
         depths = np.copy(depths) # (N, H*W)
-        depths_out = np.full((depths.shape[0], self.H*self.W), np.nan) # (N, H*W)
+        depths_out = np.zeros((depths.shape[0], self.H*self.W), dtype=float) # (N, H*W)
         fov_mask = self.mask.detach().clone().cpu().numpy() # (H*W,)
         error_mask = self.error_mask.detach().clone().cpu().numpy() # (H*W,)
+
+        if self.args.model.debug_mode:
+            if np.any(depths == 0.0):
+                self.args.logger.error(f"ToFModel.convertDepth: depths == 0.0")
 
         if format == "img":
             depths_out[:, fov_mask] = depths[:,error_mask] 
@@ -146,6 +151,12 @@ class ToFModel(SensorModel):
             depths_out[:, fov_mask] = depths
         else:
             self.args.logger.error(f"Unknown depth format: {format}")
+
+        # dilate depth img
+        depths_out = depths_out.reshape(depths.shape[0], self.H, self.W) # (N, H, W)
+        depths_out = grey_dilation(depths_out, size=(1,self.args.tof.tof_pix_size,self.args.tof.tof_pix_size)) # (N, H, W)
+        depths_out = depths_out.reshape(depths.shape[0], -1) # (N, H*W)
+        depths_out[depths_out == 0.0] = np.nan # (N, H*W)  
 
         if (self.args.tof.sensor_random_error == 0.0) or (self.args.tof.sensor_random_error is None):
             return depths_out
