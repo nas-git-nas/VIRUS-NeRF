@@ -90,6 +90,7 @@ class Loss():
             color_loss: colour loss value; tensor of float (1,)
         """
         color_loss = F.mse_loss(results['rgb'], data['rgb'])
+        color_loss *= self.args.training.color_loss_w
 
         if self.log_loss:
             self.loss_dict['color'] = color_loss.item()
@@ -181,46 +182,48 @@ class Loss():
         Returns:
             depth_loss: depth loss value; tensor of float (1,)
         """ 
-        # get minimum depth per image for batch 
-        min_depths, min_counts = self.sensors_dict['USS'].updateStats(
-            depths=results['depth'],
-            data=data,
-        )
+        # # get minimum depth per image for batch 
+        # min_depths, min_counts = self.sensors_dict['USS'].updateStats(
+        #     depths=results['depth'],
+        #     data=data,
+        # )
 
-        # determine weights
-        weights = torch.ones_like(min_counts).to(self.args.device)
-        # batch_weights = 1 - 1/(1 + min_counts/100)
-        # weights = torch.exp(-min_counts/1000).to(self.args.device)
+        # # determine weights
+        # weights = torch.ones_like(min_counts).to(self.args.device)
+        # # batch_weights = 1 - 1/(1 + min_counts/100)
+        # # weights = torch.exp(-min_counts/1000).to(self.args.device)
+
+        # uss_mask = ~torch.isnan(data['depth']['USS'])
+        # depth_mask = results['depth'] < min_depths + self.uss_depth_tol 
+
+        # # calculate min loss: error of minimal depth wrt. USS measurement
+        # uss_loss_min = torch.tensor(0.0, device=self.args.device, dtype=torch.float32)
+        # if torch.any(uss_mask & depth_mask):
+        #     uss_loss_min = torch.mean(
+        #         weights[uss_mask & depth_mask] 
+        #         * (results['depth'][uss_mask & depth_mask] - data['depth']['USS'][uss_mask & depth_mask])**2 
+        #     )
 
         # mask data
-        uss_mask = ~torch.isnan(data['depth']['USS'])
-        depth_mask = results['depth'] < min_depths + self.uss_depth_tol  
+        uss_mask = ~torch.isnan(data['depth']['USS']) 
         close_mask = results['depth'] < data['depth']['USS'] - self.uss_depth_tol  
 
         # calculate close loss: pixels that are closer than the USS measurement
-        uss_loss_close = torch.tensor(0.0, device=self.args.device, dtype=torch.float32)
+        uss_loss = torch.tensor(0.0, device=self.args.device, dtype=torch.float32)
         if torch.any(uss_mask & close_mask):
-            uss_loss_close = torch.mean(
+            uss_loss = torch.mean(
                 (results['depth'][uss_mask & close_mask] - data['depth']['USS'][uss_mask & close_mask])**2
             )
-
-        # calculate min loss: error of minimal depth wrt. USS measurement
-        uss_loss_min = torch.tensor(0.0, device=self.args.device, dtype=torch.float32)
-        if torch.any(uss_mask & depth_mask):
-            uss_loss_min = torch.mean(
-                weights[uss_mask & depth_mask] 
-                * (results['depth'][uss_mask & depth_mask] - data['depth']['USS'][uss_mask & depth_mask])**2
-            )  
 
         # if self.step%25 == 0:
         #     print(f"depth mask sum: {torch.sum(uss_mask & depth_mask)}, close mask sum: {torch.sum(uss_mask & close_mask)}, weights mean: {torch.mean(weights):.3f}")
         #     print(f"min_loss: {uss_loss_min:.5f} | close_loss: {uss_loss_close:.5f}")
 
-        uss_loss = (1 - self.args.training.uss_loss_min_w) * uss_loss_close + self.args.training.uss_loss_min_w * uss_loss_min
+        # uss_loss = (1 - self.args.training.uss_loss_min_w) * uss_loss_close + self.args.training.uss_loss_min_w * uss_loss_min
         if self.log_loss:
             self.loss_dict['USS'] = uss_loss.item() * self.args.training.uss_loss_w
-            self.loss_dict['USS_close'] = uss_loss_close.item() * (1 - self.args.training.uss_loss_min_w) * self.args.training.uss_loss_w
-            self.loss_dict['USS_min'] = uss_loss_min.item() * self.args.training.uss_loss_min_w * self.args.training.uss_loss_w
+            # self.loss_dict['USS_close'] = uss_loss_close.item() * (1 - self.args.training.uss_loss_min_w) * self.args.training.uss_loss_w
+            # self.loss_dict['USS_min'] = uss_loss_min.item() * self.args.training.uss_loss_min_w * self.args.training.uss_loss_w
         return uss_loss
     
     

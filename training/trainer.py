@@ -125,8 +125,8 @@ class Trainer(TrainerPlot):
             'rgbd_loss': [],
             'ToF_loss': [],
             'USS_loss': [],
-            'USS_close_loss': [],
-            'USS_min_loss': [],
+            # 'USS_close_loss': [],
+            # 'USS_min_loss': [],
             'psnr': [],
             'mnn': [],
         }
@@ -179,8 +179,8 @@ class Trainer(TrainerPlot):
                     return_loss_dict=True, # TODO: optimize
                 )
                 # loss, color_loss, depth_loss = self.lossFunc(results=results, data=data, step=step)
-                if self.args.training.distortion_loss_w > 0:
-                    loss += self.args.training.distortion_loss_w * distortion_loss(results).mean()
+                # if self.args.training.distortion_loss_w > 0:
+                #     loss += self.args.training.distortion_loss_w * distortion_loss(results).mean()
 
             # backpropagate and update weights
             self.optimizer.zero_grad()
@@ -304,8 +304,8 @@ class Trainer(TrainerPlot):
             self.logs['ToF_loss'].append(loss_dict['ToF'])
         if "USS" in loss_dict:
             self.logs['USS_loss'].append(loss_dict['USS'])
-            self.logs['USS_close_loss'].append(loss_dict['USS_close'])
-            self.logs['USS_min_loss'].append(loss_dict['USS_min'])
+            # self.logs['USS_close_loss'].append(loss_dict['USS_close'])
+            # self.logs['USS_min_loss'].append(loss_dict['USS_min'])
         self.logs['psnr'].append(np.nan)
         self.logs['mnn'].append(np.nan)
 

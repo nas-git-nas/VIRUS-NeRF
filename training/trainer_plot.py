@@ -408,9 +408,9 @@ class TrainerPlot(TrainerBase):
         if "ToF_loss" in logs:
             ax.plot(logs['step'], smoothIgnoreNans(logs['ToF_loss'], filter_size), label='ToF')
         if "USS_loss" in logs:
-            # ax.plot(logs['step'], np.convolve(logs['USS_loss'], mask, mode='same'), label='USS')
-            ax.plot(logs['step'], smoothIgnoreNans(logs['USS_close_loss'], filter_size), label='USS(close)')
-            ax.plot(logs['step'], smoothIgnoreNans(logs['USS_min_loss'], filter_size), label='USS(min)')
+            ax.plot(logs['step'], smoothIgnoreNans(logs['USS_loss'], filter_size), label='USS')
+            # ax.plot(logs['step'], smoothIgnoreNans(logs['USS_close_loss'], filter_size), label='USS(close)')
+            # ax.plot(logs['step'], smoothIgnoreNans(logs['USS_min_loss'], filter_size), label='USS(min)')
         ax.set_ylabel('loss')
         ax.set_ylim([0, 1.0])
 
