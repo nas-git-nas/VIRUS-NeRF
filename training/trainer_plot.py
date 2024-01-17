@@ -5,6 +5,8 @@ import matplotlib.patches as mpatches
 import matplotlib.ticker as mtick
 import os
 import cv2 as cv
+import pandas as pd
+import icecream as ic
 
 from args.args import Args
 from modules.networks import NGP
@@ -47,9 +49,6 @@ class TrainerPlot(TrainerBase):
             'USS':      'blue',
             'ToF':      'green',
         }
-    
-
-
 
     def _plotOccGrid(
             self,
@@ -368,7 +367,6 @@ class TrainerPlot(TrainerBase):
         plt.savefig(os.path.join(self.args.save_dir, f"metrics.pdf"))
         plt.savefig(os.path.join(self.args.save_dir, f"metrics.png"))
 
-
     def _plotLosses(
         self,
         logs:dict,
@@ -494,6 +492,10 @@ class TrainerPlot(TrainerBase):
         plt.savefig(os.path.join(self.args.save_dir, "losses.png"))
 
         return metrics_dict
+    
+
+
+
     
 
 

@@ -1,0 +1,158 @@
+import torch
+import os
+import sys
+import pandas as pd
+from icecream import ic
+import json
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches 
+import matplotlib.ticker as mtick
+ 
+sys.path.insert(0, os.getcwd())
+from training.trainer_plot import TrainerPlot
+
+
+colors = {
+    'robot':    'red',
+    'GT_map':   'grey', 
+    'GT_scan':  'black',
+    'NeRF':     'darkorange',
+    'LiDAR':    'darkmagenta',
+    'USS':      'blue',
+    'ToF':      'green',
+}
+
+zone_lims = {
+    "zone1": [0, 1],
+    "zone2": [0, 2],
+    "zone3": [0, 100],
+}
+
+def loadAblationStudy(
+    base_dir,
+    seeds,
+):
+    """
+    Load ablation study results
+    Args:
+        base_dir: base directory; str
+        seeds: seeds; list
+    Returns:
+        sensors_dict_list: list of dictionaries with results; list
+    """
+    sensors_dict_list = []
+    for seed in seeds:
+        metric_file = os.path.join(base_dir, f"seed_{seed}", "metrics.csv")
+        df = pd.read_csv(metric_file, index_col=[0])
+
+        sensors_dict = {}
+        for sensor in ['NeRF', 'LiDAR', 'USS', 'ToF']:
+            sensors_dict[sensor] = {}
+            for metric in ['nn_mean', 'nn_mean_inv', 'nn_median', 'nn_median_inv', 'nn_inlier', 'nn_inlier_inv', 'nn_outlier_too_close']:
+                zone_str =df.loc[sensor, metric]
+                zone_str = zone_str.replace("'", '"')
+                zone_dict = json.loads(zone_str)
+                sensors_dict[sensor][metric] = zone_dict
+
+        sensors_dict_list.append(sensors_dict)
+        
+    # ic(sensors_dict_list)
+    return sensors_dict_list
+
+def plotMultipleMetrics(
+    metrics_dict_list:list,
+    colors:dict,
+    zone_lims:list,
+    base_dir:str,
+):
+    """
+    Plot average metrics.
+    Args:
+        metrics_dict: list with multiple dict of metrics
+    """   
+    sensors = list(metrics_dict_list[0].keys())
+    zones = list(metrics_dict_list[0][sensors[0]]['nn_mean'].keys())
+
+    x = np.arange(len(zones))  # the label locations
+    width = 0.6  # the width of the bars
+
+    fig, axs = plt.subplots(ncols=2, nrows=3, figsize=(10,8))
+    metrics = ['nn_mean', 'nn_mean_inv', 'nn_median', 'nn_median_inv', 'nn_inlier', 'nn_inlier_inv']
+
+    for i, (ax, metric) in enumerate(zip(axs.flatten(), metrics)):
+
+        for j, sensor in enumerate(sensors):
+
+            x_axis = x - width/2 + (j+0.5)*width/len(sensors)
+
+            multiple_performances = np.zeros((len(metrics_dict_list), len(zones)))
+            multiple_nn_outlier_too_close = np.zeros((len(metrics_dict_list), len(zones)))
+            for k, metrics_dict in enumerate(metrics_dict_list):
+                multiple_performances[k] = np.array([metrics_dict[sensors[j]][metric][z] for z in zones])
+                multiple_nn_outlier_too_close[k] = np.array([metrics_dict[sensors[j]]['nn_outlier_too_close'][z] for z in zones])
+
+            performances_mean = np.mean(multiple_performances, axis=0)
+            performances_std = np.std(multiple_performances, axis=0)
+            nn_outlier_too_close_mean = np.mean(multiple_nn_outlier_too_close, axis=0)
+            nn_outlier_too_far_mean = 1 - performances_mean - nn_outlier_too_close_mean
+
+            if not 'inlier' in metric:
+                ax.bar(x_axis, performances_mean, width/len(sensors), label=sensor, color=colors[sensor])
+            else:
+                if ((i + j) % 2) == 0:
+                    ax.bar(x_axis, performances_mean, width/len(sensors), label='Inliers', color=colors[sensor])
+                    ax.bar(x_axis, nn_outlier_too_close_mean, width/len(sensors), bottom=performances_mean, 
+                            label='Outliers \ntoo close', color=colors[sensor], alpha=0.4)
+                    ax.bar(x_axis, nn_outlier_too_far_mean, width/len(sensors), bottom=1-nn_outlier_too_far_mean, 
+                            label='Outliers \ntoo far', color=colors[sensor], alpha=0.1)
+                else:
+                    ax.bar(x_axis, performances_mean, width/len(sensors), color=colors[sensor])
+                    ax.bar(x_axis, nn_outlier_too_close_mean, width/len(sensors), bottom=performances_mean, 
+                            color=colors[sensor], alpha=0.4)
+                    ax.bar(x_axis, nn_outlier_too_far_mean, width/len(sensors), bottom=1-nn_outlier_too_far_mean, 
+                            color=colors[sensor], alpha=0.1)
+                    
+            ax.errorbar(x_axis, performances_mean, yerr=performances_std, fmt='none', ecolor="black", capsize=2)
+            
+        ax.set_xlim([-0.75*width, np.max(x)+2.5*width])
+        ax.set_xticks(x, [])
+        ax.legend()
+
+    axs[2,0].set_xticks(x, [f"{zone_lims[z][0]}-{zone_lims[z][1]}m" for z in zones])
+    axs[2,1].set_xticks(x, [f"{zone_lims[z][0]}-{zone_lims[z][1]}m" for z in zones])
+    axs[2,0].yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1, decimals=None, symbol='%', is_latex=False))
+    axs[2,1].yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1, decimals=None, symbol='%', is_latex=False))
+    axs[2,0].set_ylim([0.0, 1.05])
+    axs[2,1].set_ylim([0.0, 1.05])
+    axs[0,0].set_ylabel('Mean [m]')
+    axs[1,0].set_ylabel('Median [m]')
+    axs[2,0].set_ylabel('Inliers [%]')
+    axs[0,0].set_title('Accuracy: NND Sensor->GT') 
+    axs[0,1].set_title('Coverage: NND GT->Sensor') 
+
+    fig.suptitle('Nearest Neighbour Distance', fontsize=16, weight='bold')
+    plt.tight_layout()
+    plt.savefig(os.path.join(base_dir, f"metrics.pdf"))
+    plt.savefig(os.path.join(base_dir, f"metrics.png"))
+
+def plot_ablation_study():
+    base_dir = "results/ETHZ/ablation/best_particle"
+    num_trainings = 5
+    seeds = [24, 25, 26, 29, 33]
+
+    sensors_dict_list = loadAblationStudy(
+        base_dir=base_dir,
+        seeds=seeds,
+    )
+
+    plotMultipleMetrics(
+        metrics_dict_list=sensors_dict_list,
+        colors=colors,
+        zone_lims=zone_lims,
+        base_dir=base_dir,
+    )
+
+
+if __name__ == "__main__":
+    plot_ablation_study()
