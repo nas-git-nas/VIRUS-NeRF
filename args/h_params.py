@@ -39,6 +39,7 @@ class HParamsModel(HParams):
         self.ckpt_path = None
         self.scale = None
         self.encoder_type = None
+        self.hash_levels = None
         self.hash_max_res = None
         self.debug_mode = None
         self.save = None
@@ -54,6 +55,7 @@ class HParamsTraining(HParams):
         self.sampling_strategy = None
         self.sensors = None
         self.max_steps = None
+        self.max_time = None
         self.lr = None
         self.rgbd_loss_w = None
         self.tof_loss_w = None

@@ -159,7 +159,7 @@ class Loss():
         """
         val_idxs = ~torch.isnan(data['depth']['ToF'])
 
-        tof_loss = 0
+        tof_loss = torch.tensor(0.0, device=self.args.device, dtype=torch.float32)
         if torch.sum(val_idxs) > 0:
             tof_loss = F.mse_loss(results['depth'][val_idxs], data['depth']['ToF'][val_idxs])
 

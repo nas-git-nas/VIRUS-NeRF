@@ -137,7 +137,7 @@ class ToFModel(SensorModel):
             depths: depth img converted to ToF sensor array; array of shape (N, H*W)
         """
         depths = np.copy(depths) # (N, H*W)
-        depths_out = np.zeros((depths.shape[0], self.H*self.W), dtype=float) # (N, H*W)
+        depths_out = np.zeros((depths.shape[0], self.H*self.W), dtype=np.float32) # (N, H*W)
         fov_mask = self.mask.detach().clone().cpu().numpy() # (H*W,)
         error_mask = self.error_mask.detach().clone().cpu().numpy() # (H*W,)
 
@@ -153,9 +153,10 @@ class ToFModel(SensorModel):
             self.args.logger.error(f"Unknown depth format: {format}")
 
         # dilate depth img
-        depths_out = depths_out.reshape(depths.shape[0], self.H, self.W) # (N, H, W)
-        depths_out = grey_dilation(depths_out, size=(1,self.args.tof.tof_pix_size,self.args.tof.tof_pix_size)) # (N, H, W)
-        depths_out = depths_out.reshape(depths.shape[0], -1) # (N, H*W)
+        if self.args.tof.tof_pix_size > 1:
+            depths_out = depths_out.reshape(depths.shape[0], self.H, self.W) # (N, H, W)
+            depths_out = grey_dilation(depths_out, size=(1,self.args.tof.tof_pix_size,self.args.tof.tof_pix_size)) # (N, H, W)
+            depths_out = depths_out.reshape(depths.shape[0], -1) # (N, H*W)
         depths_out[depths_out == 0.0] = np.nan # (N, H*W)  
 
         if (self.args.tof.sensor_random_error == 0.0) or (self.args.tof.sensor_random_error is None):

@@ -203,8 +203,12 @@ class Trainer(TrainerPlot):
             )
             eval_toc = time.time()
             train_tic += eval_toc - eval_tic # subtract evaluation time from training time
-            
 
+            if (time.time()-train_tic) > self.args.training.max_time:
+                break
+
+        print(f"\n----- FINISHED TRAINING -----")
+        print(f"{time.time()-train_tic:.2f}s, iter: {step+1}") 
         self._saveModel()
 
     def evaluate(self):
