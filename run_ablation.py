@@ -12,14 +12,15 @@ def main():
     hparams_file = "ethz_usstof_opt_gpu.json"
     num_trainings = 5
     base_dir = "results/ETHZ/ablation/best_particle"
+    base_seed = 21
 
     # create base dir and count seeds already trained
     if not os.path.exists(base_dir):
         os.makedirs(base_dir)
-    else:
-        print("Base dir already exists.")
-        sys.exit()
     num_seeds_already_trained = len(os.listdir(base_dir))
+    if num_seeds_already_trained >= num_trainings:
+        print("All seeds already trained.")
+        sys.exit()
 
     # args
     args = Args(
@@ -40,7 +41,7 @@ def main():
     for i in range(num_seeds_already_trained, num_trainings):
         # set random seed and directory for saving
         args.setRandomSeed(
-            seed=args.seed+i,
+            seed=base_seed+i,
         )
         args.save_dir = os.path.join(base_dir, f"seed_{args.seed}")
         if not os.path.exists(args.save_dir):

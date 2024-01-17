@@ -10,7 +10,7 @@ def main():
     cwd = os.getcwd()
     run_ablation_path = os.path.join(cwd, "run_ablation.py")
 
-    for i in range(10):
+    for _ in range(10):
         print("WATCHING OPTIMIZATION")
 
         checkGPUMemory()
