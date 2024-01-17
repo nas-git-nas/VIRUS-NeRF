@@ -15,8 +15,9 @@ class PlotterResults():
 
         self.score_min = 0.15
         self.score_max = 0.24
-        self.num_particles = 16
-        self.keep_best_n_particles = 32
+        self.num_particles = 32
+        self.keep_best_n_particles = 4
+        self.converged_since_n_iters = 10
         self.best_symbs = ['*', 'o', 'v', 'x', '+', '^', '<', '>', 's', 'p', 'P', 'h', 'H', 'X', 'D', 'd', '|', '_']
         self.best_symbs = self.best_symbs[:self.keep_best_n_particles]
 
@@ -38,21 +39,40 @@ class PlotterResults():
         assert parameters == best_parameters
         assert parameters == parameters_vel
 
-        # keep only best N best particles
-        pos, vel, scores, best_pos, best_scores, best_iters, best_particles = self._keepBestNParticles(
-            pos=pos,
-            vel=vel,
-            scores=scores,
-            best_pos=best_pos,
-            best_scores=best_scores,
-            best_iters=best_iters,
-        )
+        # # print average, mas and min velocity, (N, T, M)
+        # vel1 = vel[:,-1,:].reshape(vel.shape[0], vel.shape[2]) # (N, M)
+        # vel2 = vel[:,-2,:].reshape(vel.shape[0], vel.shape[2]) # (N, M)
+        # vel1[vel1 == np.nan] = vel2[vel1 == np.nan] 
+        # vel_norm = np.linalg.norm(vel1, axis=1) # (N,)
+        # print(f"N: {vel.shape[0]}, T: {vel.shape[1]}, M: {vel.shape[2]}")
+        # print(f"Final velocity norm mean: {np.nanmean(vel_norm)}, min: {np.nanmin(vel_norm)}, max: {np.nanmax(vel_norm)}")
+        # print(f"Final velocity mean: {np.nanmean(vel1)}, min: {np.nanmin(vel1)}, max: {np.nanmax(vel1)}")
 
         # print best score and best hparams
-        print(f"Best particle: {best_particles[0]}")
-        print(f"Best score: {best_scores[0]}")
+        _, best_particles = self._keepBestNParticles(
+            scores=scores,
+            best_scores=best_scores,
+            arr_list=[],
+        )
+        best_particle = best_particles[0]
+        if np.isnan(pos[best_particle, -1, 0]):
+            pos_best = pos[best_particle, -2, :]
+        else:
+            pos_best = pos[best_particle, -1, :]
         for i, param in parameters.items():
-            print(f"{param}: {best_pos[0, i]}")
+            print(f"{param}: {pos_best[i]}")
+        print(f"\nBest particle: {best_particle}, best score: {best_scores[best_particle]}")
+
+        # calculate maximal variation over last TT iterations
+        pos_norm = np.zeros_like(pos) # (N, T, M)
+        for i, param in parameters.items():
+            pos_norm[:, :, i] = (pos[:, :, i] - hparams_lims[param][0]) / (hparams_lims[param][1] - hparams_lims[param][0])
+        pos_norm = pos_norm[best_particles, -self.converged_since_n_iters:, :] # (N, 10, M)
+        pos_norm = np.linalg.norm(pos_norm, axis=2) # (N, 10)
+        pos_var_max = np.nanmax(pos_norm, axis=1) - np.nanmin(pos_norm, axis=1) # (N,)
+        print(f"Maximal variation over last {self.converged_since_n_iters} iterations mean: {np.nanmean(pos_var_max)}, "
+              +f"min: {np.nanmin(pos_var_max)}, max: {np.nanmax(pos_var_max)}")
+
 
         # adjust minimal score
         if np.min(scores) < self.score_min:
@@ -71,17 +91,12 @@ class PlotterResults():
             scores=scores,
             best_iters=best_iters,
             best_scores=best_scores,
-            best_particles=best_particles,
-            hparams_lims=hparams_lims,
-            parameters=parameters,
             ax=axes[0],
             cmap_inv=cmap_inv,
         )
 
         axes[1] = self._plotParticleScores(
             scores=scores,
-            best_scores=best_scores,
-            best_iters=best_iters,
             ax=axes[1],
             cmap_inv=cmap_inv,
         )
@@ -117,24 +132,37 @@ class PlotterResults():
         scores:np.ndarray,
         best_scores:np.ndarray,
         best_iters:np.ndarray,
-        best_particles:np.ndarray,
-        hparams_lims:dict,
-        parameters:dict,
         ax:matplotlib.axes.Axes,
         cmap_inv:matplotlib.colors.LinearSegmentedColormap,
     ):
-        # normalize velocities
-        for i, param in parameters.items():
-            vel[:, :, i] = (vel[:, :, i] - hparams_lims[param][0]) / (hparams_lims[param][1] - hparams_lims[param][0])
-
         vel_norm = np.linalg.norm(vel, axis=2) # (N, T)
+        vel_norm_mean = np.nanmean(vel_norm, axis=0) # (T,)
+        vel_norm_std = np.nanstd(vel_norm, axis=0) # (T,)
+
+        ax.plot(np.arange(vel.shape[1]), vel_norm_mean, c='k', label='Mean Speed')
+        ax.fill_between(np.arange(vel.shape[1]), vel_norm_mean - vel_norm_std, vel_norm_mean + vel_norm_std, alpha=0.2, color='k', label='Std Speed')
+
+        # keep only best N particles
+        best_n_arr_list, best_particles = self._keepBestNParticles(
+            scores=scores,
+            best_scores=best_scores,
+            arr_list=[vel, scores, best_scores, best_iters],
+        )
+        vel, scores, best_scores, best_iters = best_n_arr_list
 
         for i in np.arange(vel.shape[0])[::-1]:
+            score = scores[i,-self.converged_since_n_iters:]
             ax.scatter(np.arange(vel.shape[1]), vel_norm[i], c=scores[i], 
                            cmap=cmap_inv, vmin=self.score_min, vmax=self.score_max, marker=self.best_symbs[i])
-            ax.scatter(np.arange(vel.shape[1])[best_iters[i]], vel_norm[i, best_iters[i]], c=best_scores[i], 
-                           cmap=cmap_inv, vmin=self.score_min, vmax=self.score_max, marker=self.best_symbs[i], s=200,
-                           label=f'Particle {best_particles[i]}, best NND: {best_scores[i]:.3f}')
+            ax.scatter(np.arange(vel.shape[1])[-2], vel_norm[i][-2], c=scores[i][-2], 
+                           cmap=cmap_inv, vmin=self.score_min, vmax=self.score_max, marker=self.best_symbs[i],
+                            label=f'Particle {best_particles[i]}, NND: {np.nanmean(score):.3f}')
+            
+            if self.converged_since_n_iters <= 0:
+                ax.scatter(np.arange(vel.shape[1])[best_iters[i]], vel_norm[i, best_iters[i]], c=best_scores[i], 
+                            cmap=cmap_inv, vmin=self.score_min, vmax=self.score_max, marker=self.best_symbs[i], s=200,
+                            label=f'Particle {best_particles[i]}, best NND: {best_scores[i]:.3f}')
+
 
         ax.set_xlabel('Iteration')
         ax.set_ylabel('Particle Speed')
@@ -147,21 +175,20 @@ class PlotterResults():
     def _plotParticleScores(
         self,
         scores:np.ndarray,
-        best_scores:np.ndarray,
-        best_iters:np.ndarray,
         ax:matplotlib.axes.Axes,
         cmap_inv:matplotlib.colors.LinearSegmentedColormap,
     ):
-        for i in np.arange(scores.shape[0])[::-1]:
-            ax.scatter(np.arange(scores.shape[1]), scores[i], c=scores[i], 
-                           cmap=cmap_inv, vmin=self.score_min, vmax=self.score_max, marker=self.best_symbs[i])
-            ax.scatter(np.arange(scores.shape[1])[best_iters[i]], best_scores[i], c=best_scores[i], 
-                           cmap=cmap_inv, vmin=self.score_min, vmax=self.score_max, marker=self.best_symbs[i], s=200)
+        
+        for i in range(scores.shape[0]):
+            score = scores[i,-self.converged_since_n_iters:]
+            score = score[~np.isnan(score)]
 
-        ax.set_xlabel('Iteration')
-        ax.set_ylabel('Mean NND')
-        ax.set_ylim([self.score_min, 0.3])
-        ax.xaxis.set_label_coords(0.5, -0.09)
+            c = cmap_inv((np.mean(score) - self.score_min) / (self.score_max - self.score_min))
+            ax.boxplot(score, positions=[i], widths=0.5, showfliers=False,
+                        patch_artist=True, boxprops=dict(facecolor=c, color=c), medianprops=dict(color="black"))
+
+        ax.set_xlabel('Particle')
+        ax.set_ylabel('Converged NND [m]')
 
         return ax
         
@@ -177,7 +204,7 @@ class PlotterResults():
         ax:matplotlib.axes.Axes,
         cmap_inv:matplotlib.colors.LinearSegmentedColormap,
     ):
-        column_width = 0.35
+        column_width = 0.45
         N = pos.shape[0]
         T = pos.shape[1]
 
@@ -186,14 +213,24 @@ class PlotterResults():
             pos[:, :, i] = (pos[:, :, i] - hparams_lims[param][0]) / (hparams_lims[param][1] - hparams_lims[param][0])
             best_pos[:, i] = (best_pos[:, i] - hparams_lims[param][0]) / (hparams_lims[param][1] - hparams_lims[param][0])
 
+        # keep only best N particles
+        best_n_arr_list, _ = self._keepBestNParticles(
+            scores=scores,
+            best_scores=best_scores,
+            arr_list=[pos, scores, best_pos, best_scores, best_iters],
+        )
+        pos, scores, best_pos, best_scores, best_iters = best_n_arr_list
+
         for i, param in parameters.items():
 
             x_axis = i + column_width * np.linspace(-0.5, 0.5, T) # (T,)
             for j in np.arange(best_pos.shape[0])[::-1]:
                 im = ax.scatter(x_axis, pos[j, :, i].flatten(), c=scores[j], 
                                 cmap=cmap_inv, vmin=self.score_min, vmax=self.score_max, marker=self.best_symbs[j])
-                ax.scatter(x_axis[best_iters[j]], best_pos[j, i], c=best_scores[j], 
-                           cmap=cmap_inv, vmin=self.score_min, vmax=self.score_max, marker=self.best_symbs[j], s=200)
+                
+                if self.converged_since_n_iters <= 0:
+                    ax.scatter(x_axis[best_iters[j]], best_pos[j, i], c=best_scores[j], 
+                            cmap=cmap_inv, vmin=self.score_min, vmax=self.score_max, marker=self.best_symbs[j], s=200)
 
         ax.set_xticks(list(parameters.keys()))
         ax.set_xticklabels([param.replace('_', ' ') + f":\n     [{hparams_lims[param][0]:.2f}, {hparams_lims[param][1]:.2f}]" 
@@ -203,24 +240,41 @@ class PlotterResults():
     
     def _keepBestNParticles(
         self,
-        pos:np.ndarray,
-        vel:np.ndarray,
         scores:np.ndarray,
-        best_pos:np.ndarray,
         best_scores:np.ndarray,
-        best_iters:np.ndarray,
+        arr_list:list
     ):
-        # keep only best n particles
-        best_particles = np.argsort(best_scores)
-        best_particles = best_particles[:self.keep_best_n_particles]
+        scores = np.copy(scores)
+        best_scores = np.copy(best_scores)
 
-        pos = pos[best_particles, :, :]
-        vel = vel[best_particles, :, :]
-        scores = scores[best_particles, :]
-        best_pos = best_pos[best_particles, :]
-        best_scores = best_scores[best_particles]
-        best_iters = best_iters[best_particles]
-        return pos, vel, scores, best_pos, best_scores, best_iters, best_particles
+        # keep only best n particles
+        best_particles = self._determineBestNParticles(
+            scores=scores,
+            best_scores=best_scores,
+        )
+
+        best_n_arr_list = []
+        for arr in arr_list:
+            best_n_arr_list.append(np.copy(arr[best_particles]))
+
+        return best_n_arr_list, best_particles
+    
+    def _determineBestNParticles(
+        self,
+        scores:np.ndarray,
+        best_scores:np.ndarray,
+    ):
+        # return the best N particles from the last iteration if algorithm did not yet converge
+        if self.converged_since_n_iters <= 0:
+            best_particles = np.argsort(best_scores)
+            best_particles = best_particles[:self.keep_best_n_particles]
+            return best_particles
+        
+        # return mean of the best N particles from the last iteration if algorithm converged
+        scores_mean = np.nanmean(scores[:,-self.converged_since_n_iters:], axis=1)
+        best_particles = np.argsort(scores_mean)
+        best_particles = best_particles[:self.keep_best_n_particles]
+        return best_particles
 
     def _readPosData(
             self,
@@ -334,7 +388,7 @@ class PlotterResults():
 
 
 def main():
-    data_dir = "results/pso/opt32"
+    data_dir = "results/pso/opt32_2"
     plotter = PlotterResults(
         data_dir=data_dir,
     )

@@ -3,6 +3,39 @@ import gc
 import torch
 import numpy as np
 
+if torch.cuda.is_available():
+    import nvidia_smi
+
+def checkGPUMemory(
+    memory_threshold:int=2e9,
+    print_memory:bool=True,
+    device_index:int=0,
+):
+    """
+    Check if there is enough memory on the GPU for one more training cycle.
+    Args:
+        memory_threshold: threshold in bytes; int
+        print_memory: print memory usage; bool
+        device_index: index of gpu; int
+    Returns:
+        not_enough_memory: bool
+    """
+    if not torch.cuda.is_available():
+        return False
+    
+    nvidia_smi.nvmlInit()
+    handle = nvidia_smi.nvmlDeviceGetHandleByIndex(device_index) # gpu id 0
+    info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
+
+    if print_memory:
+        print(f"Free memory: {(info.free/1e6):.2f}Mb / {(info.total/1e6):.2f}Mb = {(info.free/info.total):.3f}%")
+
+    not_enough_memory = info.free < memory_threshold
+    if not_enough_memory and print_memory:
+        print("EXIT: Used memory is too high.\n\n")
+
+    nvidia_smi.nvmlShutdown()
+    return not_enough_memory
 
 def get_size(
     obj, 

@@ -14,7 +14,7 @@ from args.args import Args
 
 def test_ToFModel():
     # hyperparameters
-    num_imgs = 8
+    num_imgs = 5
 
     # create dataset
     args = Args(
@@ -27,7 +27,7 @@ def test_ToFModel():
     } 
     args.training.sensors = ["ToF", "RGBD"]
     args.dataset.sensors = ["ToF", "RGBD"]
-    args.tof.tof_pix_size = 31
+    args.tof.tof_pix_size = 32
 
     if args.dataset.name == "RH2":
         dataset_class = DatasetRH

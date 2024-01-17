@@ -10,14 +10,6 @@ def main():
     trainer.train()
     trainer.evaluate()
 
-
-# def evaluate():
-#     chkt_path = "results/robot_at_home/20231016_1119"
-#     trainer = Trainer(hparams_file="rh_gpu.json")
-#     trainer.loadCheckpoint(ckpt_path=os.path.join(chkt_path, "model.pth"))
-#     trainer.evaluate()
-
-
 if __name__ == "__main__":
     main()
 
@@ -36,6 +28,9 @@ TODO:
 - implement real time running:
     - implement data accumulation
     - remove all dependencies from step or time
+
+- evaluation
+    -evaluate at robot centre
 
 
 - investigate why keep_pixels_in_angle_range cannot be [-5,5]
