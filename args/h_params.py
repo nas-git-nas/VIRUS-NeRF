@@ -39,6 +39,7 @@ class HParamsModel(HParams):
         self.ckpt_path = None
         self.scale = None
         self.encoder_type = None
+        self.hash_levels = None
         self.hash_max_res = None
         self.debug_mode = None
         self.save = None
@@ -54,6 +55,7 @@ class HParamsTraining(HParams):
         self.sampling_strategy = None
         self.sensors = None
         self.max_steps = None
+        self.max_time = None
         self.lr = None
         self.rgbd_loss_w = None
         self.tof_loss_w = None
@@ -104,7 +106,7 @@ class HParamsOccGrid(HParams):
         self.batch_ratio_ray_update = None
         self.false_detection_prob_every_m = None
         self.std_every_m = None
-        self.nerf_update_pos_noise = None
+        self.nerf_pos_noise_every_m = None
         self.nerf_threshold_max = None
         self.nerf_threshold_slope = None
 

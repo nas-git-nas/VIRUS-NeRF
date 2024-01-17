@@ -5,7 +5,7 @@
         "name": "ETHZ",
         "split_ratio": {"train": 0.8, "val": 0.1, "test": 0.1},
         "downsample": 1.0,
-        "keep_N_observations": 70,
+        "keep_N_observations": "all",
         "keep_sensor": "all",
         "keep_pixels_in_angle_range": "all",
         "sensors": ["RGBD", "USS", "ToF"]
@@ -15,27 +15,28 @@
         "ckpt_path": false, 
         "scale": 0.5,
         "encoder_type": "hash",
+        "hash_levels": 16,
         "hash_max_res": 1024,
-        "debug_mode": true,
-        "save": true
+        "debug_mode": false,
+        "save": false
     },
     "training":
     {
-        "distortion_loss_w": "None",
+        "distortion_loss_w": 0.0,
         "batch_size": 4096,
         "sampling_strategy": 
         {
             "imgs": "all", 
-            "pixs": {"valid_uss":0.4, "valid_tof":0.4}
+            "pixs": {"valid_uss":0.612, "valid_tof":0.316}
         },
         "sensors": ["USS", "ToF"],
-        "max_steps": 5,
+        "max_steps": 500,
+        "max_time": 45,
         "lr": 5e-3,
         "rgbd_loss_w": 100.0,
-        "tof_loss_w": 50.0,
-        "uss_loss_w": 50.0,
-        "color_loss_w": 1.0,
-        "uss_loss_min_w": "None",
+        "tof_loss_w": 54.6,
+        "uss_loss_w": 220.0,
+        "color_loss_w": 3.403,
         "random_bg": "None",
         "real_time_simulation": false
     },
@@ -44,11 +45,11 @@
         "batch_size": 8192,
         "res_map": 512,
         "res_angular": 512,
-        "eval_every_n_steps": 1,
+        "eval_every_n_steps": 501,
         "num_color_pts": 0,
-        "num_depth_pts": 5,
-        "num_depth_pts_per_step": 5,
-        "num_plot_pts": 5,
+        "num_depth_pts": "all",
+        "num_depth_pts_per_step": 16,
+        "num_plot_pts": 8,
         "num_avg_heights": "None",
         "height_tolerance": 0.05,
         "density_map_thr": 10,
@@ -58,27 +59,27 @@
             "zone2": [0, 2],
             "zone3": [0, 100]
         },
-        "sensors": ["GT", "USS", "ToF", "LiDAR", "NeRF"],
-        "plot_results": true
+        "sensors": ["GT", "NeRF"],
+        "plot_results": false
     },
     "occ_grid":
     {
         "grid_type": "occ",
         "warmup_steps": 256,
-        "batch_size": 64,
-        "sampling_strategy": {"imgs": "None", "pixs": "None"},  
+        "batch_size": 1024,
+        "sampling_strategy": {"imgs": "None", "rays": "None"},
         "update_interval": 2,
-        "decay_warmup_steps": 80,
-        "batch_ratio_ray_update": 0.5,
+        "decay_warmup_steps": 32,
+        "batch_ratio_ray_update": 0.1,
         "false_detection_prob_every_m": 0.3,
-        "std_every_m": 0.2,
-        "nerf_pos_noise_every_m": 0.2,
-        "nerf_threshold_max": 5.91,
-        "nerf_threshold_slope": 0.01
+        "std_every_m": 0.05,
+        "nerf_pos_noise_every_m": 0.05,
+        "nerf_threshold_max": 9.0,
+        "nerf_threshold_slope": 0.293
     },
     "ethz":
     {
-        "dataset_dir": "../ETHZDataset",
+        "dataset_dir": "/media/scratch1/schmin/data/ETHZDataset",
         "room": "office",
         "cam_ids": ["CAM1", "CAM3"],
         "use_optimized_poses": true
@@ -119,4 +120,5 @@
 
         }
     }
+    
 }

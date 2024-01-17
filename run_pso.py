@@ -23,19 +23,21 @@ def main():
     termination_by_time = True # whether to terminate by time or iterations
     hparams_file = "ethz_usstof_gpu.json" 
     hparams_lims_file = "optimization/hparams_lims.json"
-    save_dir = "results/pso/opt32"
+    save_dir = "results/pso/opt32_2"
 
     # get hyper-parameters and other variables
     args = Args(
         file_name=hparams_file
     )
+    args.model.save = False
+    args.model.debug_mode = False
     args.eval.eval_every_n_steps = args.training.max_steps + 1
     args.eval.plot_results = False
-    args.model.save = False
     args.eval.sensors = ["GT", "NeRF"]
     args.eval.num_color_pts = 0
     args.eval.batch_size = 8192
     args.training.batch_size = 4096
+    args.seed = np.random.randint(0, 2**8-1)
 
     # datasets   
     if args.dataset.name == 'RH2':
@@ -75,34 +77,41 @@ def main():
             name_dict_layout=False,
         ) # np.array (M,)
 
-        print("\n\n----- NEW PARAMETERS -----")
-        print(f"Time: {time.time()-pso.time_start:.1f}/{T}, particle: {pso.n}")
-        ic(hparams_dict)
-        print(f"Current best mnn: {np.min(pso.best_score):.3f}, best particle: {np.argmin(pso.best_score)}")
-
         # set hparams
         args.setRandomSeed(
             seed=args.seed+iter,
         )
 
+        sampling_pix_sum = (hparams_dict["training"]["pixs_valid_uss"] + hparams_dict["training"]["pixs_valid_tof"])
+        if sampling_pix_sum > 1.0:
+            sampling_pix_sum = np.ceil(100*sampling_pix_sum) / 100 # round to 2 decimals
+            hparams_dict["training"]["pixs_valid_uss"] /= sampling_pix_sum
+            hparams_dict["training"]["pixs_valid_tof"] /= sampling_pix_sum
         sampling_strategy = {
             "imgs": "all", 
             "pixs": {
-                "closest": hparams_dict["training"]["pixs_closest"],
                 "valid_uss": hparams_dict["training"]["pixs_valid_uss"],
-                "valid_tof": 1 - hparams_dict["training"]["pixs_valid_uss"] \
-                               - hparams_dict["training"]["pixs_closest"],
+                "valid_tof": hparams_dict["training"]["pixs_valid_tof"],
             },
         }
-        setattr(args.training, "sampling_strategy", sampling_strategy)
-
         for key, value in hparams_dict["training"].items():
-            if "pixs" in key:
-                continue        
+            if (key == "pixs_valid_uss") or (key == "pixs_valid_tof"):
+                setattr(args.training, "sampling_strategy", sampling_strategy)
+                continue      
             setattr(args.training, key, value)
 
         for key, value in hparams_dict["occ_grid"].items():
+            if (key == "update_interval") or (key == "decay_warmup_steps"):
+                setattr(args.occ_grid, key, int(np.round(value)))
+                continue 
             setattr(args.occ_grid, key, value)
+
+        setattr(args.tof, "tof_pix_size", int(np.round(hparams_dict["ToF"]["tof_pix_size"])))
+
+        print("\n\n----- NEW PARAMETERS -----")
+        print(f"Time: {time.time()-pso.time_start+pso.time_offset:.1f}s, particle: {pso.n}")
+        ic(hparams_dict)
+        print(f"Current best mnn: {np.min(pso.best_score):.3f}, best particle: {np.argmin(pso.best_score)}")
 
         # load trainer
         trainer = Trainer(
@@ -138,9 +147,9 @@ def main():
             handle = nvidia_smi.nvmlDeviceGetHandleByIndex(0) # gpu id 0
             info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
 
-            print(f"Run PSO: Free memory: {(info.free/1e6):.2f}Mb / {(info.total/1e6):.2f}Mb = {(info.free/info.total):.3f}%")
+            print(f"Free memory: {(info.free/1e6):.2f}Mb / {(info.total/1e6):.2f}Mb = {(info.free/info.total):.3f}%")
             if info.free < 2e9:
-                print("Run PSO: Used memory is too high. Exiting...")
+                print("EXIT: Used memory is too high.\n\n")
                 terminate = True
 
             nvidia_smi.nvmlShutdown()
