@@ -13,17 +13,18 @@ x_axis = np.arange(len(error))
  
 ax = axes[0]
 ax.bar(x_axis, mnn, color ='blue', width = 0.4)
-ax.set_xlabel("Added angle error (degree)")
-ax.set_ylabel("Mean Nearest-Neighbor Distance [m]")
+ax.set_xlabel("Angular error [degree]")
+ax.set_ylabel("Mean NND [m]")
 ax.set_xticks(x_axis, error)
 
 ax = axes[1]
 ax.bar(x_axis - 0.2, convergence_50, color ='blue', width = 0.2, label='50%')
 ax.bar(x_axis, convergence_25, color ='orange', width = 0.2, label='25%')
 ax.bar(x_axis + 0.2, convergence_10, color ='green', width = 0.2, label='10%')
-ax.set_xlabel("Added angle error (degree)")
+ax.set_xlabel("Angular error [degree]")
 ax.set_ylabel("Convergence time [s]")
 ax.legend()
 ax.set_xticks(x_axis, error)
  
+plt.savefig('test_scripts/datasets/tof_calibration_error.png')
 plt.show()

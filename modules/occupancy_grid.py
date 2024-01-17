@@ -66,11 +66,11 @@ class OccupancyGrid(Grid):
         if scene is not None: # TODO: remove this
             self.false_detection_prob_every_m = self.args.occ_grid.false_detection_prob_every_m / scene.w2c(pos=1, only_scale=True, copy=False)
             self.std_every_m = scene.w2c(pos=self.args.occ_grid.std_every_m, only_scale=True, copy=False)
-            self.nerf_update_pos_noise = scene.w2c(pos=self.args.occ_grid.nerf_update_pos_noise, only_scale=True, copy=False)
+            self.nerf_pos_noise_every_m = scene.w2c(pos=self.args.occ_grid.nerf_pos_noise_every_m, only_scale=True, copy=False)
         else:
             self.false_detection_prob_every_m = self.args.occ_grid.false_detection_prob_every_m
             self.std_every_m = self.args.occ_grid.std_every_m
-            self.nerf_update_pos_noise = self.args.occ_grid.nerf_update_pos_noise
+            self.nerf_pos_noise_every_m = self.args.occ_grid.nerf_pos_noise_every_m
 
     @torch.no_grad()
     def update(
@@ -323,7 +323,7 @@ class OccupancyGrid(Grid):
         # add random noise
         if add_noise:
             noise = 2*torch.rand(size=cell_pos.shape, device=self.args.device, dtype=torch.float32) - 1 # (N, M, 3)
-            cell_pos = cell_pos + self.nerf_update_pos_noise * cell_dists[:, :, None] * noise # (N, M, 3)
+            cell_pos = cell_pos + self.nerf_pos_noise_every_m * cell_dists[:, :, None] * noise # (N, M, 3)
 
         # calculate cell indices
         cell_pos = cell_pos.reshape(-1, 3) # (N*M, 3)

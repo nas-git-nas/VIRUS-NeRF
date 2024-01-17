@@ -72,7 +72,7 @@
         "batch_ratio_ray_update": 0.5,
         "false_detection_prob_every_m": 0.3,
         "std_every_m": 0.2,
-        "nerf_update_pos_noise": 0.2,
+        "nerf_pos_noise_every_m": 0.2,
         "nerf_threshold_max": 5.91,
         "nerf_threshold_slope": 0.01
     },

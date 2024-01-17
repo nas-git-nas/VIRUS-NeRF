@@ -94,14 +94,18 @@ def main():
                                - hparams_dict["training"]["pixs_closest"],
             },
         }
-        setattr(args.training, "sampling_strategy", sampling_strategy)
-
         for key, value in hparams_dict["training"].items():
             if "pixs" in key:
-                continue        
+                setattr(args.training, "sampling_strategy", sampling_strategy)
+                continue      
+
             setattr(args.training, key, value)
 
         for key, value in hparams_dict["occ_grid"].items():
+            if "update_interval" == key:
+                setattr(args.occ_grid, key, int(np.round(value)))
+                continue 
+
             setattr(args.occ_grid, key, value)
 
         # load trainer

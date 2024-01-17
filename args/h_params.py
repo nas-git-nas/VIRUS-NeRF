@@ -104,7 +104,7 @@ class HParamsOccGrid(HParams):
         self.batch_ratio_ray_update = None
         self.false_detection_prob_every_m = None
         self.std_every_m = None
-        self.nerf_update_pos_noise = None
+        self.nerf_pos_noise_every_m = None
         self.nerf_threshold_max = None
         self.nerf_threshold_slope = None
 
