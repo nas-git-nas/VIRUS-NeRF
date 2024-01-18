@@ -77,7 +77,7 @@ def plotMultipleMetrics(
     x = np.arange(len(zones))  # the label locations
     width = 0.6  # the width of the bars
 
-    fig, axs = plt.subplots(ncols=3, nrows=3, figsize=(12,8), gridspec_kw={'width_ratios': [5.5, 5.5, 3.5]})
+    fig, axs = plt.subplots(ncols=3, nrows=3, figsize=(13,8), gridspec_kw={'width_ratios': [5.5, 5.5, 3.5]})
     metrics = [
         'nn_mean', 'nn_mean_inv', 'nn_mean_inv_360', 
         'nn_median', 'nn_median_inv', 'nn_median_inv_360', 
@@ -113,7 +113,10 @@ def plotMultipleMetrics(
                 if (i+1) % 3 == 0:
                     ax.bar(x_axis, performances_mean, width/len(sensors), color=colors[sensor])
                 else:
-                    ax.bar(x_axis, performances_mean, width/len(sensors), label=sensor, color=colors[sensor])
+                    sensor_label = sensor
+                    if sensor == "ToF":
+                        sensor_label = "IRS"
+                    ax.bar(x_axis, performances_mean, width/len(sensors), label=sensor_label, color=colors[sensor])
             else:
                 if (((i + j) % 2) == 0) and (i < 8):
                     ax.bar(x_axis, performances_mean, width/len(sensors), label='Inliers', color=colors[sensor])

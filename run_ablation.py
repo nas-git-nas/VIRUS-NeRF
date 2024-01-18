@@ -9,9 +9,9 @@ from datasets.dataset_ethz import DatasetETHZ
 from helpers.system_fcts import checkGPUMemory
 
 def main():
-    hparams_file = "ethz_usstof_opt_gpu.json"
-    num_trainings = 5
-    base_dir = "results/ETHZ/ablation/best_particle"
+    hparams_file = "ethz_usstof_ablation_gpu.json"
+    num_trainings = 10
+    base_dir = "results/ETHZ/ablation/optimized"
     base_seed = 21
 
     # create base dir and count seeds already trained

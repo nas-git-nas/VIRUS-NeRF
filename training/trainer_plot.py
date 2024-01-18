@@ -275,7 +275,10 @@ class TrainerPlot(TrainerBase):
                                         width=orientation_arrow_width)
                     )
                 ax.set_xlabel(f'x [m]')
-                ax.set_ylabel(sensor, fontsize=15, weight='bold', labelpad=20)
+                sensor_label = sensor
+                if sensor == "ToF":
+                    sensor_label = "IRS"
+                ax.set_ylabel(sensor_label, fontsize=15, weight='bold', labelpad=20)
                 ax.text(-0.17, 0.5, 'y [m]', fontsize=10, va='center', rotation='vertical', transform=ax.transAxes)
 
                 ax = axes[s-1,1]
@@ -309,7 +312,6 @@ class TrainerPlot(TrainerBase):
             axes[0,2].set_title(f'NND GT->Sensor', weight='bold')
 
             plt.tight_layout()
-            plt.savefig(os.path.join(save_dir, f"map{i}.pdf"))
             plt.savefig(os.path.join(save_dir, f"map{i}.png"))
 
     def _plotMetrics(
@@ -330,7 +332,7 @@ class TrainerPlot(TrainerBase):
         x = np.arange(len(zones))  # the label locations
         width = 0.6  # the width of the bars
 
-        fig, axs = plt.subplots(ncols=3, nrows=3, figsize=(12,8), gridspec_kw={'width_ratios': [5.5, 5.5, 3.5]})
+        fig, axs = plt.subplots(ncols=3, nrows=3, figsize=(13,8), gridspec_kw={'width_ratios': [5.5, 5.5, 3.5]})
         metrics = [
             'nn_mean', 'nn_mean_inv', 'nn_mean_inv_360', 
             'nn_median', 'nn_median_inv', 'nn_median_inv_360', 
@@ -356,7 +358,10 @@ class TrainerPlot(TrainerBase):
                     if (i+1) % 3 == 0:
                         ax.bar(x_axis, performances, width/len(sensors), color=self.colors[sensor])
                     else:
-                        ax.bar(x_axis, performances, width/len(sensors), label=sensor, color=self.colors[sensor])
+                        sensor_label = sensor
+                        if sensor == "ToF":
+                            sensor_label = "IRS"
+                        ax.bar(x_axis, performances, width/len(sensors), label=sensor_label, color=self.colors[sensor])
                     continue
 
                 nn_outlier_too_close = np.array([metrics_dict[sensors[j]]['nn_outlier_too_close'][z] for z in zones])
@@ -365,7 +370,7 @@ class TrainerPlot(TrainerBase):
                 if (((i + j) % 2) == 0) and (i < 8):
                     ax.bar(x_axis, performances, width/len(sensors), label='Inliers', color=self.colors[sensor])
                     ax.bar(x_axis, nn_outlier_too_close, width/len(sensors), bottom=performances, 
-                            label='Outliers \n(too close9', color=self.colors[sensor], alpha=0.4)
+                            label='Outliers \n(too close)', color=self.colors[sensor], alpha=0.4)
                     ax.bar(x_axis, nn_outlier_too_far, width/len(sensors), bottom=1-nn_outlier_too_far, 
                             label='Outliers \n(too far)', color=self.colors[sensor], alpha=0.1)
                 else:
@@ -443,7 +448,7 @@ class TrainerPlot(TrainerBase):
         if "rgbd_loss" in logs:
             ax.plot(logs['step'], smoothIgnoreNans(logs['rgbd_loss'], filter_size), label='rgbd')
         if "ToF_loss" in logs:
-            ax.plot(logs['step'], smoothIgnoreNans(logs['ToF_loss'], filter_size), label='ToF')
+            ax.plot(logs['step'], smoothIgnoreNans(logs['ToF_loss'], filter_size), label='IRS')
         if "USS_loss" in logs:
             ax.plot(logs['step'], smoothIgnoreNans(logs['USS_loss'], filter_size), label='USS')
             # ax.plot(logs['step'], smoothIgnoreNans(logs['USS_close_loss'], filter_size), label='USS(close)')
