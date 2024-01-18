@@ -56,7 +56,7 @@ class Args():
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # random seed
-        self.seed = 24
+        self.seed = 21
         self.setRandomSeed(
             seed=self.seed,
         )
