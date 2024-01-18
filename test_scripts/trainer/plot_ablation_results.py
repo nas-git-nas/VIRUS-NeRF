@@ -77,9 +77,15 @@ def plotMultipleMetrics(
     x = np.arange(len(zones))  # the label locations
     width = 0.6  # the width of the bars
 
-    fig, axs = plt.subplots(ncols=2, nrows=3, figsize=(10,8))
-    metrics = ['nn_mean', 'nn_mean_inv', 'nn_median', 'nn_median_inv', 'nn_inlier', 'nn_inlier_inv']
+    fig, axs = plt.subplots(ncols=3, nrows=3, figsize=(12,8), gridspec_kw={'width_ratios': [5.5, 5.5, 3.5]})
+    metrics = [
+        'nn_mean', 'nn_mean_inv', 'nn_mean_inv_360', 
+        'nn_median', 'nn_median_inv', 'nn_median_inv_360', 
+        'nn_inlier', 'nn_inlier_inv', 'nn_inlier_inv_360',
+    ]
 
+    y_axis_inv_mean_max = 0.0
+    y_axis_inv_median_max = 0.0
     for i, (ax, metric) in enumerate(zip(axs.flatten(), metrics)):
 
         for j, sensor in enumerate(sensors):
@@ -97,15 +103,24 @@ def plotMultipleMetrics(
             nn_outlier_too_close_mean = np.mean(multiple_nn_outlier_too_close, axis=0)
             nn_outlier_too_far_mean = 1 - performances_mean - nn_outlier_too_close_mean
 
-            if not 'inlier' in metric:
-                ax.bar(x_axis, performances_mean, width/len(sensors), label=sensor, color=colors[sensor])
+            if i < 6:
+                if (i%3) != 0:
+                    if i < 3:
+                        y_axis_inv_mean_max = max(y_axis_inv_mean_max, np.max(performances_mean+performances_std))
+                    else:
+                        y_axis_inv_median_max = max(y_axis_inv_median_max, np.max(performances_mean+performances_std))
+
+                if (i+1) % 3 == 0:
+                    ax.bar(x_axis, performances_mean, width/len(sensors), color=colors[sensor])
+                else:
+                    ax.bar(x_axis, performances_mean, width/len(sensors), label=sensor, color=colors[sensor])
             else:
-                if ((i + j) % 2) == 0:
+                if (((i + j) % 2) == 0) and (i < 8):
                     ax.bar(x_axis, performances_mean, width/len(sensors), label='Inliers', color=colors[sensor])
                     ax.bar(x_axis, nn_outlier_too_close_mean, width/len(sensors), bottom=performances_mean, 
-                            label='Outliers \ntoo close', color=colors[sensor], alpha=0.4)
+                            label='Outliers \n(too close)', color=colors[sensor], alpha=0.4)
                     ax.bar(x_axis, nn_outlier_too_far_mean, width/len(sensors), bottom=1-nn_outlier_too_far_mean, 
-                            label='Outliers \ntoo far', color=colors[sensor], alpha=0.1)
+                            label='Outliers \n(too far)', color=colors[sensor], alpha=0.1)
                 else:
                     ax.bar(x_axis, performances_mean, width/len(sensors), color=colors[sensor])
                     ax.bar(x_axis, nn_outlier_too_close_mean, width/len(sensors), bottom=performances_mean, 
@@ -114,26 +129,36 @@ def plotMultipleMetrics(
                             color=colors[sensor], alpha=0.1)
                     
             ax.errorbar(x_axis, performances_mean, yerr=performances_std, fmt='none', ecolor="black", capsize=2)
-            
-        ax.set_xlim([-0.75*width, np.max(x)+2.5*width])
-        ax.set_xticks(x, [])
-        ax.legend()
 
-    axs[2,0].set_xticks(x, [f"{zone_lims[z][0]}-{zone_lims[z][1]}m" for z in zones])
-    axs[2,1].set_xticks(x, [f"{zone_lims[z][0]}-{zone_lims[z][1]}m" for z in zones])
-    axs[2,0].yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1, decimals=None, symbol='%', is_latex=False))
-    axs[2,1].yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1, decimals=None, symbol='%', is_latex=False))
+        if (i+1) % 3 == 0:  
+            ax.set_xlim([-0.75*width, np.max(x)+0.75*width])
+        else: 
+            ax.set_xlim([-0.75*width, np.max(x)+2.75*width])
+            ax.legend()
+
+        if i < 6:
+            ax.set_xticks(x, [])
+        else:
+            ax.set_xticks(x, [f"{zone_lims[z][0]}-{zone_lims[z][1]}m" for z in zones])
+            ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1, decimals=None, symbol='%', is_latex=False))
+
+
+    axs[0,1].set_ylim([0.0, 1.05*y_axis_inv_mean_max])
+    axs[0,2].set_ylim([0.0, 1.05*y_axis_inv_mean_max])
+    axs[1,1].set_ylim([0.0, 1.05*y_axis_inv_median_max])
+    axs[1,2].set_ylim([0.0, 1.05*y_axis_inv_median_max])
     axs[2,0].set_ylim([0.0, 1.05])
     axs[2,1].set_ylim([0.0, 1.05])
+    axs[2,2].set_ylim([0.0, 1.05])
     axs[0,0].set_ylabel('Mean [m]')
     axs[1,0].set_ylabel('Median [m]')
     axs[2,0].set_ylabel('Inliers [%]')
-    axs[0,0].set_title('Accuracy: NND Sensor->GT') 
-    axs[0,1].set_title('Coverage: NND GT->Sensor') 
+    axs[0,0].set_title('Accuracy: Sensor->GT(FoV)') 
+    axs[0,1].set_title('Coverage: GT(FoV)->Sensor') 
+    axs[0,2].set_title('Coverage: GT(360°)->Sensor') 
 
     fig.suptitle('Nearest Neighbour Distance', fontsize=16, weight='bold')
     plt.tight_layout()
-    plt.savefig(os.path.join(base_dir, f"metrics.pdf"))
     plt.savefig(os.path.join(base_dir, f"metrics.png"))
 
 def plot_ablation_study():

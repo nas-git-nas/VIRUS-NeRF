@@ -15,6 +15,7 @@
         "ckpt_path": false, 
         "scale": 0.5,
         "encoder_type": "hash",
+        "hash_levels": 16,
         "hash_max_res": 1024,
         "debug_mode": true,
         "save": true
@@ -29,7 +30,8 @@
             "pixs": {"valid_uss":0.4, "valid_tof":0.4}
         },
         "sensors": ["USS", "ToF"],
-        "max_steps": 5,
+        "max_steps": 2,
+        "max_time": 45,
         "lr": 5e-3,
         "rgbd_loss_w": 100.0,
         "tof_loss_w": 50.0,

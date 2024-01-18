@@ -27,16 +27,16 @@
         "sampling_strategy": 
         {
             "imgs": "all", 
-            "pixs": {"valid_uss":0.4, "valid_tof":0.4}
+            "pixs": {"valid_uss":0.188775, "valid_tof":0.190466}
         },
         "sensors": ["USS", "ToF"],
         "max_steps": 500,
         "max_time": 45,
         "lr": 5e-3,
         "rgbd_loss_w": 100.0,
-        "tof_loss_w": 50.0,
-        "uss_loss_w": 50.0,
-        "color_loss_w": 1.0,
+        "tof_loss_w": 379.390,
+        "uss_loss_w": 14.1316,
+        "color_loss_w": 1.60495,
         "random_bg": "None",
         "real_time_simulation": false
     },
@@ -68,14 +68,14 @@
         "warmup_steps": 256,
         "batch_size": 1024,
         "sampling_strategy": {"imgs": "None", "rays": "None"},
-        "update_interval": 8,
-        "decay_warmup_steps": 80,
-        "batch_ratio_ray_update": 0.5,
-        "false_detection_prob_every_m": 0.3,
-        "std_every_m": 0.2,
-        "nerf_pos_noise_every_m": 0.2,
-        "nerf_threshold_max": 5.91,
-        "nerf_threshold_slope": 0.01
+        "update_interval": 11,
+        "decay_warmup_steps": 59,
+        "batch_ratio_ray_update": 0.536813,
+        "false_detection_prob_every_m": 0.231479,
+        "std_every_m": 0.142012,
+        "nerf_pos_noise_every_m": 0.0770615,
+        "nerf_threshold_max": 7.63091,
+        "nerf_threshold_slope": 0.222051
     },
     "ethz":
     {
@@ -104,7 +104,7 @@
     {
         "angle_of_view": [45, 45],
         "matrix": [8, 8],
-        "tof_pix_size": 1,
+        "tof_pix_size": 7,
         "sensor_calibration_error": 0.0,
         "sensor_random_error": 0.0
     },

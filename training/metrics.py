@@ -140,6 +140,11 @@ class Metrics():
             nn_outlier_too_close: ratio of points with a NN-distance larger than a threshold but the measurement is closer 
                                     than the ground truth {zone:outlier_ratio}; dict {str: float}
         """
+        pos = np.copy(pos)
+        pos_ref = np.copy(pos_ref)
+        depths = np.copy(depths)
+        depths_gt = np.copy(depths_gt)
+        
         N = num_points
         K = pos.shape[0] // N
         M = pos_ref.shape[0] // N

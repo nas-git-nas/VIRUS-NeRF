@@ -104,54 +104,70 @@ class TrainerPlot(TrainerBase):
             height_tolerance=self.args.eval.height_tolerance, 
             height_in_world_coord=True
         ) # (L, L)
-        density_map, density_map_thr = self.interfereDensityMap(
-            res_map=occ_2d_grid.shape[0],
-            height_w=height_w,
-            num_avg_heights=1,
-            tolerance_w=0.0,
-            threshold=0.01 * MAX_SAMPLES / 3**0.5,
-        ) # (L, L)
+        # density_map, density_map_thr = self.interfereDensityMap(
+        #     res_map=occ_2d_grid.shape[0],
+        #     height_w=height_w,
+        #     num_avg_heights=1,
+        #     tolerance_w=0.0,
+        #     threshold=0.01 * MAX_SAMPLES / 3**0.5,
+        # ) # (L, L)
 
         # plot occupancy grid
-        fig, axes = plt.subplots(ncols=3, nrows=2, figsize=(9,6))
+        fig, axes = plt.subplots(ncols=3, nrows=1, figsize=(8,3))
+        axes = axes.flatten()
         scale = self.args.model.scale
         extent = self.test_dataset.scene.c2w(pos=np.array([[-scale,-scale],[scale,scale]]), copy=False)
         extent = extent.T.flatten()
 
-        ax = axes[0,0]
-        im = ax.imshow(density_map_gt.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=1)
-        ax.set_ylabel(f'y [m]')
-        ax.set_title(f'Ground Truth')
-        fig.colorbar(im, ax=ax)
-
-        ax = axes[0,1]
-        im = ax.imshow(density_map.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=10 * (0.01 * MAX_SAMPLES / 3**0.5))
-        ax.set_ylabel(f'y [m]')
-        ax.set_title(f'NeRF density')
-        fig.colorbar(im, ax=ax)
-
-        ax = axes[0,2]
-        im = ax.imshow(density_map_thr.T, origin='lower', extent=extent, cmap='viridis', vmin=0, vmax=1)
-        ax.set_title(f'NeRF binary')
-        fig.colorbar(im, ax=ax)
-
-        fig.delaxes(axes[1,0])
-
-        ax = axes[1,1]
-        im = ax.imshow(occ_2d_grid.T, origin='lower', cmap='viridis', extent=extent, vmin=0, vmax=1)
+        ax = axes[0]
+        im = ax.imshow(density_map_gt.T, origin='lower', extent=extent, cmap='jet', vmin=0, vmax=1)
         ax.set_xlabel(f'x [m]')
         ax.set_ylabel(f'y [m]')
+        ax.set_title(f'GT')
+        if self.args.occ_grid.grid_type == 'nerf':
+            fig.colorbar(im, ax=ax)
+
+        ax = axes[1]
+        im = ax.imshow(occ_2d_grid.T, origin='lower', cmap='jet', extent=extent, vmin=0, vmax=1)
+        ax.set_xlabel(f'x [m]')
         ax.set_title(f'OccGrid density')
-        fig.colorbar(im, ax=ax)
+        if self.args.occ_grid.grid_type == 'nerf':
+            fig.colorbar(im, ax=ax)
 
-        ax = axes[1,2]
-        im = ax.imshow(bin_2d_grid.T, origin='lower', cmap='viridis', extent=extent, vmin=0, vmax=1)
-        ax.set_ylabel(f'y [m]')
+        ax = axes[2]
+        im = ax.imshow(bin_2d_grid.T, origin='lower', cmap='jet', extent=extent, vmin=0, vmax=1)
+        ax.set_xlabel(f'x [m]')
         ax.set_title(f'OccGrid binary')
-        fig.colorbar(im, ax=ax)
+        if self.args.occ_grid.grid_type == 'nerf':
+            fig.colorbar(im, ax=ax)
 
-        plt.tight_layout()
-        plt.savefig(os.path.join(self.args.save_dir, "occ_grid"+str(step)+".png"))
+
+        # add colorbar
+        if self.args.occ_grid.grid_type == 'occ':
+            fig.subplots_adjust(right=0.85)
+            cbar_ax = fig.add_axes([0.87, 0.1, 0.05, 0.8]) # [left, bottom, width, height]
+            fig.colorbar(im, cax=cbar_ax)
+
+        # check if directory exists
+        if not os.path.exists(os.path.join(self.args.save_dir, "occgrids")):
+            os.makedirs(os.path.join(self.args.save_dir, "occgrids"))
+
+        if self.args.occ_grid.grid_type == 'nerf':
+            plt.tight_layout()
+        plt.savefig(os.path.join(self.args.save_dir, "occgrids", f"occgrid_{step}.png"))
+
+        # ax = axes[0,1]
+        # im = ax.imshow(density_map.T, origin='lower', extent=extent, cmap='jet', vmin=0, vmax=10 * (0.01 * MAX_SAMPLES / 3**0.5))
+        # ax.set_ylabel(f'y [m]')
+        # ax.set_title(f'NeRF density')
+        # fig.colorbar(im, ax=ax)
+
+        # ax = axes[0,2]
+        # im = ax.imshow(density_map_thr.T, origin='lower', extent=extent, cmap='jet', vmin=0, vmax=1)
+        # ax.set_title(f'NeRF binary')
+        # fig.colorbar(im, ax=ax)
+
+        # fig.delaxes(axes[1,0])
 
     @torch.no_grad()
     def _plotMaps(
@@ -307,9 +323,6 @@ class TrainerPlot(TrainerBase):
         """
         if not self.args.eval.plot_results:
             return
-        
-        categories = list(metrics_dict.keys())
-        sensors = list(metrics_dict[categories[0]].keys())
 
         sensors = list(metrics_dict.keys())
         zones = list(metrics_dict[sensors[0]]['nn_mean'].keys())
@@ -317,54 +330,80 @@ class TrainerPlot(TrainerBase):
         x = np.arange(len(zones))  # the label locations
         width = 0.6  # the width of the bars
 
-        fig, axs = plt.subplots(ncols=2, nrows=3, figsize=(10,8))
-        metrics = ['nn_mean', 'nn_mean_inv', 'nn_median', 'nn_median_inv', 'nn_inlier', 'nn_inlier_inv']
+        fig, axs = plt.subplots(ncols=3, nrows=3, figsize=(12,8), gridspec_kw={'width_ratios': [5.5, 5.5, 3.5]})
+        metrics = [
+            'nn_mean', 'nn_mean_inv', 'nn_mean_inv_360', 
+            'nn_median', 'nn_median_inv', 'nn_median_inv_360', 
+            'nn_inlier', 'nn_inlier_inv', 'nn_inlier_inv_360',
+        ]
 
+        y_axis_inv_mean_max = 0.0
+        y_axis_inv_median_max = 0.0
         for i, (ax, metric) in enumerate(zip(axs.flatten(), metrics)):
 
             for j, sensor in enumerate(sensors):
 
                 x_axis = x - width/2 + (j+0.5)*width/len(sensors)
                 performances = np.array([metrics_dict[sensors[j]][metric][z] for z in zones])
-                if not 'inlier' in metric:
-                    ax.bar(x_axis, performances, width/len(sensors), label=sensor, color=self.colors[sensor])
+
+                if i < 6:
+                    if (i%3) != 0:
+                        if i < 3:
+                            y_axis_inv_mean_max = max(y_axis_inv_mean_max, np.max(performances))
+                        else:
+                            y_axis_inv_median_max = max(y_axis_inv_median_max, np.max(performances))
+
+                    if (i+1) % 3 == 0:
+                        ax.bar(x_axis, performances, width/len(sensors), color=self.colors[sensor])
+                    else:
+                        ax.bar(x_axis, performances, width/len(sensors), label=sensor, color=self.colors[sensor])
                     continue
 
                 nn_outlier_too_close = np.array([metrics_dict[sensors[j]]['nn_outlier_too_close'][z] for z in zones])
                 nn_outlier_too_far = 1 - performances - nn_outlier_too_close
                 
-                if ((i + j) % 2) == 0:
+                if (((i + j) % 2) == 0) and (i < 8):
                     ax.bar(x_axis, performances, width/len(sensors), label='Inliers', color=self.colors[sensor])
                     ax.bar(x_axis, nn_outlier_too_close, width/len(sensors), bottom=performances, 
-                            label='Outliers \ntoo close', color=self.colors[sensor], alpha=0.4)
+                            label='Outliers \n(too close9', color=self.colors[sensor], alpha=0.4)
                     ax.bar(x_axis, nn_outlier_too_far, width/len(sensors), bottom=1-nn_outlier_too_far, 
-                            label='Outliers \ntoo far', color=self.colors[sensor], alpha=0.1)
+                            label='Outliers \n(too far)', color=self.colors[sensor], alpha=0.1)
                 else:
                     ax.bar(x_axis, performances, width/len(sensors), color=self.colors[sensor])
                     ax.bar(x_axis, nn_outlier_too_close, width/len(sensors), bottom=performances, 
                             color=self.colors[sensor], alpha=0.4)
                     ax.bar(x_axis, nn_outlier_too_far, width/len(sensors), bottom=1-nn_outlier_too_far, 
                             color=self.colors[sensor], alpha=0.1)
-                
-            ax.set_xlim([-0.75*width, np.max(x)+2.5*width])
-            ax.set_xticks(x, [])
-            ax.legend()
+                    
+            if (i+1) % 3 == 0:  
+                ax.set_xlim([-0.75*width, np.max(x)+0.75*width])
+            else: 
+                ax.set_xlim([-0.75*width, np.max(x)+2.75*width])
+                ax.legend()
 
-        axs[2,0].set_xticks(x, [f"{self.args.eval.zones[z][0]}-{self.args.eval.zones[z][1]}m" for z in zones])
-        axs[2,1].set_xticks(x, [f"{self.args.eval.zones[z][0]}-{self.args.eval.zones[z][1]}m" for z in zones])
-        axs[2,0].yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1, decimals=None, symbol='%', is_latex=False))
-        axs[2,1].yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1, decimals=None, symbol='%', is_latex=False))
+            if i < 6:
+                ax.set_xticks(x, [])
+            else:
+                ax.set_xticks(x, [f"{self.args.eval.zones[z][0]}-{self.args.eval.zones[z][1]}m" for z in zones])
+                ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1, decimals=None, symbol='%', is_latex=False))
+                
+                
+        axs[0,1].set_ylim([0.0, 1.05*y_axis_inv_mean_max])
+        axs[0,2].set_ylim([0.0, 1.05*y_axis_inv_mean_max])
+        axs[1,1].set_ylim([0.0, 1.05*y_axis_inv_median_max])
+        axs[1,2].set_ylim([0.0, 1.05*y_axis_inv_median_max])
         axs[2,0].set_ylim([0.0, 1.05])
         axs[2,1].set_ylim([0.0, 1.05])
+        axs[2,2].set_ylim([0.0, 1.05])
         axs[0,0].set_ylabel('Mean [m]')
         axs[1,0].set_ylabel('Median [m]')
         axs[2,0].set_ylabel('Inliers [%]')
-        axs[0,0].set_title('Accuracy: NND Sensor->GT') 
-        axs[0,1].set_title('Coverage: NND GT->Sensor') 
+        axs[0,0].set_title('Accuracy: Sensor->GT(FoV)') 
+        axs[0,1].set_title('Coverage: GT(FoV)->Sensor') 
+        axs[0,2].set_title('Coverage: GT(360°)->Sensor') 
 
         fig.suptitle('Nearest Neighbour Distance', fontsize=16, weight='bold')
         plt.tight_layout()
-        plt.savefig(os.path.join(self.args.save_dir, f"metrics.pdf"))
         plt.savefig(os.path.join(self.args.save_dir, f"metrics.png"))
 
     def _plotLosses(

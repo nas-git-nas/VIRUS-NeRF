@@ -208,7 +208,8 @@ class Trainer(TrainerPlot):
                 break
 
         print(f"\n----- FINISHED TRAINING -----")
-        print(f"{time.time()-train_tic:.2f}s, iter: {step+1}") 
+        if self.args.training.max_steps > 0:
+            print(f"{time.time()-train_tic:.2f}s, iter: {step+1}") 
         self._saveModel()
 
     def evaluate(self):
@@ -505,6 +506,15 @@ class Trainer(TrainerPlot):
                 ref_pos_is_gt=False,
             ) # (N*M,), (N*M,)
 
+            nn_dists_inv_360, nn_mean_inv_360, nn_median_inv_360, nn_inlier_inv_360, nn_outlier_too_close_inv_360 = self.metrics.nn(
+                pos=data_dict["GT"]["pos"],
+                pos_ref=pos,
+                depths=dists,
+                depths_gt=data_dict["GT"]["depths"],
+                num_points=img_idxs.shape[0],
+                ref_pos_is_gt=False,
+            ) # (N*M,), (N*M,)
+
             data_dict[sensor] = {
                 'pos': pos,
                 'pos_o': pos_o,
@@ -516,14 +526,19 @@ class Trainer(TrainerPlot):
             metrics_dict[sensor] = {
                 'nn_dists': nn_dists,
                 'nn_dists_inv': nn_dists_inv,
+                'nn_dists_inv_360': nn_dists_inv_360,
                 'nn_mean': nn_mean,
                 'nn_mean_inv': nn_mean_inv,
+                'nn_mean_inv_360': nn_mean_inv_360,
                 'nn_median': nn_median,
                 'nn_median_inv': nn_median_inv,
+                'nn_median_inv_360': nn_median_inv_360,
                 'nn_inlier': nn_inlier,
                 'nn_inlier_inv': nn_inlier_inv,
+                'nn_inlier_inv_360': nn_inlier_inv_360,
                 'nn_outlier_too_close': nn_outlier_too_close,
                 'nn_outlier_too_close_inv': nn_outlier_too_close_inv,
+                'nn_outlier_too_close_inv_360': nn_outlier_too_close_inv_360,
             }
 
         return metrics_dict, data_dict
