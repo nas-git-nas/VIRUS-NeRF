@@ -51,8 +51,8 @@ class TrainerPlot(TrainerBase):
         }
 
     def _plotOccGrid(
-            self,
-            step,
+        self,
+        step,
     ):
         if not self.args.eval.plot_results:
             return
