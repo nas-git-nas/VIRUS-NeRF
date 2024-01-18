@@ -41,6 +41,13 @@ def loadAblationStudy(
     Returns:
         sensors_dict_list: list of dictionaries with results; list
     """
+    metrics = [
+        'nn_mean', 'nn_mean_inv', 'nn_mean_inv_360', 
+        'nn_median', 'nn_median_inv', 'nn_median_inv_360', 
+        'nn_inlier', 'nn_inlier_inv', 'nn_inlier_inv_360',
+        'nn_outlier_too_close', 'nn_outlier_too_close_inv', 'nn_outlier_too_close_inv_360',
+    ]
+
     sensors_dict_list = []
     for seed in seeds:
         metric_file = os.path.join(base_dir, f"seed_{seed}", "metrics.csv")
@@ -49,7 +56,7 @@ def loadAblationStudy(
         sensors_dict = {}
         for sensor in ['NeRF', 'LiDAR', 'USS', 'ToF']:
             sensors_dict[sensor] = {}
-            for metric in ['nn_mean', 'nn_mean_inv', 'nn_median', 'nn_median_inv', 'nn_inlier', 'nn_inlier_inv', 'nn_outlier_too_close']:
+            for metric in metrics:
                 zone_str =df.loc[sensor, metric]
                 zone_str = zone_str.replace("'", '"')
                 zone_dict = json.loads(zone_str)
@@ -96,7 +103,13 @@ def plotMultipleMetrics(
             multiple_nn_outlier_too_close = np.zeros((len(metrics_dict_list), len(zones)))
             for k, metrics_dict in enumerate(metrics_dict_list):
                 multiple_performances[k] = np.array([metrics_dict[sensors[j]][metric][z] for z in zones])
-                multiple_nn_outlier_too_close[k] = np.array([metrics_dict[sensors[j]]['nn_outlier_too_close'][z] for z in zones])
+                if '360' in metric:
+                    too_close_metric_name = 'nn_outlier_too_close_inv_360'
+                elif 'inv' in metric:
+                    too_close_metric_name = 'nn_outlier_too_close_inv'
+                else:
+                    too_close_metric_name = 'nn_outlier_too_close'
+                multiple_nn_outlier_too_close[k] = np.array([metrics_dict[sensors[j]][too_close_metric_name][z] for z in zones])
 
             performances_mean = np.mean(multiple_performances, axis=0)
             performances_std = np.std(multiple_performances, axis=0)
@@ -165,9 +178,10 @@ def plotMultipleMetrics(
     plt.savefig(os.path.join(base_dir, f"metrics.png"))
 
 def plot_ablation_study():
-    base_dir = "results/ETHZ/ablation/best_particle"
-    num_trainings = 5
-    seeds = [24, 25, 26, 29, 33]
+    base_dir = "results/ETHZ/ablation/optimized"
+    num_trainings = 10
+    base_seed = 21
+    seeds = np.arange(base_seed, base_seed+num_trainings)
 
     sensors_dict_list = loadAblationStudy(
         base_dir=base_dir,

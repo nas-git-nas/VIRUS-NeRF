@@ -29,6 +29,9 @@ class SceneETHZ(SceneBase):
         elif args.ethz.room == "commonroom":
             self.xyz_min = np.array([-3.0, -3.0, -0.4])
             self.xyz_max = np.array([15.0, 9.0, 1.2])
+        elif args.ethz.room == "corridor":
+            self.xyz_min = np.array([0.0, -3.0, -0.4])
+            self.xyz_max = np.array([40.0, 3.0, 1.2])
         else:
             self.args.logger.error("Invalid room name.")
 
