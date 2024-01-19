@@ -61,8 +61,8 @@ def optimize(
 def test_pso():
     # define optimization algorithm
     seeds = np.arange(9)
-    T = 3
-    termination_by_time = True
+    T = 30 * 5
+    termination_by_time = False
     hparams_lims_file = "test_scripts/optimization/hparams_lims.json"
     save_dirs = ["results/pso/test/opt"+str(i) for i in range(len(seeds))]
     metric_name = "rand"
@@ -106,7 +106,9 @@ def test_pso():
             ax_idx=i,
         )
 
-    plotter.show()
+    plotter.show(
+        save_path="results/pso/test/opt.png",
+    )
 
 if __name__ == "__main__":
     test_pso()

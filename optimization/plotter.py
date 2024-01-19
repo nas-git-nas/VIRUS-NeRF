@@ -69,11 +69,15 @@ class Plotter():
 
     def show(
         self,
+        save_path:str=None,
     ):
         self.fig.subplots_adjust(right=0.8)
         cbar_ax = self.fig.add_axes([0.85, 0.1, 0.05, 0.8]) # [left, bottom, width, height]
         self.fig.colorbar(self.im, cax=cbar_ax)
         plt.show()
+
+        if save_path is not None:
+            self.fig.savefig(save_path)
     
     def plot2D(
         self,

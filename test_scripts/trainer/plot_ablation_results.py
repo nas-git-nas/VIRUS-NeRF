@@ -10,7 +10,6 @@ import matplotlib.patches as mpatches
 import matplotlib.ticker as mtick
  
 sys.path.insert(0, os.getcwd())
-from training.trainer_plot import TrainerPlot
 
 
 colors = {
@@ -91,6 +90,9 @@ def plotMultipleMetrics(
         'nn_inlier', 'nn_inlier_inv', 'nn_inlier_inv_360',
     ]
 
+    nerf_metrics_zone1 = {}
+    nerf_metrics_zone2 = {}
+    nerf_metrics_zone3 = {}
     y_axis_inv_mean_max = 0.0
     y_axis_inv_median_max = 0.0
     for i, (ax, metric) in enumerate(zip(axs.flatten(), metrics)):
@@ -115,6 +117,11 @@ def plotMultipleMetrics(
             performances_std = np.std(multiple_performances, axis=0)
             nn_outlier_too_close_mean = np.mean(multiple_nn_outlier_too_close, axis=0)
             nn_outlier_too_far_mean = 1 - performances_mean - nn_outlier_too_close_mean
+
+            if sensor == 'NeRF':
+                nerf_metrics_zone1[metric] = [performances_mean[0], performances_std[0]]
+                nerf_metrics_zone2[metric] = [performances_mean[1], performances_std[1]]
+                nerf_metrics_zone3[metric] = [performances_mean[2], performances_std[2]]
 
             if i < 6:
                 if (i%3) != 0:
@@ -177,8 +184,19 @@ def plotMultipleMetrics(
     plt.tight_layout()
     plt.savefig(os.path.join(base_dir, f"metrics.png"))
 
+    # save NeRF metrics to csv
+    name = base_dir.split('/')[-1]
+    df = pd.DataFrame(nerf_metrics_zone1, index=[name+'_mean', name+'_std'])
+    df.to_csv(os.path.join(base_dir, f"nerf_metrics_zone1.csv"))
+    df = pd.DataFrame(nerf_metrics_zone2, index=[name+'_mean', name+'_std'])
+    df.to_csv(os.path.join(base_dir, f"nerf_metrics_zone2.csv"))
+    df = pd.DataFrame(nerf_metrics_zone3, index=[name+'_mean', name+'_std'])
+    df.to_csv(os.path.join(base_dir, f"nerf_metrics_zone3.csv"))
+
+
+
 def plot_ablation_study():
-    base_dir = "results/ETHZ/ablation/optimized"
+    base_dir = "results/ETHZ/ablation/uss"
     num_trainings = 10
     base_seed = 21
     seeds = np.arange(base_seed, base_seed+num_trainings)
