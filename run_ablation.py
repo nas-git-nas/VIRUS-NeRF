@@ -11,7 +11,7 @@ from helpers.system_fcts import checkGPUMemory
 def main():
     hparams_file = "ethz_usstof_ablation_gpu.json"
     num_trainings = 10
-    base_dir = "results/ETHZ/ablation/optimized"
+    base_dir = "results/ETHZ/ablation/not_optimized"
     base_seed = 21
 
     # create base dir and count seeds already trained

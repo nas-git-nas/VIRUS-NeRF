@@ -162,6 +162,32 @@ class OccupancyGrid(Grid):
                 sensor="USS",
                 elapse_time=elapse_time,
             )
+        elif ("ToF" in self.args.training.sensors) and not ("USS" in self.args.training.sensors):
+            ray_update = self._sampleBatch(
+                B=B_ray,
+                pixel_strategy="valid_tof",
+                sensor="ToF",
+                elapse_time=elapse_time,
+            )
+            nerf_update = self._sampleBatch(
+                B=B_nerf,
+                pixel_strategy="valid_tof",
+                sensor="ToF",
+                elapse_time=elapse_time,
+            )
+        elif not ("ToF" in self.args.training.sensors) and ("USS" in self.args.training.sensors):
+            ray_update = self._sampleBatch(
+                B=B_ray,
+                pixel_strategy="valid_uss",
+                sensor="USS",
+                elapse_time=elapse_time,
+            )
+            nerf_update = self._sampleBatch(
+                B=B_nerf,
+                pixel_strategy="valid_uss",
+                sensor="USS",
+                elapse_time=elapse_time,
+            )
         else:
             self.args.logger.error("occupancy grid sampling strategy does not exist")
 
