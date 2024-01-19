@@ -16,7 +16,7 @@ class PlotterResults():
         self.score_min = 0.15
         self.score_max = 0.24
         self.num_particles = 32
-        self.keep_best_n_particles = 4
+        self.keep_best_n_particles = 5
         self.converged_since_n_iters = 10
         self.best_symbs = ['*', 'o', 'v', 'x', '+', '^', '<', '>', 's', 'p', 'P', 'h', 'H', 'X', 'D', 'd', '|', '_']
         self.best_symbs = self.best_symbs[:self.keep_best_n_particles]
@@ -84,7 +84,7 @@ class PlotterResults():
 
 
         # plot
-        fig, axes = plt.subplots(ncols=1, nrows=3, figsize=(12,9))
+        fig, axes = plt.subplots(ncols=1, nrows=3, figsize=(14,10))
 
         axes[0] = self._plotParticleSpeeds(
             vel=vel,
@@ -119,11 +119,10 @@ class PlotterResults():
         # cbar_ax.set_title('Mean NND',fontsize=13)
         fig.colorbar(im, cax=cbar_ax)
 
-        axes[0].set_title('Particle Swarm Optimization')
+        # axes[0].set_title('Particle Swarm Optimization')
 
         # save figure
         fig.savefig(os.path.join(self.data_dir, 'pso_results.png'))
-        fig.savefig(os.path.join(self.data_dir, 'pso_results.pdf'))
         plt.show()
 
     def _plotParticleSpeeds(
@@ -184,7 +183,7 @@ class PlotterResults():
             score = score[~np.isnan(score)]
 
             c = cmap_inv((np.mean(score) - self.score_min) / (self.score_max - self.score_min))
-            ax.boxplot(score, positions=[i], widths=0.5, showfliers=False,
+            ax.boxplot(score, positions=[i], widths=0.7, showfliers=True, whis=[10,90],
                         patch_artist=True, boxprops=dict(facecolor=c, color=c), medianprops=dict(color="black"))
 
         ax.set_xlabel('Particle')
@@ -233,8 +232,8 @@ class PlotterResults():
                             cmap=cmap_inv, vmin=self.score_min, vmax=self.score_max, marker=self.best_symbs[j], s=200)
 
         ax.set_xticks(list(parameters.keys()))
-        ax.set_xticklabels([param.replace('_', ' ') + f":\n     [{hparams_lims[param][0]:.2f}, {hparams_lims[param][1]:.2f}]" 
-                            for param in parameters.values()], rotation=22, fontsize=9)
+        ax.set_xticklabels([param.replace('_', ' ').replace(' every m', '') + f":\n     [{hparams_lims[param][0]:.1f}, {hparams_lims[param][1]:.1f}]" 
+                            for param in parameters.values()], rotation=30, fontsize=9)
         ax.set_ylabel('Normalized Hyper-Parameters')
         return ax, im
     
