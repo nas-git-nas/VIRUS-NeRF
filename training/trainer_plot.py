@@ -48,6 +48,7 @@ class TrainerPlot(TrainerBase):
             'LiDAR':    'darkmagenta',
             'USS':      'blue',
             'ToF':      'green',
+            'camera':   'lime',
         }
 
     def _plotOccGrid(
@@ -447,14 +448,14 @@ class TrainerPlot(TrainerBase):
         #     ax.plot(logs['step'], convolveIgnorNans(logs['USS_close_loss'], mask), label='USS(close)')
         #     ax.plot(logs['step'], convolveIgnorNans(logs['USS_min_loss'], mask), label='USS(min)')
         filter_size = max(self.args.eval.eval_every_n_steps+1, 4)
-        ax.plot(logs['step'], smoothIgnoreNans(logs['loss'], filter_size), label='total')
-        ax.plot(logs['step'], smoothIgnoreNans(logs['color_loss'], filter_size), label='color')
+        ax.plot(logs['step'], smoothIgnoreNans(logs['loss'], filter_size), label='total', c="black")
+        ax.plot(logs['step'], smoothIgnoreNans(logs['color_loss'], filter_size), label='color', c=self.colors['camera'])
         if "rgbd_loss" in logs:
             ax.plot(logs['step'], smoothIgnoreNans(logs['rgbd_loss'], filter_size), label='rgbd')
         if "ToF_loss" in logs:
-            ax.plot(logs['step'], smoothIgnoreNans(logs['ToF_loss'], filter_size), label='IRS')
+            ax.plot(logs['step'], smoothIgnoreNans(logs['ToF_loss'], filter_size), label='IRS', c=self.colors['ToF'])
         if "USS_loss" in logs:
-            ax.plot(logs['step'], smoothIgnoreNans(logs['USS_loss'], filter_size), label='USS')
+            ax.plot(logs['step'], smoothIgnoreNans(logs['USS_loss'], filter_size), label='USS', c=self.colors['USS'])
             # ax.plot(logs['step'], smoothIgnoreNans(logs['USS_close_loss'], filter_size), label='USS(close)')
             # ax.plot(logs['step'], smoothIgnoreNans(logs['USS_min_loss'], filter_size), label='USS(min)')
         ax.set_ylabel('loss')
@@ -472,49 +473,49 @@ class TrainerPlot(TrainerBase):
         # plot mnn and psnr 
         if 'mnn' in logs and 'psnr' in logs:
             ax = axes[1]
-            color = 'tab:blue'
+            color = self.colors['NeRF']
             not_nan = ~np.isnan(logs['mnn'])
             lns1 = ax.plot(np.array(logs['step'])[not_nan], np.array(logs['mnn'])[not_nan], c=color, label='mnn')
             hln1 = ax.axhline(metrics_dict['NeRF']['nn_mean']['zone3'], linestyle="--", c=color, label='mnn final')
-            ax.set_ylabel('mnn')
+            ax.set_ylabel('Mean NND [m]')
             ax.set_ylim([0, 0.5])
             ax.yaxis.label.set_color('blue') 
             ax.tick_params(axis='y', colors='blue')
 
-            idx1 = dataConverged(
-                arr=np.array(logs['mnn'])[not_nan],
-                threshold=1.5 * metrics_dict['NeRF']['nn_mean']['zone3'],
-                data_increasing=False,
-            )
-            if idx1 != -1:
-                vln1 = ax.axvline(np.array(logs['step'])[not_nan][idx1], linestyle=(0, (1, 10)), c="black", label='converged 50%')
-                metrics_dict['NeRF']['mnn_converged_50'] = np.array(logs['time'])[not_nan][idx1]
-                # print(f"mnn converged 25% at step {logs['step'][idx1]}, idx1={idx1}, threshold={1.25 * metrics_dict['NeRF']['mnn']}")
+            # idx1 = dataConverged(
+            #     arr=np.array(logs['mnn'])[not_nan],
+            #     threshold=1.5 * metrics_dict['NeRF']['nn_mean']['zone3'],
+            #     data_increasing=False,
+            # )
+            # if idx1 != -1:
+            #     vln1 = ax.axvline(np.array(logs['step'])[not_nan][idx1], linestyle=(0, (1, 10)), c="black", label='converged 50%')
+            #     metrics_dict['NeRF']['mnn_converged_50'] = np.array(logs['time'])[not_nan][idx1]
+            #     # print(f"mnn converged 25% at step {logs['step'][idx1]}, idx1={idx1}, threshold={1.25 * metrics_dict['NeRF']['mnn']}")
 
-            idx2 = dataConverged(
-                arr=np.array(logs['mnn'])[not_nan],
-                threshold=1.25 * metrics_dict['NeRF']['nn_mean']['zone3'],
-                data_increasing=False,
-            )
-            if idx2 != -1:
-                vln2 = ax.axvline(np.array(logs['step'])[not_nan][idx2], linestyle=(0, (1, 5)), c="black", label='converged 25%')
-                metrics_dict['NeRF']['mnn_converged_25'] = np.array(logs['time'])[not_nan][idx2]
+            # idx2 = dataConverged(
+            #     arr=np.array(logs['mnn'])[not_nan],
+            #     threshold=1.25 * metrics_dict['NeRF']['nn_mean']['zone3'],
+            #     data_increasing=False,
+            # )
+            # if idx2 != -1:
+            #     vln2 = ax.axvline(np.array(logs['step'])[not_nan][idx2], linestyle=(0, (1, 5)), c="black", label='converged 25%')
+            #     metrics_dict['NeRF']['mnn_converged_25'] = np.array(logs['time'])[not_nan][idx2]
 
-            idx3 = dataConverged(
-                arr=np.array(logs['mnn'])[not_nan],
-                threshold=1.1 * metrics_dict['NeRF']['nn_mean']['zone3'],
-                data_increasing=False,
-            )
-            if idx3 != -1:
-                vln3 = ax.axvline(np.array(logs['step'])[not_nan][idx3], linestyle=(0, (1, 2)), c="black", label='converged 10%')
-                metrics_dict['NeRF']['mnn_converged_10'] = np.array(logs['time'])[not_nan][idx3]
+            # idx3 = dataConverged(
+            #     arr=np.array(logs['mnn'])[not_nan],
+            #     threshold=1.1 * metrics_dict['NeRF']['nn_mean']['zone3'],
+            #     data_increasing=False,
+            # )
+            # if idx3 != -1:
+            #     vln3 = ax.axvline(np.array(logs['step'])[not_nan][idx3], linestyle=(0, (1, 2)), c="black", label='converged 10%')
+            #     metrics_dict['NeRF']['mnn_converged_10'] = np.array(logs['time'])[not_nan][idx3]
 
             ax2 = ax.twinx()
-            color = 'tab:green'
+            color = self.colors['camera']
             not_nan = ~np.isnan(logs['psnr'])
             lns2 = ax2.plot(np.array(logs['step'])[not_nan], np.array(logs['psnr'])[not_nan], label='psnr', c=color)
             # ax.axhline(metrics_dict['NeRF']['psnr'], linestyle="--", c=color, label='psnr final')
-            ax2.set_ylabel('psnr')
+            ax2.set_ylabel('PSNR')
             ax2.yaxis.label.set_color('green') 
             ax2.tick_params(axis='y', colors='green')
 
@@ -525,18 +526,17 @@ class TrainerPlot(TrainerBase):
             )
             secax.set_xlabel('time [s]')
             lns = lns1 + lns2 + [hln1]
-            if idx1 != -1:
-                lns += [vln1]
-            if idx2 != -1:
-                lns += [vln2]
-            if idx3 != -1:
-                lns += [vln3]
+            # if idx1 != -1:
+            #     lns += [vln1]
+            # if idx2 != -1:
+            #     lns += [vln2]
+            # if idx3 != -1:
+            #     lns += [vln3]
             labs = [l.get_label() for l in lns]
             ax.legend(lns, labs)
             ax.set_title('Metrics')
 
         plt.tight_layout()
-        plt.savefig(os.path.join(self.args.save_dir, "losses.pdf"))
         plt.savefig(os.path.join(self.args.save_dir, "losses.png"))
 
         return metrics_dict
