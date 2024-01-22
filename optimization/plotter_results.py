@@ -18,7 +18,7 @@ class PlotterResults():
         self.num_particles = 32
         self.keep_best_n_particles = 5
         self.converged_since_n_iters = 10
-        self.best_symbs = ['*', 'o', 'v', 'x', '+', '^', '<', '>', 's', 'p', 'P', 'h', 'H', 'X', 'D', 'd', '|', '_']
+        self.best_symbs = ['*', 'o', 'd', 'x', '+', 'v', '<', '>', 'p', 'P', 'h', 'H', 'X', 'D', 's', '^', '_']
         self.best_symbs = self.best_symbs[:self.keep_best_n_particles]
 
     def plot(
@@ -203,7 +203,8 @@ class PlotterResults():
         ax:matplotlib.axes.Axes,
         cmap_inv:matplotlib.colors.LinearSegmentedColormap,
     ):
-        column_width = 0.45
+        column_width = 0.6
+        plot_every_n_iters = 10
         N = pos.shape[0]
         T = pos.shape[1]
 
@@ -224,7 +225,10 @@ class PlotterResults():
 
             x_axis = i + column_width * np.linspace(-0.5, 0.5, T) # (T,)
             for j in np.arange(best_pos.shape[0])[::-1]:
-                im = ax.scatter(x_axis, pos[j, :, i].flatten(), c=scores[j], 
+
+                start = j * (plot_every_n_iters//best_pos.shape[0])
+                plot_iters = np.arange(start, T, plot_every_n_iters)
+                im = ax.scatter(x_axis[plot_iters], pos[j, plot_iters, i].flatten(), c=scores[j,plot_iters], 
                                 cmap=cmap_inv, vmin=self.score_min, vmax=self.score_max, marker=self.best_symbs[j])
                 
                 if self.converged_since_n_iters <= 0:

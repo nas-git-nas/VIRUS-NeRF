@@ -128,7 +128,11 @@ class TrainerPlot(TrainerBase):
             fig.colorbar(im, ax=ax)
 
         ax = axes[1]
-        im = ax.imshow(occ_2d_grid.T, origin='lower', cmap='jet', extent=extent, vmin=0, vmax=1)
+        if self.args.occ_grid.grid_type == 'occ':
+            vmax = 1
+        else:
+            vmax = 10 * (0.01 * MAX_SAMPLES / 3**0.5)
+        im = ax.imshow(occ_2d_grid.T, origin='lower', cmap='jet', extent=extent, vmin=0, vmax=vmax)
         ax.set_xlabel(f'x [m]')
         ax.set_title(f'OccGrid density')
         if self.args.occ_grid.grid_type == 'nerf':
