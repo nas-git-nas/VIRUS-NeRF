@@ -141,7 +141,7 @@ class Loss():
         rgbd_loss = F.mse_loss(results['depth'][val_idxs], data['depth']['RGBD'][val_idxs])
 
         if self.log_loss:
-            self.loss_dict['rgbd'] = rgbd_loss.item() * self.args.training.rgb_loss_w
+            self.loss_dict['rgbd'] = rgbd_loss.item() * self.args.training.rgbd_loss_w
         return rgbd_loss
         
     def _depthLossToF(
