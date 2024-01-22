@@ -3,7 +3,7 @@
     {
         "path": "",
         "name": "ETHZ",
-        "split_ratio": {"train": 0.8, "val": 0.1, "test": 0.1},
+        "split_ratio": {"train": 0.4, "val": 0.55, "test": 0.05},
         "downsample": 1.0,
         "keep_N_observations": "all",
         "keep_sensor": "all",
@@ -80,7 +80,7 @@
     "ethz":
     {
         "dataset_dir": "/media/scratch1/schmin/data/ETHZDataset",
-        "room": "commonroom",
+        "room": "corridor",
         "cam_ids": ["CAM1", "CAM3"],
         "use_optimized_poses": true
     },
