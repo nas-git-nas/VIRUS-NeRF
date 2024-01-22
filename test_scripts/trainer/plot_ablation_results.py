@@ -28,6 +28,20 @@ zone_lims = {
     "zone3": [0, 100],
 }
 
+column_print_names = {
+    'nn_mean':'Mean NND [Sensor->GT] \u2193', 
+    'nn_mean_inv':'Mean NND [GT(FoV)->Sensor] \u2193', 
+    # 'nn_mean_inv_360':'Mean NND [GT(360°)->Sensor] \u2193',
+    'nn_median':'Median NND [Sensor->GT] \u2193',
+    'nn_median_inv':'Median NND [GT(FoV)->Sensor] \u2193', 
+    # 'nn_median_inv_360':'Median NND [GT(360°)->Sensor] \u2193', 
+    'nn_inlier':'Inlier [Sensor->GT] \u2191', 
+    'nn_inlier_inv':'Inlier [GT(FoV)->Sensor] \u2191', 
+    # 'nn_inlier_inv_360':'Inlier [GT(360°)->Sensor] \u2191',
+}
+
+
+
 def loadAblationStudy(
     base_dir,
     seeds,
@@ -53,7 +67,7 @@ def loadAblationStudy(
         df = pd.read_csv(metric_file, index_col=[0])
 
         sensors_dict = {}
-        for sensor in ['NeRF', 'LiDAR', 'USS', 'ToF']:
+        for sensor in ['USS', 'ToF', 'LiDAR', 'NeRF']:
             sensors_dict[sensor] = {}
             for metric in metrics:
                 zone_str =df.loc[sensor, metric]
@@ -118,7 +132,7 @@ def plotMultipleMetrics(
             nn_outlier_too_close_mean = np.mean(multiple_nn_outlier_too_close, axis=0)
             nn_outlier_too_far_mean = 1 - performances_mean - nn_outlier_too_close_mean
 
-            if sensor == 'NeRF':
+            if (sensor == 'NeRF') and not('360' in metric):
                 nerf_metrics_zone1[metric] = [performances_mean[0], performances_std[0]]
                 nerf_metrics_zone2[metric] = [performances_mean[1], performances_std[1]]
                 nerf_metrics_zone3[metric] = [performances_mean[2], performances_std[2]]
@@ -150,8 +164,9 @@ def plotMultipleMetrics(
                             color=colors[sensor], alpha=0.4)
                     ax.bar(x_axis, nn_outlier_too_far_mean, width/len(sensors), bottom=1-nn_outlier_too_far_mean, 
                             color=colors[sensor], alpha=0.1)
-                    
-            ax.errorbar(x_axis, performances_mean, yerr=performances_std, fmt='none', ecolor="black", capsize=2)
+
+            if sensor == 'NeRF':   
+                ax.errorbar(x_axis, performances_mean, yerr=performances_std, fmt='none', ecolor="black", capsize=2)
 
         if (i+1) % 3 == 0:  
             ax.set_xlim([-0.75*width, np.max(x)+0.75*width])
@@ -166,16 +181,16 @@ def plotMultipleMetrics(
             ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1, decimals=None, symbol='%', is_latex=False))
 
 
-    axs[0,1].set_ylim([0.0, 1.05*y_axis_inv_mean_max])
-    axs[0,2].set_ylim([0.0, 1.05*y_axis_inv_mean_max])
-    axs[1,1].set_ylim([0.0, 1.05*y_axis_inv_median_max])
-    axs[1,2].set_ylim([0.0, 1.05*y_axis_inv_median_max])
+    # axs[0,1].set_ylim([0.0, 1.05*y_axis_inv_mean_max])
+    # axs[0,2].set_ylim([0.0, 1.05*y_axis_inv_mean_max])
+    # axs[1,1].set_ylim([0.0, 1.05*y_axis_inv_median_max])
+    # axs[1,2].set_ylim([0.0, 1.05*y_axis_inv_median_max])
     axs[2,0].set_ylim([0.0, 1.05])
     axs[2,1].set_ylim([0.0, 1.05])
     axs[2,2].set_ylim([0.0, 1.05])
-    axs[0,0].set_ylabel('Mean [m]')
-    axs[1,0].set_ylabel('Median [m]')
-    axs[2,0].set_ylabel('Inliers [%]')
+    axs[0,0].set_ylabel('Mean [m] \u2193')
+    axs[1,0].set_ylabel('Median [m] \u2193')
+    axs[2,0].set_ylabel('Inliers [%] \u2191')
     axs[0,0].set_title('Accuracy: Sensor->GT(FoV)') 
     axs[0,1].set_title('Coverage: GT(FoV)->Sensor') 
     axs[0,2].set_title('Coverage: GT(360°)->Sensor') 
@@ -186,17 +201,27 @@ def plotMultipleMetrics(
 
     # save NeRF metrics to csv
     name = base_dir.split('/')[-1]
-    df = pd.DataFrame(nerf_metrics_zone1, index=[name+'_mean', name+'_std'])
-    df.to_csv(os.path.join(base_dir, f"nerf_metrics_zone1.csv"))
-    df = pd.DataFrame(nerf_metrics_zone2, index=[name+'_mean', name+'_std'])
-    df.to_csv(os.path.join(base_dir, f"nerf_metrics_zone2.csv"))
-    df = pd.DataFrame(nerf_metrics_zone3, index=[name+'_mean', name+'_std'])
-    df.to_csv(os.path.join(base_dir, f"nerf_metrics_zone3.csv"))
+    df1 = pd.DataFrame(nerf_metrics_zone1, index=[name+' (mean)', name+' (std)'])
+    df1 = df1.T.round(decimals=dict(zip(df1.index, [3,5]))).T
+    df1 = df1.rename(columns=column_print_names)
+    df1.to_csv(os.path.join(base_dir, f"nerf_metrics_zone1.csv"))
+
+    df2 = pd.DataFrame(nerf_metrics_zone2, index=[name+' (mean)', name+' (std)'])
+    df2 = df2.T.round(decimals=dict(zip(df2.index, [3,5]))).T
+    df2 = df2.rename(columns=column_print_names)
+    df2.to_csv(os.path.join(base_dir, f"nerf_metrics_zone2.csv"))
+
+    df3 = pd.DataFrame(nerf_metrics_zone3, index=[name+' (mean)', name+' (std)'])
+    df3 = df3.T.round(decimals=dict(zip(df3.index, [3,5]))).T
+    df3 = df3.rename(columns=column_print_names)
+    df3.to_csv(os.path.join(base_dir, f"nerf_metrics_zone3.csv"))
+
+    return df1, df2, df3
 
 
 
-def plot_ablation_study():
-    base_dir = "results/ETHZ/ablation/uss"
+def plot_one_ablation():
+    base_dir = "results/ETHZ/ablation_corridor/not_optimized/"
     num_trainings = 10
     base_seed = 21
     seeds = np.arange(base_seed, base_seed+num_trainings)
@@ -213,6 +238,47 @@ def plot_ablation_study():
         base_dir=base_dir,
     )
 
+def plot_ablation_study():
+    ablation_dir = "results/ETHZ/ablation_commonroom/"
+    num_trainings = 10
+    base_seed = 21
+    seeds = np.arange(base_seed, base_seed+num_trainings)
+
+    df_zone1 = pd.DataFrame(columns=list(column_print_names.values()))
+    df_zone2 = pd.DataFrame(columns=list(column_print_names.values()))
+    df_zone3 = pd.DataFrame(columns=list(column_print_names.values()))
+    for dir_name in os.listdir(ablation_dir):
+        base_dir = os.path.join(ablation_dir, dir_name)
+        if not os.path.isdir(base_dir):
+            continue
+
+        # if dir_name == 'not_optimized':
+        #     seeds = [21, 22, 23 ,24, 26, 27, 28, 29, 30]
+        # else:
+        #     seeds = [21, 22, 23 ,24, 25, 26 ,27, 28, 29, 30]
+
+        sensors_dict_list = loadAblationStudy(
+            base_dir=base_dir,
+            seeds=seeds,
+        )
+
+        df1, df2, df3 = plotMultipleMetrics(
+            metrics_dict_list=sensors_dict_list,
+            colors=colors,
+            zone_lims=zone_lims,
+            base_dir=base_dir,
+        )
+
+        df_zone1 = pd.concat([df_zone1, df1])
+        df_zone2 = pd.concat([df_zone2, df2])
+        df_zone3 = pd.concat([df_zone3, df3])
+
+    df_zone1.to_csv(os.path.join(ablation_dir, f"nerf_summary_zone1.csv"))  
+    df_zone2.to_csv(os.path.join(ablation_dir, f"nerf_summary_zone2.csv"))  
+    df_zone3.to_csv(os.path.join(ablation_dir, f"nerf_summary_zone3.csv"))   
+
+
 
 if __name__ == "__main__":
-    plot_ablation_study()
+    plot_one_ablation()
+    # plot_ablation_study()
