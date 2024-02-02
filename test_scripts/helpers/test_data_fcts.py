@@ -16,14 +16,6 @@ def test_linInterpolateArray():
     print(f"y2: {y2}")
 
 def test_linInterpolateNans():
-    # arr = np.array([10, np.nan, np.nan, 30, 40])
-    # arr = linInterpolateNans(arr)
-    # print(f"arr: {arr}")
-
-    # arr = np.array([np.nan, 20, 30, 40, np.nan])
-    # arr = linInterpolateNans(arr)
-    # print(f"arr: {arr}")
-
     arr = np.array([np.nan, np.nan, 30, 40, 50])
     arr = linInterpolateNans(arr)
     print(f"arr: {arr}")

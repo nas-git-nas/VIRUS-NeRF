@@ -1,7 +1,12 @@
+import os
+import sys
+import numpy as np
+import matplotlib.pyplot as plt
 
-
-
-
+from robotathome import RobotAtHome
+ 
+sys.path.insert(0, os.getcwd())
+from datasets.scene_rh import SceneRH
 
 
 def test_RobotAtHomeScene():
@@ -11,7 +16,13 @@ def test_RobotAtHomeScene():
     my_scene_path = os.path.join(my_rh_path, 'files/scene')
     my_wspc_path = 'results'
     my_db_filename = "rh.db"
-    rh = RobotAtHome(rh_path=my_rh_path, rgbd_path=my_rgbd_path, scene_path=my_scene_path, wspc_path=my_wspc_path, db_filename=my_db_filename)
+    rh = RobotAtHome(
+        rh_path=my_rh_path, 
+        rgbd_path=my_rgbd_path, 
+        scene_path=my_scene_path, 
+        wspc_path=my_wspc_path, 
+        db_filename=my_db_filename
+    )
 
     # load scene
     rh_location_names = {

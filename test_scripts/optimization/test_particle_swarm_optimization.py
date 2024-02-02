@@ -53,8 +53,6 @@ def optimize(
             if rand_num < rand_termination:
                 sys.exit()
 
-
-
 def test_pso():
     # define optimization algorithm
     seeds = np.arange(9)

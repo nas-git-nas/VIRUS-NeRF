@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import skimage.measure
 import os
 import sys
 from scipy.ndimage import grey_dilation
@@ -77,12 +76,6 @@ def test_ToFModel():
     vmax = np.nanmax([depths_rgbd,depths_tof])
     vmin = 0
 
-    # make single pixels visible
-    # depths_tof = skimage.measure.block_reduce(depths_tof, (1,8,8), np.nanmax) # (N, H, W)
-    # mask = skimage.measure.block_reduce(mask, (8,8), np.nanmax) # (H, W)
-    # error_mask = skimage.measure.block_reduce(error_mask, (8,8), np.nanmax) # (H, W)
-    # mask_comb = skimage.measure.block_reduce(mask_comb, (8,8), np.nanmax) # (H, W)
-
     mask = grey_dilation(mask, size=(args.tof.tof_pix_size,args.tof.tof_pix_size)) # (H, W)
     error_mask = grey_dilation(error_mask, size=(args.tof.tof_pix_size,args.tof.tof_pix_size)) # (H, W)
     mask_comb = grey_dilation(mask_comb, size=(args.tof.tof_pix_size,args.tof.tof_pix_size)) # (H, W)
@@ -116,7 +109,6 @@ def test_ToFModel():
 
     # plt.tight_layout()
     plt.show()
-
 
 def test_USSModel():
     num_imgs = 3
@@ -164,9 +156,6 @@ def test_USSModel():
     mask = mask.reshape(img_wh[1], img_wh[0])
     vmax = np.nanmax([depths_rgbd,depths_uss])
 
-    # # make single pixels visible
-    # depths_out = skimage.measure.block_reduce(depths_out, (1,4,4), np.nanmax) # (N, h, w)
-
     for i in range(num_imgs):
         ax = axes[0,i]
         im = ax.imshow(depths_rgbd[i], vmin=0, vmax=vmax, cmap='jet')
@@ -196,56 +185,3 @@ def test_USSModel():
 if __name__ == "__main__":
     test_ToFModel()
     # test_USSModel()
-
-
-
-# def test_ComplexUSSModel():
-#     num_imgs = 3
-    
-#     # img_wh = (8, 8)
-#     # depths = 100 * np.random.rand(num_imgs, img_wh[0]*img_wh[1])
-       
-#     root_dir =  '../RobotAtHome2/data'   
-#     dataset = RobotAtHomeDataset(
-#         root_dir=root_dir,
-#         split="test",
-#     )
-#     # dataset.batch_size = 16
-#     dataset.pixel_sampling_strategy = 'entire_image'
-#     dataset.ray_sampling_strategy = 'same_image'
-#     img_wh = dataset.img_wh
-
-#     depths = np.zeros((num_imgs, img_wh[0]*img_wh[1]))
-#     for i, j in enumerate(np.linspace(0, len(dataset)-1, num_imgs, dtype=int)):
-#         data = dataset[j]
-#         depths[i] = data['depth'].detach().cpu().numpy()
-        
-#     model = USSModel(img_wh)
-#     depths_out, depths_prob = model.convertDepth(depths, return_prob=True)
-
-#     # plot
-#     fig, axes = plt.subplots(ncols=4, nrows=num_imgs, figsize=(12,8))
-#     depths = depths.reshape(num_imgs, img_wh[1], img_wh[0])
-#     depths_out = depths_out.reshape(num_imgs, model.h, model.w)
-#     depths_prob = depths_prob.reshape(num_imgs, model.h, model.w)
-#     gaussian = model.gaussian.reshape(model.h, model.w)
-
-#     for i in range(depths.shape[0]):
-#         ax = axes[i,0]
-#         ax.imshow(depths[i], vmin=0, vmax=np.nanmax(depths))
-#         ax.set_title(f'Depth Map GT')
-
-#         ax = axes[i,1]
-#         ax.imshow(gaussian, vmin=0, vmax=1)
-#         ax.set_title(f'Gaussian')
-
-#         ax = axes[i,2]
-#         ax.imshow(depths_prob[i], vmin=0, vmax=depths_prob[i].max())
-#         ax.set_title(f'Depth Probability')
-
-#         ax = axes[i,3]
-#         ax.imshow(depths_out[i], vmin=0, vmax=np.nanmax(depths))
-#         ax.set_title(f'Depth down sampled')
-    
-#     plt.tight_layout()
-#     plt.show()

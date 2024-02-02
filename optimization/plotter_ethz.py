@@ -6,7 +6,7 @@ import os
 import json
 
 
-class PlotterResults():
+class PlotterEthz():
     def __init__(
             self,
             data_dir,
