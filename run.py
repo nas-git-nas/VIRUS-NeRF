@@ -5,7 +5,7 @@ from training.trainer import Trainer
 
 
 def main():
-    hparams = "ethz_usstof_gpu.json"
+    hparams = "ethz_usstof_win.json"
     trainer = Trainer(hparams_file=hparams)
     trainer.train()
     trainer.evaluate()

@@ -221,7 +221,7 @@ def plotMultipleMetrics(
 
 
 def plot_one_ablation():
-    base_dir = "results/ETHZ/ablation_corridor/not_optimized/"
+    base_dir = "results/ETHZ/ablation_commonroom/instant_ngp"
     num_trainings = 10
     base_seed = 21
     seeds = np.arange(base_seed, base_seed+num_trainings)
@@ -252,10 +252,10 @@ def plot_ablation_study():
         if not os.path.isdir(base_dir):
             continue
 
-        # if dir_name == 'not_optimized':
-        #     seeds = [21, 22, 23 ,24, 26, 27, 28, 29, 30]
-        # else:
-        #     seeds = [21, 22, 23 ,24, 25, 26 ,27, 28, 29, 30]
+        if dir_name == 'not_optimized':
+            seeds = [21, 22, 23 ,24, 26, 27, 28, 29, 30]
+        else:
+            seeds = [21, 22, 23 ,24, 25, 26 ,27, 28, 29, 30]
 
         sensors_dict_list = loadAblationStudy(
             base_dir=base_dir,
@@ -280,5 +280,5 @@ def plot_ablation_study():
 
 
 if __name__ == "__main__":
-    plot_one_ablation()
-    # plot_ablation_study()
+    # plot_one_ablation()
+    plot_ablation_study()
