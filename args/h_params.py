@@ -21,10 +21,8 @@ class HParams():
 class HParamsDataset(HParams):
     def __init__(self) -> None:
         # hyper parameters
-        self.path = None
         self.name = None
         self.split_ratio = None
-        self.downsample = None
         self.keep_N_observations = None
         self.keep_sensor = None
         self.keep_pixels_in_angle_range = None
@@ -41,7 +39,7 @@ class HParamsModel(HParams):
         self.encoder_type = None
         self.hash_levels = None
         self.hash_max_res = None
-        self.debug_mode = None
+        self.grid_type = None
         self.save = None
 
         HParams.__init__(self, name="model")
@@ -50,7 +48,6 @@ class HParamsModel(HParams):
 class HParamsTraining(HParams):
     def __init__(self) -> None:
         # hyper parameters
-        self.distortion_loss_w = None
         self.batch_size = None
         self.sampling_strategy = None
         self.sensors = None
@@ -61,7 +58,7 @@ class HParamsTraining(HParams):
         self.tof_loss_w = None
         self.uss_loss_w = None
         self.color_loss_w = None
-        self.random_bg = None
+        self.debug_mode = None
         self.real_time_simulation = None
 
         HParams.__init__(self, name="training")
@@ -83,7 +80,6 @@ class HParamsEvaluation(HParams):
         self.num_depth_pts = None
         self.num_depth_pts_per_step = None
         self.num_plot_pts = None
-        self.num_avg_heights = None
         self.height_tolerance = None
         self.density_map_thr = None
         self.inlier_threshold = None
@@ -94,13 +90,20 @@ class HParamsEvaluation(HParams):
         HParams.__init__(self, name="evaluation")
 
 
+class HParamsNeRFGrid(HParams):
+    def __init__(self) -> None:
+        # hyper parameters
+        self.batch_size = None
+        self.update_interval = None
+        self.warmup_steps = None
+
+        HParams.__init__(self, name="nerf_grid")
+
+
 class HParamsOccGrid(HParams):
     def __init__(self) -> None:
         # hyper parameters
-        self.grid_type = None
         self.batch_size = None
-        self.sampling_strategy = None
-        self.warmup_steps = None
         self.update_interval = None
         self.decay_warmup_steps = None
         self.batch_ratio_ray_update = None
@@ -127,6 +130,7 @@ class HParamsETHZ(HParams):
 class HParamsRobotAtHome(HParams):
     def __init__(self) -> None:
         # hyper parameters
+        self.dataset_dir = None
         self.session = None
         self.home = None
         self.room = None

@@ -9,12 +9,8 @@ import pandas as pd
 import icecream as ic
 
 from args.args import Args
-from modules.networks import NGP
-from modules.distortion import distortion_loss
-from modules.rendering import MAX_SAMPLES, render
-from modules.utils import depth2img, save_deployment_model
-from helpers.geometric_fcts import findNearestNeighbour,  createScanPos
-from helpers.data_fcts import linInterpolateArray, convolveIgnorNans, dataConverged, downsampleData, smoothIgnoreNans
+from modules.rendering import MAX_SAMPLES
+from helpers.data_fcts import smoothIgnoreNans
 from helpers.plotting_fcts import combineImgs
 from training.metrics_rh import MetricsRH
 
@@ -58,7 +54,7 @@ class TrainerPlot(TrainerBase):
         if not self.args.eval.plot_results:
             return
 
-        if step % self.args.occ_grid.update_interval != 0:
+        if step % self.grid_update_interval != 0:
             return
 
         # calculate mean height in cube, world and occupancy grid coordinates
@@ -76,7 +72,7 @@ class TrainerPlot(TrainerBase):
         )
 
         # verify that the binary grid is correct
-        if self.args.model.debug_mode:
+        if self.args.training.debug_mode:
             bitfield = self.model.occupancy_grid.getBitfield(
                 clone=True,
             )
@@ -125,30 +121,30 @@ class TrainerPlot(TrainerBase):
         ax.set_xlabel(f'x [m]')
         ax.set_ylabel(f'y [m]')
         ax.set_title(f'GT')
-        if self.args.occ_grid.grid_type == 'nerf':
+        if self.args.model.grid_type == 'nerf':
             fig.colorbar(im, ax=ax)
 
         ax = axes[1]
-        if self.args.occ_grid.grid_type == 'occ':
+        if self.args.model.grid_type == 'occ':
             vmax = 1
         else:
             vmax = 10 * (0.01 * MAX_SAMPLES / 3**0.5)
         im = ax.imshow(occ_2d_grid.T, origin='lower', cmap='jet', extent=extent, vmin=0, vmax=vmax)
         ax.set_xlabel(f'x [m]')
         ax.set_title(f'OccGrid density')
-        if self.args.occ_grid.grid_type == 'nerf':
+        if self.args.model.grid_type == 'nerf':
             fig.colorbar(im, ax=ax)
 
         ax = axes[2]
         im = ax.imshow(bin_2d_grid.T, origin='lower', cmap='jet', extent=extent, vmin=0, vmax=1)
         ax.set_xlabel(f'x [m]')
         ax.set_title(f'OccGrid binary')
-        if self.args.occ_grid.grid_type == 'nerf':
+        if self.args.model.grid_type == 'nerf':
             fig.colorbar(im, ax=ax)
 
 
         # add colorbar
-        if self.args.occ_grid.grid_type == 'occ':
+        if self.args.model.grid_type == 'occ':
             fig.subplots_adjust(right=0.85)
             cbar_ax = fig.add_axes([0.87, 0.1, 0.05, 0.8]) # [left, bottom, width, height]
             fig.colorbar(im, cax=cbar_ax)
@@ -157,7 +153,7 @@ class TrainerPlot(TrainerBase):
         if not os.path.exists(os.path.join(self.args.save_dir, "occgrids")):
             os.makedirs(os.path.join(self.args.save_dir, "occgrids"))
 
-        if self.args.occ_grid.grid_type == 'nerf':
+        if self.args.model.grid_type == 'nerf':
             plt.tight_layout()
         plt.savefig(os.path.join(self.args.save_dir, "occgrids", f"occgrid_{step}.png"))
 

@@ -6,14 +6,7 @@ import torch
 from tqdm import tqdm
 import pandas as pd
 import cv2 as cv
-import skimage
 
-import matplotlib.image as mpimg
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib.colors import Normalize
-from matplotlib.cm import ScalarMappable
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 from robotathome import RobotAtHome
 from robotathome import logger, log
@@ -26,17 +19,9 @@ from training.sampler import Sampler
 from helpers.data_fcts import sensorName2ID, sensorID2Name
 from ROS1.src.sensors.src.pcl_tools.pcl_loader import PCLLoader
 
-# try:
-#     from .ray_utils import get_rays
-#     from .base import DatasetBase
-#     from .color_utils import read_image
-#     from .ray_utils import get_ray_directions
-#     from .RH2_scene import RobotAtHomeScene
-# except:
 
-from datasets.ray_utils import get_rays, get_ray_directions
+from datasets.ray_utils import get_ray_directions
 from datasets.dataset_base import DatasetBase
-from datasets.color_utils import read_image
 from datasets.scene_ethz import SceneETHZ
 from datasets.splitter_ethz import SplitterETHZ
 from ROS1.src.sensors.src.pcl_tools.pcl_transformer import PCLTransformer
@@ -203,7 +188,7 @@ class DatasetETHZ(DatasetBase):
         mask = (np.abs(m1-m2) < 0.05)
         lidar_idxs = np.argmax(mask, axis=1)
         lidar_files = lidar_files[lidar_idxs]
-        if self.args.model.debug_mode:
+        if self.args.training.debug_mode:
             if not np.all(np.sum(mask, axis=1) == np.ones((mask.shape[0]))):
                 self.args.logger.error(f"DatasetETHZ::getLidarMaps: multiple or no lidar files found for one sample")
                 self.args.logger.error(f"time: {times}")
@@ -304,7 +289,7 @@ class DatasetETHZ(DatasetBase):
             for k in pos.keys():
                 pos[k] = self.scene.c2w(pos=pos[k], copy=False) # (N, 2)
 
-        if self.args.model.debug_mode:
+        if self.args.training.debug_mode:
             for p, o in zip(pos.values(), orientation.values()):
                 if (o.shape[0] != N) or (p.shape[0] != N):
                     self.args.logger.error(f"DatasetETHZ::getRobotPose2D: mask should size of N")
@@ -403,7 +388,7 @@ class DatasetETHZ(DatasetBase):
             directions = get_ray_directions(h, w, K_dict[cam_id]) # (H*W, 3)
             directions_dict[cam_id] = directions / np.linalg.norm(directions, axis=1, keepdims=True) # (H*W, 3)
 
-            if self.args.model.debug_mode:
+            if self.args.training.debug_mode:
                 if not torch.allclose(torch.norm(directions_dict[cam_id], dim=1), torch.ones((directions_dict[cam_id].shape[0]))):
                     self.args.logger.error(f"DatasetETHZ::readIntrinsics: directions are not normalized")
 
@@ -460,7 +445,7 @@ class DatasetETHZ(DatasetBase):
             img_wh=img_wh,
             split_masks=split_masks,
         ) # (N, H*W, 3), (N,)
-        if self.args.model.debug_mode:
+        if self.args.training.debug_mode:
             if not np.all(sensor_ids == rgbs_sensor_ids):
                 self.args.logger.error(f"DatasetETHZ::read_meta: stack ids do not match")
         rgbs = self._convertColorImgs(
@@ -478,7 +463,7 @@ class DatasetETHZ(DatasetBase):
                 img_wh=img_wh,
                 split_masks=split_masks,
             )
-            if self.args.model.debug_mode and not np.all(sensor_ids == rgbs_sensor_ids):
+            if self.args.training.debug_mode and not np.all(sensor_ids == rgbs_sensor_ids):
                 self.args.logger.error(f"DatasetETHZ::read_meta: stack ids do not match")
 
             rs_depths, rs_sensor_model = self._convertDepthImgs(
@@ -496,7 +481,7 @@ class DatasetETHZ(DatasetBase):
                 cam_ids=cam_ids,
                 split_masks=split_masks,
             ) # (N,), (N,)
-            if self.args.model.debug_mode:
+            if self.args.training.debug_mode:
                 if not np.all(sensor_ids == uss_sensor_ids):
                     self.args.logger.error(f"DatasetETHZ::read_meta: uss_sensor_ids ids do not match")
                 if not np.allclose(times, times):
@@ -516,7 +501,7 @@ class DatasetETHZ(DatasetBase):
                 cam_ids=cam_ids,
                 split_masks=split_masks,
             ) # (N, 64), (N, 64), (N,)
-            if self.args.model.debug_mode:
+            if self.args.training.debug_mode:
                 if not np.all(sensor_ids == tof_sensor_ids):
                     self.args.logger.error(f"DatasetETHZ::read_meta: tof_sensor_ids ids do not match")
                 if not np.allclose(times, times):
@@ -591,7 +576,7 @@ class DatasetETHZ(DatasetBase):
             time_lidar = time_lidar[split_masks[cam_id]]
 
             # verify time
-            if self.args.model.debug_mode:
+            if self.args.training.debug_mode:
                 # if (times.shape[0] > 0) and (not np.allclose(time, times[:len(time)], atol=1e-1)):
                 #     self.args.logger.error(f"DatasetETHZ::_readPoses: time is not consistent")
                 #     print(f"time: {time}")

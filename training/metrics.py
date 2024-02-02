@@ -204,7 +204,7 @@ class Metrics():
             nn_inlier[zone] = np.sum(valid_mask & inlier_mask) / np.sum(valid_mask)
             nn_outlier_too_close[zone] = np.sum(valid_mask & ~inlier_mask & too_close_mask) / np.sum(valid_mask)
 
-            if self.args.model.debug_mode:
+            if self.args.training.debug_mode:
                 nn_outlier_tot_far = np.sum(valid_mask & ~inlier_mask & ~too_close_mask) / np.sum(valid_mask)
                 if (nn_inlier[zone] + nn_outlier_too_close[zone] + nn_outlier_tot_far - 1.0) > 1e-6:
                     self.args.logger.error(f"nn_inlier + nn_outlier_too_close + nn_outlier_tot_far = " 

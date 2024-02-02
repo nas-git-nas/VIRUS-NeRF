@@ -244,7 +244,7 @@ class SplitterETHZ(Splitter):
             mask = np.abs(t1-t2) < self.time_thr # (N_common, Ni)
             common_idxs[cam_id] = np.where(mask)[1] # (N_common,)
 
-            if self.args.model.debug_mode:
+            if self.args.training.debug_mode:
                 if len(common_idxs[cam_id]) != len(common_time):
                     self.args.logger.error(f"DatasetETHZ::matchTimes: length of time is in common not consistent!")
                     self.args.logger.error(f"len(common_idxs[cam_id]): {len(common_idxs[cam_id])}, len(common_time): {len(common_time)}")

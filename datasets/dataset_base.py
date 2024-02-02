@@ -136,7 +136,7 @@ class DatasetBase(Dataset):
             sync_idxs[i, :] = torch.where(mask)[0]
 
         # verify that all samples were updated
-        if self.args.model.debug_mode:
+        if self.args.training.debug_mode:
             if torch.any(sync_idxs == -1):
                 self.args.logger.error(f"DatasetBase:getSynchroneSamples: some samples were not updated correctly")
         return sync_idxs
@@ -240,7 +240,7 @@ class DatasetBase(Dataset):
             rays_o[idx_mask] = rays_o_temp # (N, 3)
             rays_d[idx_mask] = rays_d_tempt # (N, 3)
 
-        if self.args.model.debug_mode:
+        if self.args.training.debug_mode:
             if torch.any(torch.isnan(rays_o)) or torch.any(torch.isnan(rays_d)):
                 self.args.logger.error(f"DatasetBase:_calcRayPoses: some rays were not calculated correctly")
 

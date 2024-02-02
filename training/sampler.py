@@ -87,7 +87,7 @@ class Sampler():
             if torch.all(mask): # TODO: remove
                 self.args.logger.warn(f"-------------- time over")
 
-        # if self.args.model.debug_mode:
+        # if self.args.training.debug_mode:
         if valid_img_idxs.shape[0] == 0:
             self.args.logger.error(f"no valid images found")
             sys.exit()
@@ -150,7 +150,7 @@ class Sampler():
             pix_strategy = {pix_strategy: 1.0}
 
         # verify that sum of shares is between 0 and 1
-        if self.args.model.debug_mode:
+        if self.args.training.debug_mode:
             share_sum = sum(pix_strategy.values())
             if share_sum < 0.0 or share_sum > 1.0:
                 self.args.logger.error(f"ray sampling strategy shares must be between 0 and 1 "
@@ -201,7 +201,7 @@ class Sampler():
             #     self.args.logger.error(f"Some pixels are not sampled: strategy = {strategy}")
             #     return None         
 
-        if self.args.model.debug_mode:
+        if self.args.training.debug_mode:
             if torch.any(pix_idxs == -1):
                 self.args.logger.error(f"some pixels are not sampled")
                 return None

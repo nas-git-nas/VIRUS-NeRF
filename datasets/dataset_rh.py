@@ -24,17 +24,9 @@ from helpers.data_fcts import sensorName2ID, sensorID2Name
 from args.args import Args
 from training.sampler import Sampler
 
-# try:
-#     from .ray_utils import get_rays
-#     from .base import DatasetBase
-#     from .color_utils import read_image
-#     from .ray_utils import get_ray_directions
-#     from .robot_at_home_scene import RobotAtHomeScene
-# except:
 
 from datasets.ray_utils import get_rays, get_ray_directions
 from datasets.dataset_base import DatasetBase
-from datasets.color_utils import read_image
 from datasets.scene_rh import SceneRH
 
 
@@ -58,9 +50,9 @@ class DatasetRH(DatasetBase):
 
         # load dataset
         self.rh = RobotAtHome(
-            rh_path = self.args.dataset.path, 
-            rgbd_path = os.path.join(self.args.dataset.path, 'files/rgbd'), 
-            scene_path = os.path.join(self.args.dataset.path, 'files/scene'), 
+            rh_path = self.args.rh.dataset_dir, 
+            rgbd_path = os.path.join(self.args.rh.dataset_dir, 'files/rgbd'), 
+            scene_path = os.path.join(self.args.rh.dataset_dir, 'files/scene'), 
             wspc_path = 'results', 
             db_filename = "rh.db"
         )
@@ -276,7 +268,7 @@ class DatasetRH(DatasetBase):
         df = self.splitDataset(
             df = df, 
             split_ratio = self.args.dataset.split_ratio, 
-            split_description_path = os.path.join(self.args.dataset.path, 'files', 'rgbd', 
+            split_description_path = os.path.join(self.args.rh.dataset_dir, 'files', 'rgbd', 
                                                   self.args.rh.session, self.args.rh.home, self.args.rh.room),
             split_description_name = 'split_'+self.args.rh.subsession+'.csv'
         )
@@ -360,7 +352,7 @@ class DatasetRH(DatasetBase):
             depth = cv.imread(d_f, cv.IMREAD_UNCHANGED)
 
             # verify depth image
-            if self.args.model.debug_mode:
+            if self.args.training.debug_mode:
                 if np.max(depth) > 115 or np.min(depth) < 0:
                     self.args.logger.error(f"robot_at_home.py: read_meta: depth image has invalid values")
                 if not (np.allclose(depth[:,:,0], depth[:,:,1]) and np.allclose(depth[:,:,0], depth[:,:,2])):

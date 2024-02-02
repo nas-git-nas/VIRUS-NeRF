@@ -393,7 +393,7 @@ class SceneBase():
         rays_d = np.copy(rays_d) # (N, 3)
         depths = np.copy(depths) # (N,)
 
-        if self.args.model.debug_mode:
+        if self.args.training.debug_mode:
             # verify that all rays_d have norm 1
             if not np.allclose(np.linalg.norm(rays_d, axis=1), 1):
                 self.args.logger.error(f"norm of rays_d is not 1: norm = {np.linalg.norm(rays_d[:,:2], axis=1)}!")
@@ -420,7 +420,7 @@ class SceneBase():
         Returns:
             angles: angles of scan rays; numpy array of shape (N,)
         """
-        if self.args.model.debug_mode:
+        if self.args.training.debug_mode:
             # verify that all rays_d has only 2 dimensions
             if rays_d.shape[1] != 2:
                 self.args.logger.error(f"rays_d has not only 2 dimensions!")

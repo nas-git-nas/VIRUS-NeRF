@@ -27,7 +27,7 @@ def main():
         file_name=hparams_file
     )
     args.model.save = False
-    args.model.debug_mode = False
+    args.training.debug_mode = False
     args.eval.eval_every_n_steps = args.training.max_steps + 1
     args.eval.plot_results = False
     args.eval.sensors = ["GT", "NeRF"]

@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 from args.args import Args
 from datasets.scene_base import SceneBase
 from datasets.dataset_base import DatasetBase
-from datasets.ray_utils import get_rays
 from modules.grid import Grid
 from modules.rendering import MAX_SAMPLES, render
 from helpers.geometric_fcts import distToCubeBorder
@@ -450,7 +449,7 @@ class OccupancyGrid(Grid):
             probs_occ: probabilities of measurements given cell is occupied; tensor (N*M,)
             probs_emp: probabilities of measurements given cell is empty; tensor (N*M,)
         """
-        if self.args.model.debug_mode:
+        if self.args.training.debug_mode:
             if torch.any(torch.isnan(probs_occ)) or torch.any(torch.isnan(probs_emp)):
                 self.args.logger.warning("NaN values in probabilities")
 

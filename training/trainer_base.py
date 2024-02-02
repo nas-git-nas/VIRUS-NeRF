@@ -94,6 +94,14 @@ class TrainerBase():
         if self.args.model.ckpt_path:
             self._loadCheckpoint(ckpt_path=self.args.model.ckpt_path)
 
+        # grid update interval
+        if self.args.model.grid_type == 'nerf':
+            self.grid_update_interval = self.args.nerf_grid.update_interval
+        elif self.args.model.grid_type == 'occ':
+            self.grid_update_interval = self.args.occ_grid.update_interval
+        else:
+            self.args.logger.error("Grid type not implemented!")
+
     def interfereDensityMap(
             self, 
             res_map:int, 

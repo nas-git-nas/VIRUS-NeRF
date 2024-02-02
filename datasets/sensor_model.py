@@ -141,7 +141,7 @@ class ToFModel(SensorModel):
         fov_mask = self.mask.detach().clone().cpu().numpy() # (H*W,)
         error_mask = self.error_mask.detach().clone().cpu().numpy() # (H*W,)
 
-        if self.args.model.debug_mode:
+        if self.args.training.debug_mode:
             if np.any(depths == 0.0):
                 self.args.logger.error(f"ToFModel.convertDepth: depths == 0.0")
 
@@ -303,7 +303,7 @@ class USSModel(SensorModel):
             imgs_counts[stats["img_idxs"]] = stats["counts"] # (N_imgs,)
 
         # check if all minimum depths have been updated
-        if self.args.model.debug_mode:
+        if self.args.training.debug_mode:
             if torch.any(imgs_depths < 0):
                 self.args.logger.error(f"USSModel.updateDepthMin: imgs_depths < 0")
         

@@ -27,6 +27,7 @@ class FileFormatter(logging.Formatter):
         formatter = logging.Formatter(log_fmt)
         return formatter.format(record)
     
+
 class TerminalFormatter(logging.Formatter):
 
     grey = "\x1b[38;20m"

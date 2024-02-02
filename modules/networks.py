@@ -124,13 +124,13 @@ class NGP(nn.Module):
         self.render_func = VolumeRenderer()
 
         self.args = args
-        if self.args.occ_grid.grid_type == 'nerf':
+        if self.args.model.grid_type == 'nerf':
             self.occupancy_grid = NeRFGrid(
                 args=args,
                 grid_size=self.grid_size,
                 fct_density=self.density,
             )
-        elif self.args.occ_grid.grid_type == 'occ':
+        elif self.args.model.grid_type == 'occ':
             self.occupancy_grid = OccupancyGrid(
                 args=args,
                 grid_size=self.grid_size,
@@ -139,7 +139,7 @@ class NGP(nn.Module):
                 fct_density=self.density,
             )
         else:
-            self.args.logger.error(f"grid_type {self.args.occ_grid.grid_type} not implemented")
+            self.args.logger.error(f"grid_type {self.args.model.grid_type} not implemented")
 
     def density(self, x, return_feat=False):
         """
