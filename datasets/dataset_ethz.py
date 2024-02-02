@@ -94,6 +94,10 @@ class DatasetETHZ(DatasetBase):
             directions_dict=directions_dict,
         )
 
+        tof_not_nan = ~torch.isnan(depths_dict["ToF"])
+        num_samples = depths_dict['ToF'].shape[0]*64
+        print(f"split: {split}, tof not nan: {torch.sum(tof_not_nan)} / {num_samples} = {torch.sum(tof_not_nan)/num_samples}")
+
         # if self.args.dataset.keep_pixels_in_angle_range != "all":
         #     rays, directions, depths, img_wh = self.reduceImgHeight(
         #         rays=rays,
