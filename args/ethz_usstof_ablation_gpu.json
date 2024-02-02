@@ -3,7 +3,7 @@
     {
         "path": "",
         "name": "ETHZ",
-        "split_ratio": {"train": 0.4, "val": 0.55, "test": 0.05},
+        "split_ratio": {"train": 0.8, "val": 0.1, "test": 0.1},
         "downsample": 1.0,
         "keep_N_observations": "all",
         "keep_sensor": "all",
@@ -27,9 +27,9 @@
         "sampling_strategy": 
         {
             "imgs": "all", 
-            "pixs": {"valid_uss":0.4, "valid_tof":0.4}
+            "pixs": {"random":1.0}
         },
-        "sensors": ["USS", "ToF"],
+        "sensors": [],
         "max_steps": 800,
         "max_time": 80,
         "lr": 5e-3,
@@ -64,11 +64,11 @@
     },
     "occ_grid":
     {
-        "grid_type": "occ",
+        "grid_type": "nerf",
         "warmup_steps": 256,
         "batch_size": 1024,
         "sampling_strategy": {"imgs": "None", "rays": "None"},
-        "update_interval": 8,
+        "update_interval": 16,
         "decay_warmup_steps": 80,
         "batch_ratio_ray_update": 0.5,
         "false_detection_prob_every_m": 0.3,
@@ -80,7 +80,7 @@
     "ethz":
     {
         "dataset_dir": "/media/scratch1/schmin/data/ETHZDataset",
-        "room": "corridor",
+        "room": "commonroom",
         "cam_ids": ["CAM1", "CAM3"],
         "use_optimized_poses": true
     },

@@ -81,13 +81,16 @@ class Sampler():
         valid_img_idxs = torch.arange(self.dataset_len, device=self.args.device, dtype=torch.int32)
 
         if self.args.training.real_time_simulation:
-            mask = (elapse_time <= self.times)
+            mask = (self.times <= elapse_time)
             valid_img_idxs = valid_img_idxs[mask]
 
-        if self.args.model.debug_mode:
-            if valid_img_idxs.shape[0] == 0:
-                self.args.logger.error(f"no valid images found")
-                sys.exit()
+            if torch.all(mask): # TODO: remove
+                self.args.logger.warn(f"-------------- time over")
+
+        # if self.args.model.debug_mode:
+        if valid_img_idxs.shape[0] == 0:
+            self.args.logger.error(f"no valid images found")
+            sys.exit()
             
         return valid_img_idxs
     
