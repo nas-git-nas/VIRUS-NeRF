@@ -71,10 +71,6 @@ class ParticleSwarmOptimizationWrapper(ParticleSwarmOptimization):
                     score=np.inf,
                     particle=i,
                 )
-        
-        # increase iteration counter: t=0 is the initial state
-        # and optimization starts at t=1 or t+=1 w.r.t previous run
-        # self.t += 1
 
     def getNextHparams(
         self,

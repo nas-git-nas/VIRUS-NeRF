@@ -1,8 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
-
-from helpers import correctMeas, loadData
+import os
+import sys
+ 
+sys.path.insert(0, os.getcwd())
+from helpers.uss_experiments_fcts import correctMeas, loadData
 
 
 def main():

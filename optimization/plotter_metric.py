@@ -71,6 +71,11 @@ class Plotter():
         self,
         save_path:str=None,
     ):
+        """
+        Show and save figure.
+        Args:
+            save_path: path to save figure; str
+        """
         self.fig.subplots_adjust(right=0.8)
         cbar_ax = self.fig.add_axes([0.85, 0.1, 0.05, 0.8]) # [left, bottom, width, height]
         self.fig.colorbar(self.im, cax=cbar_ax)
@@ -86,6 +91,14 @@ class Plotter():
         ax_idx:int,
         res:int=64,
     ):
+        """
+        Plot 2D optimization.
+        Args:
+            pso: particle swarm optimization; ParticleSwarmOptimizationWrapper
+            metric: metric; Metric
+            ax_idx: index of axis; int
+            res: resolution of plot; int
+        """
         if self.num_cols*self.num_rows > 1:
             ax = self.axes[ax_idx]
         else:

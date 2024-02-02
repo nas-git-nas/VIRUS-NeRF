@@ -159,7 +159,6 @@ class ParticleSwarmOptimization():
         self.vel[n] = vel
         self.pos[n] = pos
         
-
     def _increaseIterator(
         self,
     ):

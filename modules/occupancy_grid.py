@@ -1,22 +1,12 @@
 import torch
 import numpy as np
-import matplotlib.pyplot as plt
 
 from args.args import Args
 from datasets.scene_base import SceneBase
 from datasets.dataset_base import DatasetBase
 from modules.grid import Grid
-from modules.rendering import MAX_SAMPLES, render
 from helpers.geometric_fcts import distToCubeBorder
 
-from kornia.utils.grid import create_meshgrid3d
-
-from modules.rendering import NEAR_DISTANCE
-from modules.utils import (
-    morton3D, 
-    morton3D_invert, 
-    packbits, 
-)
 
 
 class OccupancyGrid(Grid):
@@ -45,10 +35,10 @@ class OccupancyGrid(Grid):
         self.update_step = 0 # update counter
 
         # initialize occupancy grid
-        occ_threshold = 0.5
+        self.threshold = 0.5
         occ_init_max = 0.51     
         grid = torch.rand(size=(self.grid_size**3,), device=self.args.device, dtype=torch.float32)
-        grid = occ_threshold + (occ_init_max-occ_threshold) * grid
+        grid = self.threshold + (occ_init_max-self.threshold) * grid
         self.occ_3d_grid = grid.reshape(self.grid_size, self.grid_size, self.grid_size)
         
         # fixed parameters
@@ -58,7 +48,7 @@ class OccupancyGrid(Grid):
 
         # variable parameters
         decay_num_steps = self.args.occ_grid.decay_warmup_steps / self.args.occ_grid.update_interval
-        grid_decay = (occ_threshold/occ_init_max)**(1/decay_num_steps) # decay of grid probabilities
+        grid_decay = (self.threshold/occ_init_max)**(1/decay_num_steps) # decay of grid probabilities
         self.grid_decay = ((grid_decay*1000) // 1) / 1000 # floor to 3 decimals
         self.cell_size = 2*self.args.model.scale / grid_size
 
@@ -74,13 +64,11 @@ class OccupancyGrid(Grid):
     @torch.no_grad()
     def update(
         self,
-        threshold:float,
         elapse_time:float,
     ):
         """
         Update grid with image.
         Args:
-            threshold: threshold for occupancy grid; float # TODO: remove this
             elapse_time: time elapsed since start of training in seconds; float
         Returns:
             grid: occupancy grid; tensor (grid_size, grid_size, grid_size)
@@ -110,10 +98,9 @@ class OccupancyGrid(Grid):
             self.occ_3d_grid *= self.grid_decay
         
         # update binary bitfield
-        self.threshold = threshold
         self.updateBitfield(
             grid=self.occ_3d_grid,
-            threshold=threshold,
+            threshold=self.threshold,
             convert_cart2morton=True,
         ) 
 
@@ -252,7 +239,6 @@ class OccupancyGrid(Grid):
         cell_dists, _, cell_idxs = self._calcPos(
             rays_o=rays_o,
             rays_d=rays_d,
-            meas=meas,
             add_noise=False,
         ) # (N, M), _, (N*M, 3)  
 
@@ -289,7 +275,6 @@ class OccupancyGrid(Grid):
         _, cell_pos, cell_idxs = self._calcPos(
             rays_o=rays_o,
             rays_d=rays_d,
-            meas=meas,
             add_noise=True,
         ) # _, (N*M, 3), (N*M, 3)
 
@@ -309,7 +294,6 @@ class OccupancyGrid(Grid):
         self,
         rays_o:torch.Tensor,
         rays_d:torch.Tensor,
-        meas:torch.Tensor, # TODO: remove this
         add_noise:bool,
     ):
         """
@@ -317,20 +301,12 @@ class OccupancyGrid(Grid):
         Args:
             rays_o: rays origins; tensor (N, 3)
             rays_d: rays directions; tensor (N, 3)
-            meas: measured distance in cube coordinates; tensor (N,)
             add_noise: whether to add noise to cell positions; bool
         Returns:
             cell_dists: distances to cell; tensor (N, M)
             cell_pos: positions of cell; tensor (N*M, 3)
             cell_idxs: indices of cell; tensor (N*M, 3)
         """
-        # # calculate cell distances
-        # stds = self._calcStd(
-        #     dists=meas,
-        # ) # (N,)
-        # steps = torch.linspace(0, 1, self.M, device=self.args.device, dtype=torch.float32) # (M,)
-        # cell_dists = steps[None,:] * (meas + 5*stds)[:,None] # (N, M)
-
         # calculate cell distances
         rays_d = rays_d / torch.norm(rays_d, dim=1, keepdim=True) # normalize rays
         dists_to_border = distToCubeBorder(
@@ -428,10 +404,6 @@ class OccupancyGrid(Grid):
         h = torch.log(cell_density)
         probs_occ = 1 / (1 + torch.exp(- self.args.occ_grid.nerf_threshold_slope * (h - h_thr))) # TODO: optimize
         probs_emp = 1 - probs_occ
-
-        # print(f"_nerfProb: threshold_nerf={threshold_nerf:.3f}; probs occ mean={torch.mean(probs_occ):.3f}," \
-        #       f"min={torch.min(probs_occ):.3f}, max={torch.max(probs_occ):.3f}, " \
-        #       f"mean_above={torch.mean(probs_occ[probs_occ>0.5]):.3f}, mean_below={torch.mean(probs_occ[probs_occ<0.5]):.3f}")
         
         return probs_occ, probs_emp
     
@@ -521,171 +493,4 @@ class OccupancyGrid(Grid):
         """
         pos = (2 * self.args.model.scale) * (idx + 0.5) / self.grid_size - self.args.model.scale
         return torch.clamp(pos, -self.args.model.scale, self.args.model.scale) # limit to cube
-
-
-    # @torch.no_grad()
-    # def nerfUpdateAllCells(
-    #     self,
-    #     threshold_occ:float,
-    # ):
-    #     """
-    #     Update grid by interfering nerf.
-    #     Args:
-    #         threshold_occ: threshold for occupancy grid; float
-    #     """
-    #     # define cell indices and positions
-    #     cell_idxs = create_meshgrid3d(
-    #         self.grid_size, 
-    #         self.grid_size, 
-    #         self.grid_size, 
-    #         False, 
-    #         dtype=torch.int32
-    #     ).reshape(-1, 3).to(device=self.args.device) # (N, 3)
-    #     cell_pos = self._idx2c(
-    #         idx=cell_idxs,
-    #     ) # (N, 3)
-
-    #     # add random noise
-    #     noise = torch.rand(size=cell_pos.shape, device=self.args.device, dtype=torch.float32)
-    #     cell_pos = cell_pos + self.cell_size * noise - self.cell_size/2
-    #     cell_pos = torch.clamp(cell_pos, -self.args.model.scale, self.args.model.scale) # limit to cube
-
-    #     # calculate cell occupancy probabilities
-    #     cell_density = self.fct_density(
-    #         x=cell_pos,
-    #     ) # (N,)
-    #     alpha = - np.log(threshold_occ)
-    #     thrshold_nerf = 0.01 * MAX_SAMPLES / 3**0.5
-    #     probs_emp = torch.exp(- alpha * cell_density / thrshold_nerf) # (N,)
-    #     probs_occ = 1 - probs_emp # (N,)
-
-    #     # update grid
-    #     self._updateGrid(
-    #         cell_idxs=cell_idxs,
-    #         probs_occ=probs_occ,
-    #         probs_emp=probs_emp,
-    #     )
-
-
-    # @torch.no_grad()
-    # def _nerfProb(
-    #     self,
-    #     cell_pos:torch.Tensor,
-    #     threshold_occ:float, # TODO: remove this
-    # ):
-    #     # interfere NeRF
-    #     cell_density = self.fct_density(
-    #         x=cell_pos,
-    #     ) # (N*M,)
-
-    #     # convert density to probability
-    #     # alpha = - np.log(threshold_occ)
-    #     # threshold_nerf = min(self.nerf_threshold_max, torch.mean(cell_density))
-    #     # probs_emp = torch.exp(- alpha * cell_density / threshold_nerf) # (N*M,)
-    #     # probs_emp = torch.clamp(probs_emp, 1-self.nerf_prob_max, self.nerf_prob_max) # (N*M,)
-    #     # probs_occ = 1 - probs_emp # (N*M,)
-
-    #     # # convert density to probability
-    #     # threshold_nerf = min(self.nerf_threshold_max, torch.mean(cell_density))
-    #     # delta = max(
-    #     #     abs(torch.max(cell_density).item() - threshold_nerf),
-    #     #     abs(torch.min(cell_density).item() - threshold_nerf),
-    #     # )
-    #     # delta = min(delta, 100 * self.nerf_threshold_max) # avoid delta to be infinity
-    #     # probs_occ = 0.5 * torch.ones_like(cell_density, device=self.args.device, dtype=torch.float32) # (N*M,)
-    #     # probs_occ += (cell_density - threshold_nerf) / (2 * delta) # (N*M,)
-    #     # probs_occ = torch.clamp(probs_occ, 0, 1) # (N*M,)
-    #     # probs_emp = 1 - probs_occ # (N*M,)
-
-    #     # # convert density to probability
-    #     # threshold_nerf = min(self.nerf_threshold_max, torch.mean(cell_density).item())
-    #     # h_thr = - np.log(threshold_nerf + 1) / np.log(0.5)
-    #     # h = torch.log(cell_density + 1)
-    #     # probs_emp = torch.exp(- h / h_thr)
-    #     # probs_occ = 1 - probs_emp
-
-
-    #     @torch.no_grad()
-    # def _sensorOccupiedPDF(
-    #     self,
-    #     meas:torch.Tensor,
-    #     dists:torch.Tensor,
-    # ):
-    #     """
-    #     Calculate occupied probability density function of sensor model:
-    #     Probabilty that measurement equals to distance given
-    #     that the cell is occupied: P[meas=dist | cell=occ].
-    #     Args:
-    #         meas: measured distance in cube coordinates; tensor (any shape)
-    #         dists: distances to evaluate; tensor (same shape as meas)
-    #     Returns:
-    #         probs: probabilities of measurements given cell is occupied; tensor (same shape as meas)
-    #     """
-    #     attenuations = self._calcAttenuation(
-    #         dists=dists,
-    #     )
-    #     stds = self._calcStd(
-    #         dists=dists,
-    #     )
-    #     return attenuations * torch.exp(-0.5 * (meas - dists)**2 / stds**2)
-    
-    # @torch.no_grad()
-    # def _calcStd(
-    #     self,
-    #     dists:torch.Tensor,
-    # ):
-    #     """
-    #     Calculate standard deviation of sensor model.
-    #     Args:
-    #         dists: distances to evaluate; tensor (any shape)
-    #     Returns:
-    #         stds: standard deviation of sensor model; tensor (same shape as dists)
-    #     """
-    #     # return self.std_min * ( 1 + self.std_every_m*dists)
-    #     return self.std_every_m * dists
-    
-    # @torch.no_grad()
-    # def _calcAttenuation(
-    #     self,
-    #     dists:torch.Tensor,
-    # ):
-    #     """
-    #     Calculate attenuation of sensor model.
-    #     Args:
-    #         dists: distances to evaluate; tensor (any shape)
-    #     Returns:
-    #         attenuations: attenuation of sensor model; tensor (same shape as dists)
-    #     """
-    #     attenuation = self.attenuation_min * (1 - self.attenuation_every_m * dists)
-        # return torch.clamp(attenuation, 0, 1)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

@@ -5,7 +5,7 @@ import sys
 
 from datasets.splitter_base import Splitter
 from args.args import Args
-from helpers.data_fcts import sensorName2ID, sensorID2Name
+from helpers.data_fcts import sensorName2ID
 
 class SplitterETHZ(Splitter):
     def __init__(
@@ -194,6 +194,11 @@ class SplitterETHZ(Splitter):
     def loadTimes(
         self,
     ):
+        """
+        Load times of measurements per sensor stack.
+        Returns:
+            times: times of measurements per sensor stack; dict of { cam_id: np.array of shape (N,) }
+        """
         data_dir = os.path.join(self.args.ethz.dataset_dir, self.args.ethz.room)
 
         times = {}

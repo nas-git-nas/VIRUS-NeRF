@@ -1,16 +1,33 @@
 
 
-
 class HParams():
-    def __init__(self, name):
+    def __init__(
+        self, 
+        name,
+    ):
         self.self_name = name
 
-    def setHParams(self, hparams):
+    def setHParams(
+        self, 
+        hparams:dict,
+    ):
+        """
+        Set hyper parameters from a dictionary
+        Args:
+            hparams: dictionary with hyper parameters; dict
+        """
         for key in self.__dict__.keys():
             if key != "self_name":
                 setattr(self, key, hparams[self.self_name][key])
 
-    def getHParams(self):
+    def getHParams(
+        self,
+    ):
+        """
+        Get hyper parameters as dictionary
+        Returns:
+            dictionary with hyper parameters; dict
+        """
         self_dict = {}
         for key, value in self.__dict__.items():
             if key != "self_name":

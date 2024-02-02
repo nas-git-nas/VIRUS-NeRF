@@ -1,47 +1,25 @@
-import glob
 import os
 import time
-import tqdm
 import sys
-
 import warnings
-
 import torch
 import imageio
 import numpy as np
 import pandas as pd
-import taichi as ti
 from einops import rearrange
 import torch.nn.functional as F
-from abc import abstractmethod
 
-from alive_progress import alive_bar
-from contextlib import nullcontext
-import matplotlib.pyplot as plt
 
-# from gui import NGPGUI
-# from opt import get_opts
 from args.args import Args
 from datasets.ray_utils import get_rays
 from datasets.dataset_base import DatasetBase
-
-from modules.rendering import MAX_SAMPLES, render
-from modules.utils import depth2img
-
 from modules.rendering import MAX_SAMPLES, render
 from modules.utils import depth2img
 from helpers.geometric_fcts import createScanRays
 from training.metrics_rh import MetricsRH
-
-from modules.occupancy_grid import OccupancyGrid
-
 from training.trainer_plot import TrainerPlot
 from training.loss import Loss
 
-
-from torchmetrics import (
-    PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
-)
 
 warnings.filterwarnings("ignore")
 
@@ -66,20 +44,7 @@ class Trainer(TrainerPlot):
         
         self.rng = np.random.default_rng(seed=self.args.seed)
 
-        # # TODO: remove this
-        # self.model.mark_invisible_cells(
-        #     self.train_dataset.K,
-        #     self.train_dataset.poses, 
-        #     self.train_dataset.img_wh,
-        # )
-
-        # # use large scaler, the default scaler is 2**16 
-        # # TODO: investigate why the gradient is small
-        # if self.hparams.half_opt:
-        #     scaler = 2**16
-        # else:
-        #     scaler = 2**19
-        scaler = 2**19
+        scaler = 2**19 # TODO: investigate why the gradient is small
         self.grad_scaler = torch.cuda.amp.GradScaler(scaler)
 
         # optimizer
@@ -88,13 +53,6 @@ class Trainer(TrainerPlot):
             self.args.training.lr, 
             eps=1e-15,
         )
-
-        # # scheduler
-        # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        #     optimizer=self.optimizer,
-        #     T_max=self.args.training.max_steps,
-        #     eta_min=self.args.training.lr/30,
-        # )
 
         # loss function
         self.loss = Loss(
@@ -120,13 +78,13 @@ class Trainer(TrainerPlot):
             'rgbd_loss': [],
             'ToF_loss': [],
             'USS_loss': [],
-            # 'USS_close_loss': [],
-            # 'USS_min_loss': [],
             'psnr': [],
             'mnn': [],
         }
 
-    def train(self):
+    def train(
+        self,
+    ):
         """
         Training loop.
         """
@@ -173,9 +131,6 @@ class Trainer(TrainerPlot):
                     data=data,
                     return_loss_dict=True, # TODO: optimize
                 )
-                # loss, color_loss, depth_loss = self.lossFunc(results=results, data=data, step=step)
-                # if self.args.training.distortion_loss_w > 0:
-                #     loss += self.args.training.distortion_loss_w * distortion_loss(results).mean()
 
             # backpropagate and update weights
             self.optimizer.zero_grad()
@@ -207,7 +162,9 @@ class Trainer(TrainerPlot):
             print(f"{time.time()-train_tic:.2f}s, iter: {step+1}") 
         self._saveModel()
 
-    def evaluate(self):
+    def evaluate(
+        self,
+    ):
         """
         Evaluate NeRF on test set.
         Returns:
@@ -263,12 +220,12 @@ class Trainer(TrainerPlot):
 
     @torch.no_grad()
     def _evaluateStep(
-            self, 
-            results:dict, 
-            data:dict, 
-            step:int, 
-            loss_dict:dict,
-            tic:time.time,
+        self, 
+        results:dict, 
+        data:dict, 
+        step:int, 
+        loss_dict:dict,
+        tic:time.time,
     ):
         """
         Print statistics about the current training step.
@@ -341,8 +298,8 @@ class Trainer(TrainerPlot):
 
     @torch.no_grad()
     def _evaluateColor(
-            self,
-            img_idxs:np.array,
+        self,
+        img_idxs:np.array,
     ):
         """
         Evaluate color error.
@@ -363,17 +320,6 @@ class Trainer(TrainerPlot):
         # repeat image indices and pixel indices
         img_idxs = img_idxs.repeat(W*H) # (N*W*H,)
         pix_idxs = np.tile(np.arange(W*H), N) # (N*W*H,)
-
-        # # get poses, direction and color ground truth
-        # poses = self.test_dataset.poses[img_idxs]
-        # directions_dict = self.test_dataset.directions_dict[pix_idxs]
-        # rgb_gt = self.test_dataset.rgbs[img_idxs, pix_idxs][:, :3]
-
-        # # calculate rays
-        # rays_o, rays_d = get_rays(
-        #     directions=directions, 
-        #     c2w=poses
-        # ) # (N*W*H, 3), (N*W*H, 3)
 
         data = self.test_dataset(
             img_idxs=torch.tensor(img_idxs, device=self.args.device),
@@ -649,10 +595,6 @@ class Trainer(TrainerPlot):
             rays_o_test = rays_o.detach().cpu().numpy().reshape(img_idxs.shape[0], -1, 3) # (N, M, 3)
             if not np.allclose(rays_o_test, rays_o_test[:,0,:][:,None,:]):
                 self.args.logger.error(f"rays_o not all same...............")
-                for i in range(img_idxs.shape[0]):
-                    plt.scatter(rays_o_test[i,:,0], rays_o_test[i,:,1], c="b")
-                    plt.scatter(rays_o_test[i,0,0], rays_o_test[i,0,1], c="r")
-                    plt.show()
                 sys.exit()
 
         # render rays to get depth
@@ -677,10 +619,6 @@ class Trainer(TrainerPlot):
             rays_o_test = rays_o.reshape(img_idxs.shape[0], -1, 3) # (N, M, 3)
             if not np.allclose(rays_o_test, rays_o_test[:,0,:][:,None,:]):
                 self.args.logger.error(f"rays_o not all same")
-                for i in range(img_idxs.shape[0]):
-                    plt.scatter(rays_o_test[i,:,0], rays_o_test[i,:,1], c="b")
-                    plt.scatter(rays_o_test[i,0,0], rays_o_test[i,0,1], c="r")
-                    plt.show()
                 sys.exit()
 
         return rays_o, rays_d, depths
@@ -717,21 +655,6 @@ class Trainer(TrainerPlot):
 
             if xyzs[i].shape[0] > K:
                 K = xyzs[i].shape[0]
-
-            # map_gt = self.test_dataset.scene.getSliceMap(
-            #     height=pos_cam_w[i,2], 
-            #     res=self.args.eval.res_map, 
-            #     height_tolerance=self.args.eval.height_tolerance, 
-            #     height_in_world_coord=True
-            # )
-            # scale = self.args.model.scale
-            # extent = self.test_dataset.scene.c2w(pos=np.array([[-scale,-scale],[scale,scale]]), copy=False)
-            # extent = extent.T.flatten()
-            # plt.imshow(map_gt.T, origin='lower', extent=extent)
-            # plt.scatter(xyzs[i][:,0], xyzs[i][:,1], s=0.1, c="b")
-            # plt.scatter(pos_cam_w[i,0], pos_cam_w[i,1], s=0.1, c="r")
-            # plt.scatter(pos_lidar_w[i,0], pos_lidar_w[i,1], s=0.1, c="g")
-            # plt.show()
         
         # determine rays
         depths = np.full((len(img_idxs), K), np.nan) # (N, K)
@@ -842,6 +765,7 @@ class Trainer(TrainerPlot):
         Args:
             pos: positions; array of shape (N*K, 2)
             pos_o: positions of ray origins; array of shape (N*K, 2)
+            num_points: number of points to sample; int
         Returns:
             pos: positions; array of shape (N*M, 2)
             pos_o: positions of ray origins; array of shape (N*M, 2)
@@ -849,9 +773,6 @@ class Trainer(TrainerPlot):
         N = num_points
         K = pos.shape[0] // N
         M = self.args.eval.res_angular
-
-        # if K <= M:
-        #     return rays_o, rays_d, depths
 
         pos = pos.reshape(N, K, 2) # (N, K, 2)
         pos_o = pos_o.reshape(N, K, 2) # (N, K, 2)
@@ -907,8 +828,6 @@ class Trainer(TrainerPlot):
             pos: positions; array of shape (N*M, 2)
             pos_o: positions of ray origins; array of shape (N*M, 2)
         """
-        # return pos, pos_o
-
         pos = pos.copy() # (N*M, 2)
         pos_o = pos_o.copy() # (N*M, 2)
         N = num_points 
@@ -916,10 +835,7 @@ class Trainer(TrainerPlot):
 
         mask = np.zeros((N, M), dtype=bool) # (N, M)
         for name, fov in fov_sensor.items():
-            # print(f"Sensor {name} has FoV")
-            # for i in range(fov.shape[0]):
-            #     print(f"     i={i}: {np.rad2deg(fov[i,0]):.2f} - {np.rad2deg(fov[i,1]):.2f}")
-
+            # check if fov is 360°
             if np.allclose(fov[:,0], -np.pi) and np.allclose(fov[:,1], np.pi):
                 mask = np.ones((N, M), dtype=bool) # (N, M)
                 break
@@ -945,11 +861,19 @@ class Trainer(TrainerPlot):
         return pos, pos_o
 
     def _printAndSaveMetrics(
-            self,
-            metrics_dict:dict,
-            color_dict:dict,
+        self,
+        metrics_dict:dict,
+        color_dict:dict,
 
     ):
+        """
+        Print and save metrics.
+        Args:
+            metrics_dict: dict of metrics; dict
+            color_dict: dict of color metrics; dict
+        Returns:
+            metrics_dict: dict of metrics; dict
+        """
         for key in metrics_dict.keys():
             metrics_dict[key].update(color_dict)
         print(

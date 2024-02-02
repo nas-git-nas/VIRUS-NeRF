@@ -1,6 +1,7 @@
 import numpy as np
 import scipy.signal
-import torch
+
+
 
 """
 CONSTANTS
@@ -15,6 +16,8 @@ RH2_SENSORS = {
     "USS": ["USS1", "USS2", "USS3", "USS4"],
     "ToF": ["ToF1", "ToF2", "ToF3", "ToF4"],
 }
+
+
 
 def linInterpolateArray(
     x1:np.array,
@@ -202,8 +205,6 @@ def dataConverged(
         1 if data_increasing else 0, 
         0 if data_increasing else 1,
     )
-
-
     
     arr_binary = np.cumprod(arr_binary[::-1])[::-1]
 

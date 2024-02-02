@@ -1,11 +1,8 @@
 import numpy as np
-import os
-import matplotlib.pyplot as plt
-from alive_progress import alive_bar
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 
-from robotathome import RobotAtHome
 from args.args import Args
+
 
 class SceneBase():
     def __init__(
@@ -39,7 +36,9 @@ class SceneBase():
     def _loadPointCloud(self):
         pass
 
-    def getPointCloud(self):
+    def getPointCloud(
+        self,
+    ):
         """
         Get point cloud of scene.
         Returns:
@@ -72,7 +71,8 @@ class SceneBase():
             height = self.c2w(pos=np.array([[0,0,height]]))[0,2]
 
         # extract points in slice [height-height_tolerance, height+height_tolerance]
-        point_idxs = np.where((point_cloud[:,2] >= height-height_tolerance) & (point_cloud[:,2] <= height+height_tolerance))[0] # (M,)
+        point_idxs = np.where((point_cloud[:,2] >= height-height_tolerance) 
+                              & (point_cloud[:,2] <= height+height_tolerance))[0] # (M,)
         points = point_cloud[point_idxs,:2] # (M, x y z)  
 
         # convert points to slice map indices ([0,res-1]**2)
@@ -99,8 +99,8 @@ class SceneBase():
             res: size of slice map; int
             rays_o: origin of scan rays; numpy array of shape (N, 2/3)
             rays_d: direction of scan rays; numpy array of shape (N, 2/3)
-            angular_res: size of scan / nb. angles per scan; int
             height_tolerance: tolerance for height in world coordinate system; float
+            angular_res: size of scan / nb. angles per scan; int
             angular_range: range of scan angles ([min, max] where min is inclusive and max is exclusive); list of two floats
             rays_o_in_world_coord: if True, rays_o is given in world otherwise in cube coordinates; bool
         Returns:
@@ -144,53 +144,6 @@ class SceneBase():
         scan_depth = np.full(rays_o.shape[0], np.nan) # (N,)
         scan_rays_closest_c = self.idx2c(map_idxs=scan_rays_closest_idxs, res=res) # (closest_occ_points, 2)
         scan_depth[angle_idxs] = np.linalg.norm(scan_rays_closest_c - rays_o[angle_idxs,:2], axis=1) # (closest_occ_points,)
-
-        # print(f"number of nan values in scan_depth: {np.sum(np.isnan(scan_depth))}")
-
-        # # verify scan_rays_closest_c
-        # s_r_cl_idxs = self.c2idx(pos=scan_rays_closest_c, res=res) # (closest_occ_points, 2)
-        # test_map = np.zeros((res, res)) # (res, res)
-        # test_map[s_r_cl_idxs[:,0], s_r_cl_idxs[:,1]] = 1
-        # if not np.allclose(test_map, scan_map):
-        #     print("ERROR: scan_map and test_map are not equal!")
-
-        # scan_depth_pos = self.depth2pos(rays_o=rays_o, scan_depth=scan_depth, scan_angles=scan_angles) # (N, 2)
-        # # not_nan_idxs = np.where(~np.isnan(scan_depth))[0]
-        # # scan_depth_pos = np.stack((scan_depth[not_nan_idxs] * np.cos(scan_angles[not_nan_idxs]), 
-        # #                            scan_depth[not_nan_idxs] * np.sin(scan_angles[not_nan_idxs])), axis=1) # (N, 2)
-        # # scan_depth_pos += rays_o[not_nan_idxs,:2] # (N, 2)
-        # scan_depth_pos_idxs = self.c2idx(pos=scan_depth_pos, res=res) # (N, 2)
-        # test_map = np.zeros((res, res)) # (res, res)
-        # test_map[scan_depth_pos_idxs[:,0], scan_depth_pos_idxs[:,1]] = 1
-        # if not np.allclose(test_map, scan_map):
-        #     print("ERROR: scan_map and test_map 2 are not equal!")
-
-        #     fig, axes = plt.subplots(ncols=3, nrows=1, figsize=(12,8))
-
-        #     ax = axes[0]
-        #     ax.imshow(scan_map.T, origin='lower', cmap='viridis', extent=[-0.5,0.5,-0.5,0.5], vmin=0, vmax=np.max(scan_map))
-        #     ax.set_title(f'Scan Map')
-        #     ax.set_xlabel(f'x [m]')
-        #     ax.set_ylabel(f'y [m]')
-        #     for i in range(0, scan_depth_pos.shape[0], 10):
-        #         ax.plot([rays_o[i,0], scan_depth_pos[i,0]], [rays_o[i,1], scan_depth_pos[i,1]], c='r', linewidth=0.5)
-
-        #     ax = axes[1]
-        #     ax.imshow(test_map.T, origin='lower', cmap='viridis', extent=[-0.5,0.5,-0.5,0.5], vmin=0, vmax=np.max(test_map))
-        #     ax.set_title(f'Test Map')
-        #     ax.set_xlabel(f'x [m]')
-        #     ax.set_ylabel(f'y [m]')
-        #     for i in range(0, scan_depth_pos.shape[0], 10):
-        #         ax.plot([rays_o[i,0], scan_depth_pos[i,0]], [rays_o[i,1], scan_depth_pos[i,1]], c='r', linewidth=0.5)
-
-        #     ax = axes[2]
-        #     ax.imshow((scan_map-test_map).T, origin='lower', cmap='viridis', extent=[-0.5,0.5,-0.5,0.5], vmin=-1, vmax=1)
-        #     ax.set_title(f'Difference Map')
-        #     ax.set_xlabel(f'x [m]')
-        #     ax.set_ylabel(f'y [m]')
-
-        #     plt.tight_layout()
-        #     plt.show()
 
         return scan_map, scan_depth, scan_angles
     

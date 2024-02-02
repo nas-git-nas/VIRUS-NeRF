@@ -197,7 +197,6 @@ class NGP(nn.Module):
     ):
 
         self.occupancy_grid.update(
-            threshold=density_threshold,
             elapse_time=elapse_time,
         )
 

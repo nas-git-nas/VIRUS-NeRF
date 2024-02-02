@@ -3,8 +3,6 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 import numpy as np
 import time
-import torch
-import taichi as ti
 from icecream import ic
 
 from optimization.particle_swarm_optimization_wrapper import ParticleSwarmOptimizationWrapper
@@ -12,7 +10,7 @@ from args.args import Args
 from datasets.dataset_rh import DatasetRH
 from datasets.dataset_ethz import DatasetETHZ
 from training.trainer import Trainer
-from helpers.system_fcts import get_size, moveToRecursively, checkGPUMemory
+from helpers.system_fcts import checkGPUMemory
 
 def main():
     # define paraeters

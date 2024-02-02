@@ -39,15 +39,6 @@ class PlotterResults():
         assert parameters == best_parameters
         assert parameters == parameters_vel
 
-        # # print average, mas and min velocity, (N, T, M)
-        # vel1 = vel[:,-1,:].reshape(vel.shape[0], vel.shape[2]) # (N, M)
-        # vel2 = vel[:,-2,:].reshape(vel.shape[0], vel.shape[2]) # (N, M)
-        # vel1[vel1 == np.nan] = vel2[vel1 == np.nan] 
-        # vel_norm = np.linalg.norm(vel1, axis=1) # (N,)
-        # print(f"N: {vel.shape[0]}, T: {vel.shape[1]}, M: {vel.shape[2]}")
-        # print(f"Final velocity norm mean: {np.nanmean(vel_norm)}, min: {np.nanmin(vel_norm)}, max: {np.nanmax(vel_norm)}")
-        # print(f"Final velocity mean: {np.nanmean(vel1)}, min: {np.nanmin(vel1)}, max: {np.nanmax(vel1)}")
-
         # print best score and best hparams
         _, best_particles = self._keepBestNParticles(
             scores=scores,
@@ -73,7 +64,6 @@ class PlotterResults():
         print(f"Maximal variation over last {self.converged_since_n_iters} iterations mean: {np.nanmean(pos_var_max)}, "
               +f"min: {np.nanmin(pos_var_max)}, max: {np.nanmax(pos_var_max)}")
 
-
         # adjust minimal score
         if np.min(scores) < self.score_min:
             self.score_min = np.min(scores)
@@ -81,7 +71,6 @@ class PlotterResults():
         # reverse colotmap
         cmap = matplotlib.colormaps['jet']
         cmap_inv = cmap.reversed() 
-
 
         # plot
         fig, axes = plt.subplots(ncols=1, nrows=3, figsize=(14,10))
@@ -119,8 +108,6 @@ class PlotterResults():
         # cbar_ax.set_title('Mean NND',fontsize=13)
         fig.colorbar(im, cax=cbar_ax)
 
-        # axes[0].set_title('Particle Swarm Optimization')
-
         # save figure
         fig.savefig(os.path.join(self.data_dir, 'pso_results.png'))
         plt.show()
@@ -134,6 +121,18 @@ class PlotterResults():
         ax:matplotlib.axes.Axes,
         cmap_inv:matplotlib.colors.LinearSegmentedColormap,
     ):
+        """
+        Plot particle speeds.
+        Args:
+            vel: particle velocities; numpy array of shape (N, T, M)
+            scores: particle scores; numpy array of shape (N, T)
+            best_scores: best scores; numpy array of shape (N,)
+            best_iters: best iterations; numpy array of shape (N,)
+            ax: matplotlib axis
+            cmap_inv: reversed colormap
+        Returns:
+            ax: matplotlib axis
+        """
         vel_norm = np.linalg.norm(vel, axis=2) # (N, T)
         vel_norm_mean = np.nanmean(vel_norm, axis=0) # (T,)
         vel_norm_std = np.nanstd(vel_norm, axis=0) # (T,)
@@ -162,7 +161,6 @@ class PlotterResults():
                             cmap=cmap_inv, vmin=self.score_min, vmax=self.score_max, marker=self.best_symbs[i], s=200,
                             label=f'Particle {best_particles[i]}, best NND: {best_scores[i]:.3f}')
 
-
         ax.set_xlabel('Iteration')
         ax.set_ylabel('Particle Speed')
         ax.set_ylim([0, np.nanmax(vel_norm)])
@@ -177,7 +175,16 @@ class PlotterResults():
         ax:matplotlib.axes.Axes,
         cmap_inv:matplotlib.colors.LinearSegmentedColormap,
     ):
-        
+        """
+        Plot particle scores.
+        Args:
+            scores: particle scores; numpy array of shape (N, T)
+            ax: matplotlib axis
+            cmap_inv: reversed colormap
+        Returns:
+            ax: matplotlib axis
+        """
+
         for i in range(scores.shape[0]):
             score = scores[i,-self.converged_since_n_iters:]
             score = score[~np.isnan(score)]
@@ -203,6 +210,22 @@ class PlotterResults():
         ax:matplotlib.axes.Axes,
         cmap_inv:matplotlib.colors.LinearSegmentedColormap,
     ):
+        """
+        Plot particle scores.
+        Args:
+            pos: particle positions; numpy array of shape (N, T, M)
+            scores: particle scores; numpy array of shape (N, T)
+            best_pos: best particle positions; numpy array of shape (N, M)
+            best_scores: best scores; numpy array of shape (N,)
+            best_iters: best iterations; numpy array of shape (N,)
+            hparams_lims: dictionary of hparams limits { hparam_name: [min, max] }; dictionary { str: [float, float] }
+            parameters: dictionary of parameters { column_index: parameter_name}; dictionary { int: str }
+            ax: matplotlib axis
+            cmap_inv: reversed colormap
+        Returns:
+            ax: matplotlib axis
+            im: scatter plot
+        """
         column_width = 0.6
         plot_every_n_iters = 10
         N = pos.shape[0]
@@ -247,6 +270,16 @@ class PlotterResults():
         best_scores:np.ndarray,
         arr_list:list
     ):
+        """
+        Keep only best N particles.
+        Args:
+            scores: particle scores; numpy array of shape (N, T)
+            best_scores: best scores; numpy array of shape (N,)
+            arr_list: list of arrays to keep best N particles; list of numpy arrays
+        Returns:
+            best_n_arr_list: list of best N particles; list of numpy arrays
+            best_particles: best particles; numpy array of shape (N,)
+        """
         scores = np.copy(scores)
         best_scores = np.copy(best_scores)
 
@@ -267,6 +300,14 @@ class PlotterResults():
         scores:np.ndarray,
         best_scores:np.ndarray,
     ):
+        """
+        Determine best N particles.
+        Args:
+            scores: particle scores; numpy array of shape (N, T)
+            best_scores: best scores; numpy array of shape (N,)
+        Returns:
+            best_particles: best particles; numpy array of shape (N,)
+        """
         # return the best N particles from the last iteration if algorithm did not yet converge
         if self.converged_since_n_iters <= 0:
             best_particles = np.argsort(best_scores)
@@ -333,8 +374,6 @@ class PlotterResults():
         ):
         """
         Read position data from data_dir.
-        Args:
-            keep_best_n_particles: keep only best N particles; int
         Returns:
             pos: particle positions; numpy array of shape (N, M)
             scores: particle scores; numpy array of shape (N,)
@@ -390,13 +429,3 @@ class PlotterResults():
 
 
 
-def main():
-    data_dir = "results/pso/opt32_2"
-    plotter = PlotterResults(
-        data_dir=data_dir,
-    )
-    plotter.plot()
-
-
-if __name__ == "__main__":
-    main()

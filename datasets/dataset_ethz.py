@@ -1,35 +1,27 @@
-import glob
 import os
 import sys
 import numpy as np
-import torch
-from tqdm import tqdm
 import pandas as pd
+import torch
 import cv2 as cv
-
-
-from robotathome import RobotAtHome
-from robotathome import logger, log
-from robotathome import time_win2unixepoch, time_unixepoch2win
 from scipy.spatial.transform import Rotation
-
-from datasets.sensor_model import RGBDModel, ToFModel, USSModel
-from args.args import Args
-from training.sampler import Sampler
-from helpers.data_fcts import sensorName2ID, sensorID2Name
-from ROS1.src.sensors.src.pcl_tools.pcl_loader import PCLLoader
-
 
 from datasets.ray_utils import get_ray_directions
 from datasets.dataset_base import DatasetBase
 from datasets.scene_ethz import SceneETHZ
 from datasets.splitter_ethz import SplitterETHZ
+from datasets.sensor_rgbd import RGBDModel
+from datasets.sensor_tof import ToFModel
+from datasets.sensor_uss import USSModel
+from args.args import Args
+from training.sampler import Sampler
+from helpers.data_fcts import sensorName2ID, sensorID2Name
+from ROS1.src.sensors.src.pcl_tools.pcl_loader import PCLLoader
 from ROS1.src.sensors.src.pcl_tools.pcl_transformer import PCLTransformer
 from ROS1.src.sensors.src.pcl_tools.pcl_creator import PCLCreatorUSS, PCLCreatorToF
 
 
 class DatasetETHZ(DatasetBase):
-
     def __init__(
         self, 
         args:Args, 
@@ -78,19 +70,6 @@ class DatasetETHZ(DatasetBase):
             split_masks=split_masks,
             directions_dict=directions_dict,
         )
-
-        tof_not_nan = ~torch.isnan(depths_dict["ToF"])
-        num_samples = depths_dict['ToF'].shape[0]*64
-        print(f"split: {split}, tof not nan: {torch.sum(tof_not_nan)} / {num_samples} = {torch.sum(tof_not_nan)/num_samples}")
-
-        # if self.args.dataset.keep_pixels_in_angle_range != "all":
-        #     rays, directions, depths, img_wh = self.reduceImgHeight(
-        #         rays=rays,
-        #         directions=directions,
-        #         depths=depths,
-        #         img_wh=img_wh,
-        #         angle_min_max=self.args.dataset.keep_pixels_in_angle_range,
-        #     )
 
         self.img_wh = img_wh
         self.poses = poses
@@ -210,25 +189,6 @@ class DatasetETHZ(DatasetBase):
                 xyz=xyz,
             )
             xyzs.append(xyz)
-
-            # h_min = poses[i,2,3] - self.args.eval.height_tolerance
-            # h_max = poses[i,2,3] + self.args.eval.height_tolerance
-
-            # xyz_gt = self.scene._point_cloud 
-            # xyz_gt = xyz_gt[(xyz_gt[:,2] >= h_min) & (xyz_gt[:,2] <= h_max)]
-            # plt.scatter(xyz_gt[:,0], xyz_gt[:,1], s=0.1, c="black")
-            
-            # xyz_plot = xyz[(xyz[:,2] >= h_min) & (xyz[:,2] <= h_max)] # (k, 3)
-            # plt.scatter(xyz_plot[:,0], xyz_plot[:,1], s=0.1, c="b")
-
-            # poses_cam = self.poses.clone().detach().cpu().numpy() # (N, 3, 4)
-            # poses_lidar = self.poses_lidar.clone().detach().cpu().numpy() # (N, 3, 4)
-            # poses_cam[:,:,3] = self.scene.c2w(pos=poses_cam[:,:,3], copy=False) # (N, 3)
-            # poses_lidar[:,:,3] = self.scene.c2w(pos=poses_lidar[:,:,3], copy=False) # (N, 3)
-            # plt.scatter(poses_lidar[:,0,3], poses_lidar[:,1,3], s=0.5, c="r")
-            # plt.scatter(poses[i,0,3], poses[i,1,3], s=20, c="pink")
-            # plt.scatter(poses_cam[:,0,3], poses_cam[:,1,3], s=0.5, c="g")
-            # plt.show()
             
         return xyzs, poses
     
@@ -304,7 +264,6 @@ class DatasetETHZ(DatasetBase):
         """
         Get the field of view of a sensor.
         Args:
-            sensor_name: name of the sensor, str
             img_idxs: indices of samples; numpy array of shape (N,)
         Returns:
             fov: field of view of the sensors; dict of { sensor: { camera: array of shape (N,) } }
@@ -510,14 +469,10 @@ class DatasetETHZ(DatasetBase):
             tof_depths, tof_stds, tof_sensors_model = self._convertToF(
                 meass=tof_meass,
                 meas_stds=tof_meas_stds,
-                sensor_ids=tof_sensor_ids,
                 img_wh=img_wh,
             ) # (N, H*W), (N, H*W), dict { cam_id : ToFModel }
             depths_dict["ToF"] = tof_depths
             sensors_dict["ToF"] = tof_sensors_model
-
-            # m_error = torch.nanmean(torch.abs(tof_depths - rs_depths))
-            # print(f"mean error: {m_error}")
 
         # convert stack ids and times to tensor
         sensor_ids = torch.tensor(sensor_ids, dtype=torch.uint8, requires_grad=False)
@@ -577,10 +532,6 @@ class DatasetETHZ(DatasetBase):
 
             # verify time
             if self.args.training.debug_mode:
-                # if (times.shape[0] > 0) and (not np.allclose(time, times[:len(time)], atol=1e-1)):
-                #     self.args.logger.error(f"DatasetETHZ::_readPoses: time is not consistent")
-                #     print(f"time: {time}")
-                #     print(f"times: {times[:]}")
                 if not np.allclose(time, time_lidar, atol=1e-6):
                     self.args.logger.error(f"DatasetETHZ::_readPoses: time_lidar is not consistent")
                     print(f"time: {time}")
@@ -629,8 +580,8 @@ class DatasetETHZ(DatasetBase):
         """
         Read color images from the dataset for each camera.
         Args:
-            cam_ids: list of camera ids; list of str
             data_dir: path to data directory; str
+            cam_ids: list of camera ids; list of str
             img_wh: image width and height; tuple of ints
             split_mask: mask of splits; dict of { sensor type: bool array of shape (N_all_splits,) }
         Returns:
@@ -691,9 +642,6 @@ class DatasetETHZ(DatasetBase):
 
             depths_temp = np.zeros((len(depth_files), H*W))
             for i, f in enumerate(depth_files):
-                # depth_file = os.path.join(depth_path, f)
-                # depth = cv.imread(depth_file, cv.IMREAD_UNCHANGED)
-                # depths_temp[i] = depth.flatten() # (H*W)
 
                 depth = np.load(
                     file=os.path.join(depth_path, f),
@@ -758,8 +706,8 @@ class DatasetETHZ(DatasetBase):
         """
         Read Tof measurements from the dataset for each camera.
         Args:
-            cam_ids: list of camera ids; list of str
             data_dir: path to data directory; str
+            cam_ids: list of camera ids; list of str
             split_masks: mask of splits; dict of { sensor type: bool array }
         Returns:
             meass: USS measurements; array of shape (N_images, 64)
@@ -797,18 +745,6 @@ class DatasetETHZ(DatasetBase):
             meas_stds = np.concatenate((meas_stds, stds), axis=0)
             sensor_ids = np.concatenate((sensor_ids, np.ones((meass_temp.shape[0]))*int(cam_id[-1])), axis=0) # (N,)
             times = np.concatenate((times, time), axis=0) # (N,)
-
-        # img = meass[0].reshape(8,8)
-        # img2 = meass[1].reshape(8,8)
-        # img3 = meass[2].reshape(8,8)
-        # fig, axs = plt.subplots(1,3)
-        # im = axs[0].imshow(img, cmap='jet')
-        # fig.colorbar(im, ax=axs[0])
-        # im = axs[1].imshow(img2, cmap='jet')
-        # fig.colorbar(im, ax=axs[1])
-        # im = axs[2].imshow(img3, cmap='jet')
-        # fig.colorbar(im, ax=axs[2])
-        # plt.show()
             
         times = self.normalizeTimes(
             times=times,
@@ -894,13 +830,6 @@ class DatasetETHZ(DatasetBase):
 
         # set invalid depth values to nan
         depths[depths==0.0] = np.nan # (N, H*W)
-
-        # for i in range(depths.shape[0]):
-        #     print(f"depth img max: {np.nanmax(depths[i])}, min: {np.nanmin(depths[i])}")
-        #     # add color scale
-        #     plt.imshow(depths[i].reshape(img_wh[1], img_wh[0]), cmap='jet', vmin=0.0, vmax=6.0)
-        #     plt.colorbar()
-        #     plt.show()
         
         # convert depth to cube coordinate system [-0.5, 0.5]
         depths = self.scene.w2c(depths.flatten(), only_scale=True).reshape(depths.shape) # (N, H*W)
@@ -971,7 +900,6 @@ class DatasetETHZ(DatasetBase):
         self,
         meass:np.array,
         meas_stds:np.array,
-        sensor_ids:np.array,
         img_wh:tuple,
     ):
         """
@@ -979,7 +907,6 @@ class DatasetETHZ(DatasetBase):
         Args:
             meass: dictionary containing ToF measurements; array of shape (N_images, 64,)
             meas_stds: dictionary containing ToF measurement standard deviations; array of shape (N_images, 64,)
-            sensor_ids: stack identity number of sample; array of shape (N_images,)
             img_wh: image width and height; tuple of ints
         Returns:
             depths: converted depths; array of shape (N_images, H*W)
@@ -1002,23 +929,9 @@ class DatasetETHZ(DatasetBase):
                 meas=meas_stds[i],
             ) # (8, 8)
 
-        # depths_sensor_w = np.copy(depths_sensor)
-
         # convert depth in meters to cube coordinates [-0.5, 0.5]
         depths_sensor = self.scene.w2c(depths_sensor.flatten(), only_scale=True).reshape(-1, 64) # (N, 8*8)
         stds_sensor = self.scene.w2c(stds_sensor.flatten(), only_scale=True).reshape(-1, 64) # (N, 8*8)
-
-        # img = depths_sensor[0].reshape(8,8)
-        # img2 = depths_sensor[1].reshape(8,8)
-        # img3 = depths_sensor[2].reshape(8,8)
-        # fig, axs = plt.subplots(1,3)
-        # im = axs[0].imshow(img, cmap='jet')
-        # fig.colorbar(im, ax=axs[0])
-        # im = axs[1].imshow(img2, cmap='jet')
-        # fig.colorbar(im, ax=axs[1])
-        # im = axs[2].imshow(img3, cmap='jet')
-        # fig.colorbar(im, ax=axs[2])
-        # plt.show()
 
         # create sensor model
         sensor_model = ToFModel(
@@ -1035,42 +948,6 @@ class DatasetETHZ(DatasetBase):
             depths=stds_sensor,
             format="sensor",
         ) # (N, H*W)
-
-        # for i in range(depths_img.shape[0]):
-        #     img = depths_img[i].reshape(img_wh[1], img_wh[0])
-        #     img = skimage.measure.block_reduce(img, (8,8), np.nanmax) # (H, W)
-        #     img2 = depths_sensor[i].reshape(8, 8)
-        #     img3 = depths_sensor_w[i].reshape(8, 8)
-            
-        #     if np.all(np.isnan(img)):
-        #         continue
-        #     print(f"not nan: {np.sum(~np.isnan(img))}")
-
-        #     vmax = np.nanmax(np.concatenate((img.flatten(), img2.flatten())))
-        #     fig, axes = plt.subplots(1, 3, figsize=(12, 5))
-        #     im = axes[0].imshow(img, cmap='jet', vmin=0.0, vmax=vmax)
-        #     im = axes[1].imshow(img2, cmap='jet', vmin=0.0, vmax=vmax)
-        #     im = axes[2].imshow(img3, cmap='jet')
-
-        #     fig.subplots_adjust(right=0.8)
-        #     cbar_ax = fig.add_axes([0.85, 0.1, 0.05, 0.8]) # [left, bottom, width, height]
-        #     fig.colorbar(im, cax=cbar_ax)
-        #     plt.show()
-
-        # img = depths_img[0].reshape(img_wh[1], img_wh[0])
-        # img = skimage.measure.block_reduce(img, (8,8), np.nanmax) # (H, W)
-        # img2 = depths_img[1].reshape(img_wh[1], img_wh[0])
-        # img2 = skimage.measure.block_reduce(img2, (8,8), np.nanmax) # (H, W)
-        # img3 = depths_img[2].reshape(img_wh[1], img_wh[0])
-        # img3 = skimage.measure.block_reduce(img3, (8,8), np.nanmax) # (H, W)
-        # fig, axs = plt.subplots(1,3)
-        # im = axs[0].imshow(img, cmap='jet')
-        # fig.colorbar(im, ax=axs[0])
-        # im = axs[1].imshow(img2, cmap='jet')
-        # fig.colorbar(im, ax=axs[1])
-        # im = axs[2].imshow(img3, cmap='jet')
-        # fig.colorbar(im, ax=axs[2])
-        # plt.show()
 
         # convert depth to tensor
         depths =  torch.tensor(

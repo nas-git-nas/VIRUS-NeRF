@@ -22,7 +22,17 @@ class FileFormatter(logging.Formatter):
         logging.CRITICAL: format_critical
     }
 
-    def format(self, record):
+    def format(
+        self, 
+        record,
+    ):
+        """
+        Format the log record
+        Args:
+            record: log record
+        Returns:
+            formatted log record
+        """
         log_fmt = self.FORMATS.get(record.levelno)
         formatter = logging.Formatter(log_fmt)
         return formatter.format(record)
@@ -50,7 +60,17 @@ class TerminalFormatter(logging.Formatter):
         logging.CRITICAL: bold_red + format_critical + reset
     }
 
-    def format(self, record):
+    def format(
+        self, 
+        record,
+    ):
+        """
+        Format the log record
+        Args:
+            record: log record
+        Returns:
+            formatted log record
+        """
         log_fmt = self.FORMATS.get(record.levelno)
         formatter = logging.Formatter(log_fmt)
         return formatter.format(record)

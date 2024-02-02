@@ -1,14 +1,11 @@
 import numpy as np
 import os
 import sys
-import matplotlib.pyplot as plt
-import matplotlib
-from abc import ABC, abstractmethod
  
 sys.path.insert(0, os.getcwd())
 from optimization.particle_swarm_optimization_wrapper import ParticleSwarmOptimizationWrapper
 from optimization.metric import Metric
-from optimization.plotter import Plotter
+from optimization.plotter_metric import Plotter
 
 
 def optimize(

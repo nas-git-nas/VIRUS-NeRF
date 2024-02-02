@@ -6,7 +6,6 @@ import sys
 from scipy.ndimage import grey_dilation
  
 sys.path.insert(0, os.getcwd())
-from datasets.sensor_model import ToFModel, USSModel
 from datasets.dataset_rh import DatasetRH
 from datasets.dataset_ethz import DatasetETHZ
 from args.args import Args

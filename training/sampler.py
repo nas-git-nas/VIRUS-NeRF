@@ -84,9 +84,6 @@ class Sampler():
             mask = (self.times <= elapse_time)
             valid_img_idxs = valid_img_idxs[mask]
 
-            if torch.all(mask): # TODO: remove
-                self.args.logger.warn(f"-------------- time over")
-
         # if self.args.training.debug_mode:
         if valid_img_idxs.shape[0] == 0:
             self.args.logger.error(f"no valid images found")
@@ -195,11 +192,7 @@ class Sampler():
                 self.args.logger.error(f"ray sampling strategy = {strategy} not implemented")
 
             pix_idxs[B_sum:B_sum+B] = pix_idxs_temp
-            B_sum += B
-
-            # if torch.any(pix_idxs_temp == -1):
-            #     self.args.logger.error(f"Some pixels are not sampled: strategy = {strategy}")
-            #     return None         
+            B_sum += B      
 
         if self.args.training.debug_mode:
             if torch.any(pix_idxs == -1):
@@ -268,166 +261,3 @@ class Sampler():
         pix_idxs = mask_idxs[rand_ints]
         return pix_idxs
     
-
-
-        
-
-        # if pix_strategy == "random" or pix_strategy == "valid_rgbd":
-        #     return torch.randint(0, WH, size=(B,), device=self.args.device, dtype=torch.int32)
-        
-        # if pix_strategy == "ordered":
-        #     step = WH / B
-        #     pix_idxs = torch.linspace(0, WH-1-step, B, device=self.args.device)
-        #     rand_offset = step * torch.rand(size=(B,), device=self.args.device)
-        #     pix_idxs = torch.round(pix_idxs + rand_offset).to(torch.int64)
-        #     pix_idxs = torch.clamp(pix_idxs, min=0, max=WH-1)
-        #     return pix_idxs
-        
-        # if pix_strategy == "entire_img":
-        #     return torch.arange(0, WH, device=self.args.device, dtype=torch.int32)
-        
-        # if pix_strategy == "closest":
-        #     pix_idxs = torch.randint(0, WH, size=(B,), device=self.args.device, dtype=torch.int32)
-        #     num_min_idxs = int(0.005 * B)
-
-        #     # replace some random indices with closest pixel indices
-        #     min_pix_idxs, _, _ = self.sensors_dict["USS"].getStatsForBatch(
-        #         batch_img_idxs=img_idxs,
-        #     )
-        #     pix_idxs[:num_min_idxs] = min_pix_idxs[:num_min_idxs]
-        #     return pix_idxs
-        
-        # if pix_strategy == "weighted":
-        #     pix_idxs = self.rgn.choice(WH, size=(B,), p=self.weights)
-        #     return torch.from_numpy(pix_idxs).to(torch.int64)
-        
-        # if pix_strategy == "valid_tof":
-        #     tof_mask = torch.tensor(self.sensors_dict["ToF"].mask, device=self.args.device, dtype=torch.bool)
-        #     tof_mask_idxs = torch.where(tof_mask)[0]
-        #     tof_rand_ints = torch.randint(0, tof_mask_idxs.shape[0], (B,), device=self.args.device, dtype=torch.int32)
-        #     tof_img_idxs = tof_mask_idxs[tof_rand_ints]
-        #     return tof_img_idxs
-
-        # if pix_strategy == "valid_uss":            
-        #     uss_maks = torch.tensor(self.sensors_dict["USS"].mask, device=self.args.device, dtype=torch.bool)
-        #     uss_mask_idxs = torch.where(uss_maks)[0]
-        #     uss_rand_ints = torch.randint(0, uss_mask_idxs.shape[0], (B,), device=self.args.device, dtype=torch.int32)
-        #     uss_img_idxs = uss_mask_idxs[uss_rand_ints]
-        #     return uss_img_idxs
-        
-        # if pix_strategy == "valid_depth":
-        #     val_idxs_dict = self.fct_getValidDepthMask(img_idxs) # dict of sensor: valid depth; bool tensor (B, H*W)
-
-        #     # random ints used to create B random permutation of H*W intergers
-        #     rand_ints = torch.randint(0, WH, (B, WH), device=self.args.device, dtype=torch.int32) # (B, H*W)
-
-        #     # replace random ints with -n where depth is invalid in order to not sample them
-        #     # n is the number of sensor for which the depth is invalid
-        #     for val_idxs in val_idxs_dict.values():
-        #         rand_ints = torch.where(
-        #             condition=val_idxs, 
-        #             input=rand_ints, 
-        #             other=torch.minimum(rand_ints-1, -torch.ones_like(rand_ints, device=self.args.device, dtype=torch.int32))
-        #         ) # (B, H*W)
-
-        #     # create random permutation for every row where invalid pixels are at the beginning   
-        #     perm_idxs = torch.argsort(rand_ints, dim=1) # (B, H*W)
-        #     return perm_idxs[:,-1] # (B), random pixel indices with valid depth (except entire row is invalid)
-        
-        # if pix_strategy == "uss_tof_split":
-        #     tof_num_samples = int(B/2)
-        #     tof_mask = torch.tensor(self.sensors_dict["ToF"].mask, device=self.args.device, dtype=torch.bool)
-        #     tof_mask_idxs = torch.where(tof_mask)[0]
-        #     tof_rand_ints = torch.randint(0, tof_mask_idxs.shape[0], (tof_num_samples,), device=self.args.device, dtype=torch.int32)
-        #     tof_img_idxs = tof_mask_idxs[tof_rand_ints]
-
-        #     uss_num_samples = B - tof_num_samples
-        #     uss_maks = torch.tensor(self.sensors_dict["USS"].mask, device=self.args.device, dtype=torch.bool)
-        #     uss_mask_idxs = torch.where(uss_maks)[0]
-        #     uss_rand_ints = torch.randint(0, uss_mask_idxs.shape[0], (uss_num_samples,), device=self.args.device, dtype=torch.int32)
-        #     uss_img_idxs = uss_mask_idxs[uss_rand_ints]
-
-        #     return torch.cat((uss_img_idxs, tof_img_idxs), dim=0)
-        
-        # print(f"ERROR: sampler._pixIdxs: pixel sampling strategy must be either 'random', 'ordered', 'closest' or weighted"
-        #       + f" but is {self.args.training.sampling_strategy['pixs']}")
-        
-    # def getSensorModelAttr(
-    #     self,
-    #     sensor_ids:torch.Tensor,
-    #     img_idxs:torch.Tensor,
-    #     pix_idxs:torch.Tensor,
-    #     sensor_type:str,
-    #     getattr_name:str,
-    #     dtype:torch.dtype,
-    #     WH:int,
-    # ):
-    #     """
-    #     Get mask of sensor models.
-    #     Args:
-    #         sensor_ids: indices of stacks needed if ray sampling strategy is 'closest'; tensor of int64 (N_img,)
-    #         sensor_type: type of sensor model, either 'USS' or 'ToF'; str
-    #         getattr_name: name of attribute to get; str
-    #         dtype: data type of attribute; torch.dtype
-    #         WH: number of pixels per image; int
-    #     Returns:
-    #         attr: mask of sensor models; tensor of bool (WH,)
-    #     """
-    #     batch_ids = sensor_ids[img_idxs]
-
-    #     attr = torch.full((WH,), np.nan, device=self.args.device, dtype=dtype)
-    #     for sensor_id, sensor_model in self.sensors_dict.items():
-    #         if not sensor_type in sensor_id:
-    #             continue
-
-    #         batch_mask = (batch_ids == int(sensor_id[-1]))
-    #         pixel_mask = bat
-    #         attr[id_mask] = torch.tensor(
-    #             data=getattr(sensor_model, getattr_name),
-    #             device=self.args.device, 
-    #             dtype=dtype,
-    #         )[id_mask]
-
-    #     return attr
-
-        
-    # def _count(
-    #     self,
-    #     img_idxs:torch.Tensor,
-    #     pix_idxs:torch.Tensor,
-    #     origin:str,
-    # ):
-    #     """
-    #     Count how often a pixel is sampled for each origin.
-    #     Args:
-    #         img_idxs: indices of images used for training; tensor of int64 (batch_size,)
-    #         pix_idxs: indices of pixels used for training; tensor of int64 (batch_size,)
-    #         origin: sampling origin; str
-    #                 'nerf': sample for nerf
-    #                 'occ': sample for occupancy grid
-    #     Returns:
-    #         count: number of times a pixel is sampled for origin; tensor of uint8 (batch_size,)
-    #     """
-    #     if origin == "nerf":
-    #         count_is_max = self.sample_count["nerf"][img_idxs, pix_idxs] == 255
-    #         if torch.any(count_is_max):
-    #             self.args.logger.warning(f"overflows from 255->0: limit count to 255")
-    #         self.sample_count["nerf"][img_idxs, pix_idxs] = torch.where(
-    #             condition=count_is_max,
-    #             input=self.sample_count["nerf"][img_idxs, pix_idxs],
-    #             other=self.sample_count["nerf"][img_idxs, pix_idxs] + 1,
-    #         )
-    #         return self.sample_count["nerf"][img_idxs, pix_idxs]
-        
-    #     if origin == "occ":
-    #         count_is_max = self.sample_count["occ"][img_idxs, pix_idxs] == 255
-    #         if torch.any(count_is_max):
-    #             self.args.logger.warning(f"sampler._count: overflows from 255->0: limit count to 255")
-    #         self.sample_count["occ"][img_idxs, pix_idxs] = torch.where(
-    #             condition=count_is_max,
-    #             input=self.sample_count["occ"][img_idxs, pix_idxs],
-    #             other=self.sample_count["occ"][img_idxs, pix_idxs] + 1,
-    #         )
-    #         return self.sample_count["occ"][img_idxs, pix_idxs]
-
-    #     self.args.logger.error(f"origin must be either 'nerf' or 'occ'")

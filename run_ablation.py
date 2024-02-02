@@ -1,6 +1,7 @@
 
 import os
-import numpy as np
+os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+
 import sys
 
 from training.trainer import Trainer
