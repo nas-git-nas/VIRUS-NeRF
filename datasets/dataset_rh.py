@@ -1,45 +1,24 @@
-import glob
 import os
-
 import numpy as np
 import torch
-from tqdm import tqdm
 import pandas as pd
 import cv2 as cv
-
 import matplotlib.image as mpimg
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib.colors import Normalize
-from matplotlib.cm import ScalarMappable
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 from robotathome import RobotAtHome
-from robotathome import logger, log
-from robotathome import time_win2unixepoch, time_unixepoch2win
 
-from datasets.sensor_model import RGBDModel, ToFModel, USSModel
-from helpers.data_fcts import sensorName2ID, sensorID2Name
-
+from datasets.ray_utils import get_ray_directions
+from datasets.dataset_base import DatasetBase
+from datasets.scene_rh import SceneRH
+from datasets.sensor_rgbd import RGBDModel
+from datasets.sensor_tof import ToFModel
+from datasets.sensor_uss import USSModel
+from helpers.data_fcts import sensorName2ID
 from args.args import Args
 from training.sampler import Sampler
 
-# try:
-#     from .ray_utils import get_rays
-#     from .base import DatasetBase
-#     from .color_utils import read_image
-#     from .ray_utils import get_ray_directions
-#     from .robot_at_home_scene import RobotAtHomeScene
-# except:
-
-from datasets.ray_utils import get_rays, get_ray_directions
-from datasets.dataset_base import DatasetBase
-from datasets.color_utils import read_image
-from datasets.scene_rh import SceneRH
-
 
 class DatasetRH(DatasetBase):
-
     def __init__(
         self, 
         args:Args, 
@@ -58,9 +37,9 @@ class DatasetRH(DatasetBase):
 
         # load dataset
         self.rh = RobotAtHome(
-            rh_path = self.args.dataset.path, 
-            rgbd_path = os.path.join(self.args.dataset.path, 'files/rgbd'), 
-            scene_path = os.path.join(self.args.dataset.path, 'files/scene'), 
+            rh_path = self.args.rh.dataset_dir, 
+            rgbd_path = os.path.join(self.args.rh.dataset_dir, 'files/rgbd'), 
+            scene_path = os.path.join(self.args.rh.dataset_dir, 'files/scene'), 
             wspc_path = 'results', 
             db_filename = "rh.db"
         )
@@ -85,15 +64,6 @@ class DatasetRH(DatasetBase):
             cam_ids=cam_ids,
             directions_dict=directions_dict,
         )
-
-        # if self.args.dataset.keep_pixels_in_angle_range != "all":
-        #     rays, directions, depths, img_wh = self.reduceImgHeight(
-        #         rays=rays,
-        #         directions=directions,
-        #         depths=depths,
-        #         img_wh=img_wh,
-        #         angle_min_max=self.args.dataset.keep_pixels_in_angle_range,
-        #     )
 
         self.img_wh = img_wh
         # self.K = K_dict["RGBD_1"]
@@ -243,8 +213,8 @@ class DatasetRH(DatasetBase):
         """
         Get the indices of the dataset that belong to a particular sensor.
         Args:
-            df: robot@home dataframe, pandas df
             sensor_name: name of the sensor, str
+            df: robot@home dataframe, pandas df
         Returns:
             idxs: indices of the dataset that belong to the sensor
         """
@@ -256,7 +226,10 @@ class DatasetRH(DatasetBase):
         idxs = np.where(mask)[0]
         return idxs
     
-    def _loadRHDataframe(self, split):
+    def _loadRHDataframe(
+        self, 
+        split:str,
+    ):
         """
         Load robot@home data frame
         Args:
@@ -276,7 +249,7 @@ class DatasetRH(DatasetBase):
         df = self.splitDataset(
             df = df, 
             split_ratio = self.args.dataset.split_ratio, 
-            split_description_path = os.path.join(self.args.dataset.path, 'files', 'rgbd', 
+            split_description_path = os.path.join(self.args.rh.dataset_dir, 'files', 'rgbd', 
                                                   self.args.rh.session, self.args.rh.home, self.args.rh.room),
             split_description_name = 'split_'+self.args.rh.subsession+'.csv'
         )
@@ -334,8 +307,7 @@ class DatasetRH(DatasetBase):
     
     def _readImgs(
         self, 
-        df:pd
-        .DataFrame, 
+        df:pd.DataFrame, 
         img_wh:tuple,
     ):
         """
@@ -360,7 +332,7 @@ class DatasetRH(DatasetBase):
             depth = cv.imread(d_f, cv.IMREAD_UNCHANGED)
 
             # verify depth image
-            if self.args.model.debug_mode:
+            if self.args.training.debug_mode:
                 if np.max(depth) > 115 or np.min(depth) < 0:
                     self.args.logger.error(f"robot_at_home.py: read_meta: depth image has invalid values")
                 if not (np.allclose(depth[:,:,0], depth[:,:,1]) and np.allclose(depth[:,:,0], depth[:,:,2])):
@@ -374,7 +346,7 @@ class DatasetRH(DatasetBase):
     
     def _readTimestamp(
         self,
-        df,
+        df:pd.DataFrame,
     ):
         """
         Read timestamps from the dataset.
@@ -422,7 +394,6 @@ class DatasetRH(DatasetBase):
             rgbs: color images; tensor of shape (N_images, H*W, 3)
         """
         return torch.tensor(rgbs, dtype=torch.float32, requires_grad=False, device=self.args.device)
-
     
     def _convertDepthImgs(
         self,
@@ -477,10 +448,10 @@ class DatasetRH(DatasetBase):
         return torch.tensor(times, dtype=torch.float32, requires_grad=False, device=self.args.device)
         
     def _createSensorModels(
-            self, 
-            depths:torch.tensor,
-            img_wh:tuple,
-            sensor_ids:np.ndarray,
+        self, 
+        depths:torch.tensor,
+        img_wh:tuple,
+        sensor_ids:np.ndarray,
     ):
         """
         Create sensor models for each sensor and convert depths respectively.
@@ -532,7 +503,13 @@ class DatasetRH(DatasetBase):
 
         return sensors_dict, depths_dict
     
-    def splitDataset(self, df, split_ratio, split_description_path, split_description_name):
+    def splitDataset(
+        self, 
+        df:pd.DataFrame, 
+        split_ratio:dict, 
+        split_description_path:str, 
+        split_description_name:str,
+    ):
         """
         Split the dataset into train, val and test sets.
         Args:
@@ -597,213 +574,3 @@ class DatasetRH(DatasetBase):
 
         return df
     
-
-    
-
-    
-
-    
-
-
-
-def createFoVpolygon(corners, rays):
-    # scale rays
-    rays = 0.05 * ( rays.T / np.linalg.norm(rays, axis=1) ).T
-
-    # Calculate field of view vertices
-    fov_vertices1 = np.zeros((5, 3))
-    fov_vertices1[0, :] = corners[0, :]  # Start from the first corner
-    for j in range(1, 4):
-        fov_vertices1[j, :] = corners[j, :]
-    fov_vertices1[4, :] = corners[0, :]  # Close the polygon by going back to the first corner
-
-    fov_vertices2 = np.zeros((5, 3))
-    fov_vertices2[0, :] = corners[0, :]
-    fov_vertices2[1, :] = corners[0, :] + rays[0, :] 
-    fov_vertices2[2, :] = corners[1, :] + rays[1, :]
-    fov_vertices2[3, :] = corners[1, :]
-    fov_vertices2[4, :] = corners[0, :]
-
-    fov_vertices3 = np.zeros((5, 3))
-    fov_vertices3[0, :] = corners[1, :]
-    fov_vertices3[1, :] = corners[1, :] + rays[1, :]
-    fov_vertices3[2, :] = corners[2, :] + rays[2, :]
-    fov_vertices3[3, :] = corners[2, :]
-    fov_vertices3[4, :] = corners[1, :]
-
-    fov_vertices4 = np.zeros((5, 3))
-    fov_vertices4[0, :] = corners[2, :]
-    fov_vertices4[1, :] = corners[2, :] + rays[2, :]
-    fov_vertices4[2, :] = corners[3, :] + rays[3, :]
-    fov_vertices4[3, :] = corners[3, :]
-    fov_vertices4[4, :] = corners[2, :]
-
-    fov_vertices5 = np.zeros((5, 3))
-    fov_vertices5[0, :] = corners[3, :]
-    fov_vertices5[1, :] = corners[3, :] + rays[3, :]
-    fov_vertices5[2, :] = corners[0, :] + rays[0, :]
-    fov_vertices5[3, :] = corners[0, :]
-    fov_vertices5[4, :] = corners[3, :]
-
-    fov_vertices6 = np.zeros((5, 3))
-    fov_vertices6[0, :] = corners[0, :] + rays[0, :] 
-    for j in range(1, 4):
-        fov_vertices6[j, :] = corners[j, :] + rays[j, :] 
-    fov_vertices6[4, :] = corners[0, :] + rays[0, :] 
-
-    # Create a polygon to represent the field of view (transparent)
-    fov_polygon = [fov_vertices1, fov_vertices2, fov_vertices3, fov_vertices4, fov_vertices5, fov_vertices6]
-
-    return fov_polygon
-
-def plotCameraFoV(rays_o, rays_d, color, ax):
-    """
-    Visualize camera viewing directions.
-    """
-
-    # plot field of view of camera
-    all_corners = np.array([rays_o[0,0,:], rays_o[-1,0,:], 
-                            rays_o[-1,-1,:], rays_o[0,-1,:]]) # (4, 3)
-    all_rays = np.array([rays_d[0,0,:], rays_d[-1,0,:], 
-                            rays_d[-1,-1,:], rays_d[0,-1,:]]) # (4, 3)
-    fov_polygon = createFoVpolygon(all_corners, all_rays)
-    ax.add_collection3d(Poly3DCollection(fov_polygon, alpha=0.18, edgecolor=color, facecolor=color))
-
-    # plot top left corner of field of view
-    top_left_corner = rays_o[0,0,:] + 0.05*rays_d[0,0,:] / np.linalg.norm(rays_d[0,0,:])
-    ax.scatter(top_left_corner[0], top_left_corner[1], top_left_corner[2], color=color)
-
-    bottom_left_corner = rays_o[-1,0,:] + 0.05*rays_d[-1,0,:] / np.linalg.norm(rays_d[-1,0,:])
-    ax.scatter(bottom_left_corner[0], bottom_left_corner[1], bottom_left_corner[2], color=color, marker='x')
-
-
-def plotCameraRays(rays_o, rays_d, ax, color, show_nb_rays):
-    """
-    Visualize sampled rays.
-    """
-    idx_w = np.random.randint(0, rays_o.shape[0]-1, show_nb_rays)
-    idx_h = np.random.randint(0, rays_o.shape[1]-1, show_nb_rays)
-
-    # normalize ray directions
-    rays_d = rays_d / np.linalg.norm(rays_d, axis=2, keepdims=True)
-
-    # Plot camera positions as dots with color gradient
-    for i in range(show_nb_rays):
-
-        # plot all sample rays
-        start = rays_o[idx_w[i], idx_h[i], :]
-        end = start + 0.05 * rays_d[idx_w[i], idx_h[i], :]
-        ax.plot([start[0], end[0]], [start[1], end[1]], [start[2], end[2]], c=color, label='Ray Direction')
-
-def plotCameraDirections(df, ax, color, scale_fct):
-    # get pose
-    x = df["sensor_pose_x"]
-    y = df["sensor_pose_y"]
-    z = df["sensor_pose_z"]
-    pos = np.array([x, y, z])
-
-    # scale position
-    pos = scale_fct(pos)
-
-
-    yaw = df["sensor_pose_yaw"]
-    R_yaw_c2w = np.array([[np.cos(yaw), -np.sin(yaw), np.zeros_like(yaw)],
-                            [np.sin(yaw), np.cos(yaw), np.zeros_like(yaw)],
-                            [np.zeros_like(yaw), np.zeros_like(yaw), np.ones_like(yaw)]])
-    
-    # Plot points
-    ax.scatter(pos[0], pos[1], pos[2], label='Points', color=color)
-    
-    # Plot directions
-    direction = np.matmul(R_yaw_c2w[:,:], np.array([1, 0, 0]))
-    ax.quiver(pos[0], pos[1], pos[2], direction[0], direction[1], direction[2], length=0.05, normalize=True, color=color)
-
-
-def test_read_meta():
-    log.set_log_level('INFO')  # SUCCESS is the default
-
-    show_nb_cameras = 7
-    show_nb_rays = 10
-
-    # create figure
-    fig = plt.figure(figsize=(10,6))
-    ax = fig.add_subplot(111, projection='3d')
-    
-    sensor_names = ("RGBD_1", "RGBD_2", "RGBD_3", "RGBD_4")
-    color_map_names = ("Purples", "Greens", "Reds", "Greys")
-    for j, (sensor_name, color_map_name) in enumerate(zip(sensor_names, color_map_names)):
-        dataset = RobotAtHomeDataset(root_dir='../RobotAtHome2/data', sensor_name=sensor_name)
-        dataset.batch_size = show_nb_rays
-        dataset.ray_sampling_strategy = 'same_image'
-
-        df_split_idxs = dataset.df[dataset.df["split"] == "train"].index.to_numpy()
-        df_split = dataset.df.loc[df_split_idxs].copy(deep=True)
-
-        # create color bar
-        cmap = plt.get_cmap(color_map_name)
-        norm = Normalize(vmin=0, vmax=1.5*dataset.rays.shape[0])
-        sm = ScalarMappable(cmap=cmap, norm=norm)
-        colour_map = {"cmap": cmap, "norm": norm, "sm": sm}
-        sm.set_array([])
-        # if j == 0:
-        #     cbar = plt.colorbar(sm, ax=ax, label='Pose Index')
-        # else:
-        #     cbar = plt.colorbar(sm, ax=ax)
-
-        for i in np.linspace(0, dataset.rays.shape[0]-1, show_nb_cameras, dtype=int):
-            # get ray origins and directions
-            data = dataset[i]
-            rays_o, rays_d = get_rays(data['direction'], data['pose'].reshape(3,4)) # (W*H, 3), (3,4)
-            rays_o = rays_o.reshape(dataset.img_wh[1], dataset.img_wh[0], 3).detach().clone().numpy() # (H, W, 3)
-            rays_d = rays_d.reshape(dataset.img_wh[1], dataset.img_wh[0], 3).detach().clone().numpy() # (H, W, 3)
-
-            # # verify ratio height to width
-            # dH = np.linalg.norm(rays_d[0,0,:] - rays_d[-1,0,:])
-            # dW = np.linalg.norm(rays_d[0,0,:] - rays_d[0,-1,:])
-            # if np.abs(dH/dW - dataset.img_wh[1]/dataset.img_wh[0]) > 0.01:
-            #     print(f"ERROR: test_read_meta: Ratio height to width is not correct! {dH/dW} != {dataset.img_wh[1]/dataset.img_wh[0]}")
-
-            # # veryfy rays_d
-            # directions = get_ray_directions(dataset.img_wh[1], dataset.img_wh[0], dataset.K, flatten=False).detach().clone().numpy() # (H, W, 3)
-            # yaw = dataset.df["sensor_pose_yaw"].to_numpy()[i]
-            # R_yaw_c2w = np.array([[np.cos(yaw), -np.sin(yaw), np.zeros_like(yaw)],
-            #                         [np.sin(yaw), np.cos(yaw), np.zeros_like(yaw)],
-            #                         [np.zeros_like(yaw), np.zeros_like(yaw), np.ones_like(yaw)]])
-            # directions = np.einsum('hwi,ji->hwj', directions, R_yaw_c2w)
-            # if not np.allclose(rays_d, directions, atol=1e-6):
-            #     print(f"ERROR: test_read_meta: Rays_d is not correct!, error = {np.linalg.norm(rays_d-directions)}")
-            #     print(f"rays_d[0,0,:] = {rays_d[0,0,:]}")
-            #     print(f"directions[0,0,:] = {directions[0,0,:]}")
-
-            # # verify opening angle
-            # W_mid = dataset.img_wh[0] // 2
-            # H_mid = dataset.img_wh[1] // 2
-            # alpha_H = np.arccos(np.dot(rays_d[0,W_mid,:], rays_d[-1,W_mid,:]))
-            # alpha_W = np.arccos(np.dot(rays_d[H_mid,0,:], rays_d[H_mid,-1,:]))
-            # print(f"opening angle height = {np.rad2deg(alpha_H)}")
-            # print(f"opening angle width = {np.rad2deg(alpha_W)}")
-
-            color = colour_map["cmap"](colour_map["norm"](i+int(dataset.rays.shape[0]/2)))
-
-            plotCameraFoV(rays_o, rays_d, color, ax)
-            # plotCameraRays(rays_o, rays_d, ax, color, show_nb_rays)      
-            plotCameraDirections(df_split.iloc[i], ax, color, dataset.scalePosition)
-
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_zlabel('Z')
-    ax.set_title('Camera Poses Visualization')
-    # ax.set_aspect('equal', 'box')
-    ax.set_box_aspect((1, 1, 1))
-    ax.set_xlim(-0.5, 0.5)
-    ax.set_xticks(np.linspace(-0.5, 0.5, 5))
-    ax.set_ylim(-0.5, 0.5)
-    ax.set_yticks(np.linspace(-0.5, 0.5, 5))
-    ax.set_zlim(-0.5, 0.5)
-    ax.set_zticks(np.linspace(-0.5, 0.5, 5))
-    plt.show()
-
-
-
-if __name__ == '__main__':
-    test_read_meta()

@@ -1,12 +1,8 @@
 import numpy as np
-import os
-import matplotlib.pyplot as plt
-from alive_progress import alive_bar
 
-from robotathome import RobotAtHome
 from args.args import Args
 from datasets.scene_base import SceneBase
-from ROS1.src.sensors.src.pcl_tools.pcl_loader import PCLLoader
+from ETHZ_experiments.catkin_ws.src.sensors.src.pcl_tools.pcl_loader import PCLLoader
 
 class SceneETHZ(SceneBase):
     def __init__(
@@ -55,7 +51,9 @@ class SceneETHZ(SceneBase):
             filename=self.map_name,
         )
     
-    def _defineParams(self):
+    def _defineParams(
+        self
+    ):
         """
         Calculate world (in meters) to cube ([cube_min,cube_max]**3) transformation parameters.
         Enlarge the cube with scale_margin s.t. all points are sure to be inside the cube.

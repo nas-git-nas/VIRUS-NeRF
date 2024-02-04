@@ -1,22 +1,14 @@
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-import os
-import pandas as pd
-import sys
-
-from datasets.ray_utils import get_rays
 
 from args.args import Args
-from helpers.data_fcts import sensorName2ID, sensorID2Name
+from datasets.ray_utils import get_rays
+from helpers.data_fcts import sensorName2ID
 
 
 
 class DatasetBase(Dataset):
-    """
-    Define length and sampling method
-    """
-
     def __init__(
             self, 
             args:Args, 
@@ -24,9 +16,6 @@ class DatasetBase(Dataset):
         ):
         self.args = args
         self.split = split
-
-    def read_intrinsics(self):
-        pass
 
     def __len__(self):
         return len(self.poses)
@@ -44,6 +33,7 @@ class DatasetBase(Dataset):
         Args:
             batch_size: number of samples; int
             sampling_strategy: dictionary containing the sampling strategy for images and pixels; dict
+            elapse_time: time to elapse; float
             img_idxs: indices of images; tensor of int64 (batch_size,)
             pix_idxs: indices of pixels; tensor of int64 (batch_size,)
         Returns:
@@ -85,7 +75,17 @@ class DatasetBase(Dataset):
 
         return samples
     
-    def to(self, device):
+    def to(
+        self, 
+        device,
+    ):
+        """
+        Move dataset to device.
+        Args:
+            device: device to move the dataset to; torch.device
+        Returns:
+            self: dataset on device; DatasetBase
+        """
         self.rgbs = self.rgbs.to(device)
         self.poses = self.poses.to(device)
         self.poses_lidar = self.poses_lidar.to(device)
@@ -124,19 +124,13 @@ class DatasetBase(Dataset):
         # determine how many samples are synchrone
         sync_size = torch.sum(torch.abs(self.times[img_idxs[0]] - self.times) < time_thr).item()
 
-        # # get indices of synchrone samples
-        # m1, m2 = torch.meshgrid(self.times[img_idxs], self.times)
-        # sync_idxs_i, sync_idxs_j = torch.where((m1 - m2)<1e-1)
-        # sync_idxs = -1 * torch.ones((len(img_idxs), sync_size), dtype=torch.int32, device=self.args.device)
-        # sync_idxs[sync_idxs_i, sync_idxs_j] = sync_idxs_j.to(torch.int32)
-
         sync_idxs = -1 * torch.ones((len(img_idxs), sync_size), dtype=torch.int32, device=self.args.device)
         for i, idx in enumerate(img_idxs):
             mask = torch.abs(self.times[idx] - self.times) < time_thr
             sync_idxs[i, :] = torch.where(mask)[0]
 
         # verify that all samples were updated
-        if self.args.model.debug_mode:
+        if self.args.training.debug_mode:
             if torch.any(sync_idxs == -1):
                 self.args.logger.error(f"DatasetBase:getSynchroneSamples: some samples were not updated correctly")
         return sync_idxs
@@ -184,7 +178,6 @@ class DatasetBase(Dataset):
             max(np.floor(H/2 + idx_slope*angle_min_max[0]).astype(int), 0),
             min(np.ceil(H/2 + idx_slope*angle_min_max[1]).astype(int), H),
         )
-        print(f"idx_min_max: {idx_min_max}")
 
         # reduce image height
         img_wh = (W, idx_min_max[1]-idx_min_max[0])
@@ -240,7 +233,7 @@ class DatasetBase(Dataset):
             rays_o[idx_mask] = rays_o_temp # (N, 3)
             rays_d[idx_mask] = rays_d_tempt # (N, 3)
 
-        if self.args.model.debug_mode:
+        if self.args.training.debug_mode:
             if torch.any(torch.isnan(rays_o)) or torch.any(torch.isnan(rays_d)):
                 self.args.logger.error(f"DatasetBase:_calcRayPoses: some rays were not calculated correctly")
 
@@ -250,71 +243,3 @@ class DatasetBase(Dataset):
         return rays_o, rays_d
 
 
-
-
-
-            # # training pose is retrieved in train.py
-            # if self.args.training.sampling_strategy["imgs"] == "all":
-            #     img_idxs = torch.randint(0, len(self.poses), size=(self.args.training.batch_size,), device=self.rays.device)
-            # elif self.args.training.sampling_strategy["imgs"] == "same":
-            #     img_idxs = idx * torch.ones(self.args.training.batch_size, dtype=torch.int64, device=self.rays.device)               
-            # else:
-            #     print(f"ERROR: base.py: __getitem__: image sampling strategy must be either 'all' or 'same' " \
-            #           f"but is {self.args.training.sampling_strategy['imgs']}")
-
-            # # if self.ray_sampling_strategy == 'all_images':  # randomly select images
-            # #     # img_idxs = np.random.choice(len(self.poses), self.batch_size)
-            # #     img_idxs = torch.randint(
-            # #         0,
-            # #         len(self.poses),
-            # #         size=(self.batch_size,),
-            # #         device=self.rays.device,
-            # #     )
-            # # elif self.ray_sampling_strategy == 'same_image':  # randomly select ONE image
-            # #     # img_idxs = np.random.choice(len(self.poses), 1)[0]
-            # #     img_idxs = [idx]
-            # # # randomly select pixels
-            # # # pix_idxs = np.random.choice(self.img_wh[0] * self.img_wh[1],
-            # # #                             self.batch_size)
-
-            # if self.args.training.sampling_strategy["pixs"] == "random":
-            #     pix_idxs = torch.randint(0, self.img_wh[0]*self.img_wh[1], size=(self.args.training.batch_size,), device=self.rays.device)
-            # elif self.args.training.sampling_strategy["pixs"] == "ordered":
-            #     step = self.img_wh[0]*self.img_wh[1] / self.args.training.batch_size
-            #     pix_idxs = torch.linspace(0, self.img_wh[0]*self.img_wh[1]-1-step, self.args.training.batch_size, device=self.rays.device)
-            #     rand_offset = step * torch.rand(size=(self.args.training.batch_size,), device=self.rays.device)
-            #     pix_idxs = torch.round(pix_idxs + rand_offset).to(torch.int64)
-            #     pix_idxs = torch.clamp(pix_idxs, min=0, max=self.img_wh[0]*self.img_wh[1]-1)
-            # elif self.args.training.sampling_strategy["pixs"] == "closest":
-            #     pix_idxs = torch.randint(0, self.img_wh[0]*self.img_wh[1], size=(self.args.training.batch_size,), device=self.rays.device)
-            #     num_min_idxs = int(0.005 * self.args.training.batch_size)
-            #     pix_min_idxs = self.sensors_dict["USS"].imgs_min_idx
-            #     pix_idxs[:num_min_idxs] = pix_min_idxs[img_idxs[:num_min_idxs]]
-            # else:
-            #     print(f"ERROR: base.py: __getitem__: pixel sampling strategy must be either 'random' or 'ordered' " \
-            #           f"but is {self.args.training.sampling_strategy['pixels']}")
-            
-            # # if hasattr(self, 'pixel_sampling_strategy') and self.pixel_sampling_strategy=='entire_image':
-            # #     pix_idxs = torch.arange(
-            # #         0, self.img_wh[0]*self.img_wh[1], device=self.rays.device
-            # #     )
-            # # else:
-            # #     pix_idxs = torch.randint(
-            # #         0, self.img_wh[0]*self.img_wh[1], size=(self.batch_size,), device=self.rays.device
-            # #     )
-
-
-
-            #         else:
-            # sample = {
-            #     'pose': self.poses[idx], 
-            #     'img_idxs': idx
-            # }
-            # if hasattr(self, 'depths_dict'):
-            #     sample['depth'] = {}
-            #     for sensor, sensor_depths in self.depths_dict.items():
-            #         sample['depth'][sensor] = sensor_depths[idx]
-            #  # if ground truth available
-            # if len(self.rays) > 0: 
-            #     rays = self.rays[idx]
-            #     sample['rgb'] = rays[:, :3]

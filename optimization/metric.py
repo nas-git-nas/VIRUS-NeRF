@@ -39,6 +39,13 @@ class Metric():
         self,
         X:np.ndarray,
     ):
+        """
+        Evaluate metric.
+        Args:
+            X: position in hparams space; np.array (M,) or (N, M)
+        Returns:
+            score: score of input; float or np.array (N,)
+        """
         if self.name == "gauss":
             return self.gauss(
                 X=X,

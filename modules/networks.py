@@ -1,25 +1,15 @@
 from typing import Callable, Optional
-
 import torch
 import numpy as np
 from torch import nn
-from einops import rearrange
-from kornia.utils.grid import create_meshgrid3d
 from torch.cuda.amp import custom_bwd, custom_fwd
 
-from .utils import (
-    morton3D, 
-    morton3D_invert, 
-    packbits, 
-)
 
-from .rendering import NEAR_DISTANCE
 from .triplane import TriPlaneEncoder
 from .volume_train import VolumeRenderer
 from .spherical_harmonics import DirEncoder
-
 from modules.occupancy_grid import OccupancyGrid
-from modules.nerf_grid import NeRFGrid
+from modules.ngp_grid import NGPGrid
 from datasets.scene_base import SceneBase
 from datasets.dataset_rh import DatasetRH
 from args.args import Args
@@ -124,13 +114,13 @@ class NGP(nn.Module):
         self.render_func = VolumeRenderer()
 
         self.args = args
-        if self.args.occ_grid.grid_type == 'nerf':
-            self.occupancy_grid = NeRFGrid(
+        if self.args.model.grid_type == 'ngp':
+            self.occupancy_grid = NGPGrid(
                 args=args,
                 grid_size=self.grid_size,
                 fct_density=self.density,
             )
-        elif self.args.occ_grid.grid_type == 'occ':
+        elif self.args.model.grid_type == 'occ':
             self.occupancy_grid = OccupancyGrid(
                 args=args,
                 grid_size=self.grid_size,
@@ -139,7 +129,7 @@ class NGP(nn.Module):
                 fct_density=self.density,
             )
         else:
-            self.args.logger.error(f"grid_type {self.args.occ_grid.grid_type} not implemented")
+            self.args.logger.error(f"grid_type {self.args.model.grid_type} not implemented")
 
     def density(self, x, return_feat=False):
         """
@@ -197,7 +187,6 @@ class NGP(nn.Module):
     ):
 
         self.occupancy_grid.update(
-            threshold=density_threshold,
             elapse_time=elapse_time,
         )
 

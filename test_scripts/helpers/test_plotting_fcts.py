@@ -8,7 +8,6 @@ from helpers.plotting_fcts import combineImgs
 
 
 def test_combineImgs():
-
     img1 = np.zeros((10, 10), dtype=bool)
     img1[0:5, 0:5] = True
     img2 = np.zeros((10, 10), dtype=bool)

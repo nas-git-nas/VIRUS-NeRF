@@ -8,9 +8,9 @@ import shutil
 import logging
 
 from args.h_params import HParamsDataset, HParamsModel, HParamsTraining, \
-                            HParamsEvaluation, HParamsOccGrid, HParamsRobotAtHome, \
+                            HParamsEvaluation, HParamsNGPGrid, HParamsOccGrid, HParamsRobotAtHome, \
                             HParamsRGBD, HParamsUSS, HParamsToF, HParamsETHZ, HParamsLiDAR
-from args.custom_formatter import FileFormatter, TerminalFormatter
+from args.logging_formatter import FileFormatter, TerminalFormatter
 
 
 class Args():
@@ -37,9 +37,22 @@ class Args():
         if self.dataset.name == "ETHZ":
             self.ethz = HParamsETHZ()
             self.ethz.setHParams(hparams)
+
+            if self.model.grid_type == "ngp":
+                self.ngp_grid = HParamsNGPGrid()
+                self.ngp_grid.setHParams(hparams)
+            elif self.model.grid_type == "occ":
+                self.occ_grid = HParamsOccGrid()
+                self.occ_grid.setHParams(hparams)
+            else:
+                self.logger.error("Grid type not implemented!")
+
         elif self.dataset.name == "RH2":
             self.rh = HParamsRobotAtHome()
             self.rh.setHParams(hparams)
+
+            self.ngp_grid = HParamsNGPGrid()
+            self.ngp_grid.setHParams(hparams)
         else:
             self.logger.error("Dataset not implemented!")
 
@@ -178,9 +191,8 @@ class Args():
         self.logger.addHandler(c_handler)
         self.logger.addHandler(f_handler)
 
-def test_args():
-    args = Args("hparams.json")
-    args.saveJson()
 
-if __name__ == "__main__":
-    test_args()
+
+
+
+

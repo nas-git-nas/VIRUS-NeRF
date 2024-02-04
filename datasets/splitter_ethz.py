@@ -5,7 +5,7 @@ import sys
 
 from datasets.splitter_base import Splitter
 from args.args import Args
-from helpers.data_fcts import sensorName2ID, sensorID2Name
+from helpers.data_fcts import sensorName2ID
 
 class SplitterETHZ(Splitter):
     def __init__(
@@ -194,6 +194,11 @@ class SplitterETHZ(Splitter):
     def loadTimes(
         self,
     ):
+        """
+        Load times of measurements per sensor stack.
+        Returns:
+            times: times of measurements per sensor stack; dict of { cam_id: np.array of shape (N,) }
+        """
         data_dir = os.path.join(self.args.ethz.dataset_dir, self.args.ethz.room)
 
         times = {}
@@ -244,7 +249,7 @@ class SplitterETHZ(Splitter):
             mask = np.abs(t1-t2) < self.time_thr # (N_common, Ni)
             common_idxs[cam_id] = np.where(mask)[1] # (N_common,)
 
-            if self.args.model.debug_mode:
+            if self.args.training.debug_mode:
                 if len(common_idxs[cam_id]) != len(common_time):
                     self.args.logger.error(f"DatasetETHZ::matchTimes: length of time is in common not consistent!")
                     self.args.logger.error(f"len(common_idxs[cam_id]): {len(common_idxs[cam_id])}, len(common_time): {len(common_time)}")

@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 
 from args.args import Args
 

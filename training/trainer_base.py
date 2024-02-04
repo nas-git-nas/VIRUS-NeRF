@@ -1,24 +1,11 @@
-import glob
 import os
-import time
-import tqdm
-import random
-import warnings
-
 import torch
-import imageio
 import numpy as np
 import pandas as pd
 import taichi as ti
-from einops import rearrange
-import torch.nn.functional as F
-from abc import abstractmethod
-
 from alive_progress import alive_bar
 from contextlib import nullcontext
 
-# from gui import NGPGUI
-# from opt import get_opts
 from args.args import Args
 from modules.networks import NGP
 from modules.rendering import render
@@ -93,6 +80,14 @@ class TrainerBase():
         # load checkpoint if ckpt path is provided
         if self.args.model.ckpt_path:
             self._loadCheckpoint(ckpt_path=self.args.model.ckpt_path)
+
+        # grid update interval
+        if self.args.model.grid_type == 'ngp':
+            self.grid_update_interval = self.args.ngp_grid.update_interval
+        elif self.args.model.grid_type == 'occ':
+            self.grid_update_interval = self.args.occ_grid.update_interval
+        else:
+            self.args.logger.error("Grid type not implemented!")
 
     def interfereDensityMap(
             self, 
@@ -186,11 +181,11 @@ class TrainerBase():
         logs_df.to_csv(os.path.join(self.args.save_dir, 'logs.csv'), index=False)
     
     def _batchifyRender(
-            self,
-            rays_o:torch.Tensor,
-            rays_d:torch.Tensor,
-            test_time:bool,
-            batch_size:int,
+        self,
+        rays_o:torch.Tensor,
+        rays_d:torch.Tensor,
+        test_time:bool,
+        batch_size:int,
     ):
         """
         Batchify rendering process.
@@ -226,10 +221,10 @@ class TrainerBase():
                     yield results
 
     def _batchifyDensity(
-            self,
-            pos:torch.Tensor,
-            test_time:bool,
-            batch_size:int,
+        self,
+        pos:torch.Tensor,
+        test_time:bool,
+        batch_size:int,
     ):
         """
         Batchify density rendering process.
@@ -258,11 +253,11 @@ class TrainerBase():
                     yield sigmas
 
     def _scanRays2scanMap(
-            self,
-            rays_o_w:np.array,
-            depth:np.array,
-            scan_angles:np.array,
-            num_imgs:int,
+        self,
+        rays_o_w:np.array,
+        depth:np.array,
+        scan_angles:np.array,
+        num_imgs:int,
     ):
         """
         Create scan maps for given rays and depths.
@@ -308,13 +303,6 @@ class TrainerBase():
         
         slope = self.logs['time'][-1] / self.logs['step'][-1]
         return slope * steps
-        
-        # return linInterpolateArray(
-        #     x1=np.array(self.logs['step']),
-        #     y1=np.array(self.logs['time']),
-        #     x2=steps,
-        #     border_condition="nearest"
-        # )
     
     def _time2step(
         self,
@@ -333,10 +321,4 @@ class TrainerBase():
         slope = self.logs['step'][-1] / self.logs['time'][-1]
         return slope * times
         
-        # return linInterpolateArray(
-        #     x1=np.array(self.logs['time']),
-        #     y1=np.array(self.logs['step']),
-        #     x2=times,
-        #     border_condition="nearest"
-        # )
 

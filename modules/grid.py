@@ -2,15 +2,12 @@ import torch
 import numpy as np
 import sys
 import os
-import taichi as ti
-import time
-from abc import ABC, abstractmethod
+from abc import abstractmethod
  
 sys.path.insert(0, os.getcwd())
 from kornia.utils.grid import create_meshgrid3d
 from modules.utils import (
     morton3D, 
-    morton3D_invert, 
     packbits, 
 )
 from args.args import Args
