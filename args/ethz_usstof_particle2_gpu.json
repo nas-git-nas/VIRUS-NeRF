@@ -58,9 +58,8 @@
         "sensors": ["GT", "USS", "ToF", "LiDAR", "NeRF"],
         "plot_results": true
     },
-    "nerf_grid":
+    "ngp_grid":
     {
-        "batch_size": 1024,
         "update_interval": 16,
         "warmup_steps": 256
     },

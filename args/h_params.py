@@ -107,14 +107,13 @@ class HParamsEvaluation(HParams):
         HParams.__init__(self, name="evaluation")
 
 
-class HParamsNeRFGrid(HParams):
+class HParamsNGPGrid(HParams):
     def __init__(self) -> None:
         # hyper parameters
-        self.batch_size = None
         self.update_interval = None
         self.warmup_steps = None
 
-        HParams.__init__(self, name="nerf_grid")
+        HParams.__init__(self, name="ngp_grid")
 
 
 class HParamsOccGrid(HParams):

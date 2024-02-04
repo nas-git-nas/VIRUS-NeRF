@@ -8,7 +8,7 @@ import shutil
 import logging
 
 from args.h_params import HParamsDataset, HParamsModel, HParamsTraining, \
-                            HParamsEvaluation, HParamsNeRFGrid, HParamsOccGrid, HParamsRobotAtHome, \
+                            HParamsEvaluation, HParamsNGPGrid, HParamsOccGrid, HParamsRobotAtHome, \
                             HParamsRGBD, HParamsUSS, HParamsToF, HParamsETHZ, HParamsLiDAR
 from args.logging_formatter import FileFormatter, TerminalFormatter
 
@@ -38,9 +38,9 @@ class Args():
             self.ethz = HParamsETHZ()
             self.ethz.setHParams(hparams)
 
-            if self.model.grid_type == "nerf":
-                self.nerf_grid = HParamsNeRFGrid()
-                self.nerf_grid.setHParams(hparams)
+            if self.model.grid_type == "ngp":
+                self.ngp_grid = HParamsNGPGrid()
+                self.ngp_grid.setHParams(hparams)
             elif self.model.grid_type == "occ":
                 self.occ_grid = HParamsOccGrid()
                 self.occ_grid.setHParams(hparams)
@@ -51,8 +51,8 @@ class Args():
             self.rh = HParamsRobotAtHome()
             self.rh.setHParams(hparams)
 
-            self.nerf_grid = HParamsNeRFGrid()
-            self.nerf_grid.setHParams(hparams)
+            self.ngp_grid = HParamsNGPGrid()
+            self.ngp_grid.setHParams(hparams)
         else:
             self.logger.error("Dataset not implemented!")
 

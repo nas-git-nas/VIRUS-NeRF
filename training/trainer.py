@@ -103,10 +103,10 @@ class Trainer(TrainerPlot):
                 
                 if step % self.grid_update_interval == 0:
 
-                    if self.args.model.grid_type == 'nerf':
+                    if self.args.model.grid_type == 'ngp':
                         self.model.updateNeRFGrid(
                             density_threshold=0.01 * MAX_SAMPLES / 3**0.5,
-                            warmup=step < self.args.occ_grid.warmup_steps,
+                            warmup=step < self.args.ngp_grid.warmup_steps,
                         )
                     elif self.args.model.grid_type == 'occ':
                         self.model.updateOccGrid(

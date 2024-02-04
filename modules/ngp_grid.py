@@ -1,12 +1,10 @@
 import torch
 import numpy as np
 
-from kornia.utils.grid import create_meshgrid3d
 from modules.rendering import NEAR_DISTANCE
 from modules.utils import (
     morton3D, 
     morton3D_invert, 
-    packbits, 
 )
 from einops import rearrange
 
@@ -14,8 +12,7 @@ from args.args import Args
 from modules.grid import Grid
 
 
-#class NeRFGrid(torch.nn.Module):
-class NeRFGrid(Grid):
+class NGPGrid(Grid):
     def __init__(
         self,
         args:Args,

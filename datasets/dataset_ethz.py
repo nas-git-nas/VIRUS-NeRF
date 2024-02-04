@@ -16,9 +16,9 @@ from datasets.sensor_uss import USSModel
 from args.args import Args
 from training.sampler import Sampler
 from helpers.data_fcts import sensorName2ID, sensorID2Name
-from ROS1.src.sensors.src.pcl_tools.pcl_loader import PCLLoader
-from ROS1.src.sensors.src.pcl_tools.pcl_transformer import PCLTransformer
-from ROS1.src.sensors.src.pcl_tools.pcl_creator import PCLCreatorUSS, PCLCreatorToF
+from ETHZ_experiments.catkin_ws.src.sensors.src.pcl_tools.pcl_loader import PCLLoader
+from ETHZ_experiments.catkin_ws.src.sensors.src.pcl_tools.pcl_transformer import PCLTransformer
+from ETHZ_experiments.catkin_ws.src.sensors.src.pcl_tools.pcl_creator import PCLCreatorUSS, PCLCreatorToF
 
 
 class DatasetETHZ(DatasetBase):

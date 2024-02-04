@@ -2,7 +2,7 @@ import numpy as np
 
 from args.args import Args
 from datasets.scene_base import SceneBase
-from ROS1.src.sensors.src.pcl_tools.pcl_loader import PCLLoader
+from ETHZ_experiments.catkin_ws.src.sensors.src.pcl_tools.pcl_loader import PCLLoader
 
 class SceneETHZ(SceneBase):
     def __init__(

@@ -1,25 +1,15 @@
 from typing import Callable, Optional
-
 import torch
 import numpy as np
 from torch import nn
-from einops import rearrange
-from kornia.utils.grid import create_meshgrid3d
 from torch.cuda.amp import custom_bwd, custom_fwd
 
-from .utils import (
-    morton3D, 
-    morton3D_invert, 
-    packbits, 
-)
 
-from .rendering import NEAR_DISTANCE
 from .triplane import TriPlaneEncoder
 from .volume_train import VolumeRenderer
 from .spherical_harmonics import DirEncoder
-
 from modules.occupancy_grid import OccupancyGrid
-from modules.nerf_grid import NeRFGrid
+from modules.ngp_grid import NGPGrid
 from datasets.scene_base import SceneBase
 from datasets.dataset_rh import DatasetRH
 from args.args import Args
@@ -124,8 +114,8 @@ class NGP(nn.Module):
         self.render_func = VolumeRenderer()
 
         self.args = args
-        if self.args.model.grid_type == 'nerf':
-            self.occupancy_grid = NeRFGrid(
+        if self.args.model.grid_type == 'ngp':
+            self.occupancy_grid = NGPGrid(
                 args=args,
                 grid_size=self.grid_size,
                 fct_density=self.density,

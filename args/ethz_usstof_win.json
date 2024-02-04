@@ -15,7 +15,7 @@
         "encoder_type": "hash",
         "hash_levels": 16,
         "hash_max_res": 1024,
-        "grid_type": "occ",
+        "grid_type": "ngp",
         "save": true
     },
     "training":
@@ -59,9 +59,8 @@
         "sensors": ["GT", "USS", "ToF", "LiDAR", "NeRF"],
         "plot_results": true
     },
-    "nerf_grid":
+    "ngp_grid":
     {
-        "batch_size": 1024,
         "update_interval": 16,
         "warmup_steps": 256
     },

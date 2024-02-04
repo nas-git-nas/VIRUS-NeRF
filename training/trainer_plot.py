@@ -102,18 +102,18 @@ class TrainerPlot(TrainerBase):
         ) # (L, L)
 
         # plot occupancy grid
-        fig, axes = plt.subplots(ncols=3, nrows=1, figsize=(8,3))
+        fig, axes = plt.subplots(ncols=3, nrows=1, figsize=(9,3))
         axes = axes.flatten()
         scale = self.args.model.scale
         extent = self.test_dataset.scene.c2w(pos=np.array([[-scale,-scale],[scale,scale]]), copy=False)
         extent = extent.T.flatten()
 
         ax = axes[0]
-        im = ax.imshow(density_map_gt.T, origin='lower', extent=extent, cmap='jet', vmin=0, vmax=1)
+        im = ax.imshow(density_map_gt.T, origin='lower', extent=extent, cmap='jet', vmin=0, vmax=1, interpolation='none')
         ax.set_xlabel(f'x [m]')
         ax.set_ylabel(f'y [m]')
         ax.set_title(f'GT')
-        if self.args.model.grid_type == 'nerf':
+        if self.args.model.grid_type == 'ngp':
             fig.colorbar(im, ax=ax)
 
         ax = axes[1]
@@ -121,32 +121,36 @@ class TrainerPlot(TrainerBase):
             vmax = 1
         else:
             vmax = 10 * (0.01 * MAX_SAMPLES / 3**0.5)
-        im = ax.imshow(occ_2d_grid.T, origin='lower', cmap='jet', extent=extent, vmin=0, vmax=vmax)
+        im = ax.imshow(occ_2d_grid.T, origin='lower', cmap='jet', extent=extent, vmin=0, vmax=vmax, interpolation='none')
         ax.set_xlabel(f'x [m]')
         ax.set_title(f'OccGrid density')
-        if self.args.model.grid_type == 'nerf':
+        if self.args.model.grid_type == 'ngp':
             fig.colorbar(im, ax=ax)
 
         ax = axes[2]
-        im = ax.imshow(bin_2d_grid.T, origin='lower', cmap='jet', extent=extent, vmin=0, vmax=1)
+        im = ax.imshow(bin_2d_grid.T, origin='lower', cmap='jet', extent=extent, interpolation='none')
         ax.set_xlabel(f'x [m]')
         ax.set_title(f'OccGrid binary')
-        if self.args.model.grid_type == 'nerf':
-            fig.colorbar(im, ax=ax)
+        if self.args.model.grid_type == 'ngp':
+            cbar = fig.colorbar(im, ax=ax)
+            cbar.set_label('Density', rotation=270, labelpad=15)
 
         # add colorbar
         if self.args.model.grid_type == 'occ':
             fig.subplots_adjust(right=0.85)
             cbar_ax = fig.add_axes([0.87, 0.1, 0.05, 0.8]) # [left, bottom, width, height]
-            fig.colorbar(im, cax=cbar_ax)
+            fig.colorbar(im, cax=cbar_ax)           
+            cbar_ax.set_ylabel('Density', rotation=270, labelpad=15)
 
         # check if directory exists
         if not os.path.exists(os.path.join(self.args.save_dir, "occgrids")):
             os.makedirs(os.path.join(self.args.save_dir, "occgrids"))
 
-        if self.args.model.grid_type == 'nerf':
+        if self.args.model.grid_type == 'ngp':
             plt.tight_layout()
         plt.savefig(os.path.join(self.args.save_dir, "occgrids", f"occgrid_{step}.png"))
+
+        plt.show()
 
     @torch.no_grad()
     def _plotMaps(
@@ -239,7 +243,7 @@ class TrainerPlot(TrainerBase):
                 nn_dists_inv = nn_dists_inv[~np.isnan(nn_dists_inv)]
 
                 ax = axes[s-1,0]
-                ax.imshow(img.swapaxes(0,1), origin='lower', extent=extent)
+                ax.imshow(img.swapaxes(0,1), origin='lower', extent=extent, interpolation='none')
                 for j in np.linspace(0, pos_o.shape[0]-1, num_ray_steps, dtype=int):
                     xs = [pos_o[j,0], pos[j,0]]
                     ys = [pos_o[j,1], pos[j,1]]
