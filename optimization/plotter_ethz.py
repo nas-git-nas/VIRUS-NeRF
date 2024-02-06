@@ -107,6 +107,7 @@ class PlotterEthz():
         cbar_ax = fig.add_axes([0.87, 0.1, 0.05, 0.8]) # [left, bottom, width, height]
         # cbar_ax.set_title('Mean NND',fontsize=13)
         fig.colorbar(im, cax=cbar_ax)
+        cbar_ax.set_ylabel('NND [m]', rotation=270, labelpad=15)
 
         # save figure
         fig.savefig(os.path.join(self.data_dir, 'pso_results.png'))
@@ -162,7 +163,7 @@ class PlotterEthz():
                             label=f'Particle {best_particles[i]}, best NND: {best_scores[i]:.3f}')
 
         ax.set_xlabel('Iteration')
-        ax.set_ylabel('Particle Speed')
+        ax.set_ylabel('Normalized Speed')
         ax.set_ylim([0, np.nanmax(vel_norm)])
         ax.xaxis.set_label_coords(0.5, -0.09)
         ax.legend(loc='upper right')
@@ -246,12 +247,17 @@ class PlotterEthz():
 
         for i, param in parameters.items():
 
-            x_axis = i + column_width * np.linspace(-0.5, 0.5, T) # (T,)
+            # x_axis = i + column_width * np.linspace(-0.5, 0.5, T) # (T,)
             for j in np.arange(best_pos.shape[0])[::-1]:
 
-                start = j * (plot_every_n_iters//best_pos.shape[0])
-                plot_iters = np.arange(start, T, plot_every_n_iters)
-                im = ax.scatter(x_axis[plot_iters], pos[j, plot_iters, i].flatten(), c=scores[j,plot_iters], 
+                # start = j * (plot_every_n_iters//best_pos.shape[0])
+                # plot_iters = np.arange(start, T, plot_every_n_iters)
+
+                if np.isnan(pos[j, -1, i]).any():
+                    plot_iters = -2
+                else:
+                    plot_iters = -1
+                im = ax.scatter(i, pos[j, plot_iters, i].flatten(), c=scores[j,plot_iters], 
                                 cmap=cmap_inv, vmin=self.score_min, vmax=self.score_max, marker=self.best_symbs[j])
                 
                 if self.converged_since_n_iters <= 0:
@@ -261,7 +267,7 @@ class PlotterEthz():
         ax.set_xticks(list(parameters.keys()))
         ax.set_xticklabels([param.replace('_', ' ').replace(' every m', '') + f":\n     [{hparams_lims[param][0]:.1f}, {hparams_lims[param][1]:.1f}]" 
                             for param in parameters.values()], rotation=30, fontsize=9)
-        ax.set_ylabel('Normalized Hyper-Parameters')
+        ax.set_ylabel('Normalized Final Position')
         return ax, im
     
     def _keepBestNParticles(
