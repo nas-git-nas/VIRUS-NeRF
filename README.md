@@ -36,22 +36,22 @@ __Keywords__: local mapping, NeRF, implicit neural representation, Instant-NGP, 
 # Code
 ## Installation
 ### VIRUS-NeRF
-1. Navigate to the desired directory.
-2. Clone this repository.
-3. Make sure that the requirements indicated in _requirements.txt_ are met.
+1. Navigate to the desired directory
+2. Clone this repository
+3. Make sure that the requirements indicated in _requirements.txt_ are met
 
 ### ETHZ Experiments
-1. Install ROS1.
-2. Create a catkin workspace in _USS_experiments/catkin_ws_.
+1. Install ROS1
+2. Create a catkin workspace in _USS_experiments/catkin_ws_
 3. Install the following packages inside _USS_experiments/catkin_ws/src_ to create a new dataset:
 [BALM](https://github.com/hku-mars/BALM "BALM"),
 [KISS-ICP](https://github.com/PRBonn/kiss-icp "Kiss_icp"),
 [Rosserial](https://wiki.ros.org/rosserial "rosserial"),
 [RS-to-Velodyne](https://github.com/HViktorTsoi/rs_to_velodyne "rs_velodyne") and
-[Timed Roslaunch](https://wiki.ros.org/timed_roslaunch "timed_roslaunch").
+[Timed Roslaunch](https://wiki.ros.org/timed_roslaunch "timed_roslaunch")
 4. Install the following packages inside _USS_experiments/catkin_ws/src_ to calibrate the sensors:
 [Camera-LiDAR Calibration](https://github.com/acfr/cam_lidar_calibration "Camera-LiDAR_Calibration") and
-[Kilibr](https://github.com/ethz-asl/kalibr "kalibr").
+[Kilibr](https://github.com/ethz-asl/kalibr "kalibr")
 
 ## Running
 ### VIRUS-NeRF
