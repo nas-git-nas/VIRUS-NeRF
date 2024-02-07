@@ -1,9 +1,12 @@
 # Project
 
 ## General
-* Type: Master's Thesis ASL, ETHZ/EPFL
+* Type: Master's Thesis
 * Author: Nicolaj Schmid (nicolaj.schmid@epfl.ch)
-* Supervisors: Cornelius von Einem, Florian Tschopp, Lorenz Hruby, Roland Siegwart and Colin Jones
+* Supervisors: Cornelius von Einem, Florian Tschopp and Lorenz Hruby
+* Professors: Roland Siegwart and Colin Jones
+* Universities: ETHZ and EPFL
+* Labs: Autonomous Systems Lab and Predictive Control Lab
 
 ## Abstract
 This research strives to leverage cost-effective sensors for local mapping applications in mobile robotics. 
@@ -32,10 +35,23 @@ __Keywords__: local mapping, NeRF, implicit neural representation, Instant-NGP, 
 
 # Code
 ## Installation
-* Navigate to the desired directory
-* Clone repository
-* For the USS experiments: connect and flash Arduino and run _USS_experiments/read_data.py_
-* For the ETHZ experiments: install ROS1 and create a catkin workspace in _USS_experiments/catkin_ws_
+### VIRUS-NeRF
+1. Navigate to the desired directory.
+2. Clone this repository.
+3. Make sure that the requirements indicated in _requirements.txt_ are met.
+
+### ETHZ Experiments
+1. Install ROS1.
+2. Create a catkin workspace in _USS_experiments/catkin_ws_.
+3. Install the following packages inside _USS_experiments/catkin_ws/src_ to create a new dataset:
+[BALM](https://github.com/hku-mars/BALM "BALM"),
+[KISS-ICP](https://github.com/PRBonn/kiss-icp "Kiss_icp"),
+[Rosserial](https://wiki.ros.org/rosserial "rosserial"),
+[RS-to-Velodyne](https://github.com/HViktorTsoi/rs_to_velodyne "rs_velodyne") and
+[Timed Roslaunch](https://wiki.ros.org/timed_roslaunch "timed_roslaunch").
+4. Install the following packages inside _USS_experiments/catkin_ws/src_ to calibrate the sensors:
+[Camera-LiDAR Calibration](https://github.com/acfr/cam_lidar_calibration "Camera-LiDAR_Calibration") and
+[Kilibr](https://github.com/ethz-asl/kalibr "kalibr").
 
 ## Running
 ### VIRUS-NeRF
@@ -46,17 +62,28 @@ Choose the desired hyper-parameters as described below. Then execute one of the 
 * Relaunch optimization continuously to circumvent memory leak of _Taichi Instant-NGP_ implementation: _watch_optimization.py_
 * Relaunch ablation continuously to circumvent memory leak of _Taichi Instant-NGP_ implementation: _watch_ablation.py_
 
-### USS experiments
-* Connect Arduino and USS
-* Flash Arduino with the desired script
-* Execute _USS_experiments/read_data.py_
+### USS Experiments
+1. Connect Arduino and USS
+2. Flash Arduino with the desired script
+3. Execute _USS_experiments/read_data.py_
 
-### ETHZ experiments
-* Connect Arduino and sensor stacks (USS, IRS and camera)
-* Flash Arduino with _ETHZ_experimens/Arduino/sensor_stack/sensor_stack.ino_
-* Launch logging file _ETHZ_experimens/catkin_ws/src/sensors/Launch/stack_log.launch_
+### ETHZ Experiments
+1. Connect Arduino and sensor stacks (USS, IRS and camera)
+2. Flash Arduino with _ETHZ_experimens/Arduino/sensor_stack/sensor_stack.ino_
+3. Navigate to: _ETHZ_experimens/catkin_ws/src/sensors/_
+4. Launch logging file to collect the data in Rosbags: _roslaunch sensors Launch/stack_log.launch_
+5. Crop Rosbag to have correct start and ending time: _rosbag filter <bag name> <new name> <condition>_
+6. Create LiDAR poses file and Rosbag with filtered LiDAR pointcloud by launching: _roslaunch sensors Launch/lidarFilter_poseEstimation.launch_
+7. Read out filtered LiDAR pointcloud as pcd files: _rosrun pcl_ros bag_to_pcd lidar_filtered.bag /rslidar_filtered ./lidars/filtered_
+8. Create dataset for BALM: _run src/data_tools/main_balm.py_
+9. Optimize poses with BALM: _roslaunch balm2 ethz_dataset.launch_
+10. Create ground truth maps: _run src/pcl_tools/pcl_merge.py_
+11. Synchronize data: _run src/data_tools/main_syncData.py_
+12. Create final dataset: _run src/data_tools/main_rosbag2dataset.py_
+13. Create pose lookup tables _run src/data_tools/main_createPoseLookupTables.py_
+14. Visualize dataset: _roslaunch sensors Launch/simulation.launch_
 
-## Hyper-Parameters
+## Hyper-Parameters VIRUS-NeRF
 The hyper-parameters can be set in the json files of the directory _args_:
 
 Cathegory | Name | Meaning | Type | Options
@@ -127,15 +154,14 @@ USS | sensor_random_error | add random error to IRS (ToF) depth measurement in m
 LiDAR | angle_min_max | field of view of LiDAR for given rooms | dict of lists | 
 
 # Citations
+For a complete list of citations please refer to the report.
+
 ## Code
 The [Taichi](https://github.com/Linyou/taichi-ngp-renderer "taichi_ngp")  _Instant-NGP_ implementation is used for this project. 
 All [Taichi](https://github.com/Linyou/taichi-ngp-renderer "taichi_ngp") code is contained inside the _modules_ directory 
 (except of _modules/grid.py_ and _modules/occupancy_grid.py_ which are written by myself).
 
 ## Algorithm
-_VIRUS-NeRF_ is based on _Instant-NGP_:
-* Title: Instant neural graphics primitives with a multiresolution hash encoding
-* Author: Müller, Thomas and Evans, Alex and Schied, Christoph and Keller, Alexander
-* Journal: ACM Transactions on Graphics (ToG)
-* Year: 2022
+_VIRUS-NeRF_ is based on _Instant-NGP_: Instant neural graphics primitives with a multiresolution hash encoding; Müller, Thomas and Evans, 
+Alex and Schied, Christoph and Keller, Alexander; ACM Transactions on Graphics (ToG); Year: 2022
  
