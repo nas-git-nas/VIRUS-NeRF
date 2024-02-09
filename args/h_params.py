@@ -102,6 +102,7 @@ class HParamsEvaluation(HParams):
         self.zones = None
         self.sensors = None
         self.plot_results = None
+        self.save_nerf_pointclouds = None
 
         HParams.__init__(self, name="evaluation")
 

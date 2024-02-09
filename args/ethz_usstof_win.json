@@ -55,7 +55,7 @@
             "zone3": [0, 100]
         },
         "sensors": ["GT", "USS", "ToF", "LiDAR", "NeRF"],
-        "plot_results": true
+        "plot_results": false
     },
     "ngp_grid":
     {

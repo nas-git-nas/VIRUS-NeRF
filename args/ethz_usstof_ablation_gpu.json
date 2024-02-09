@@ -55,7 +55,8 @@
             "zone3": [0, 100]
         },
         "sensors": ["GT", "USS", "ToF", "LiDAR", "NeRF"],
-        "plot_results": true
+        "plot_results": true,
+        "save_nerf_pointclouds": false
     },
     "ngp_grid":
     {
