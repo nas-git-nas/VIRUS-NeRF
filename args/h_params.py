@@ -42,7 +42,6 @@ class HParamsDataset(HParams):
         self.split_ratio = None
         self.keep_N_observations = None
         self.keep_sensor = None
-        self.keep_pixels_in_angle_range = None
         self.sensors = None
 
         HParams.__init__(self, name="dataset")
@@ -103,6 +102,7 @@ class HParamsEvaluation(HParams):
         self.zones = None
         self.sensors = None
         self.plot_results = None
+        self.save_nerf_pointclouds = None
 
         HParams.__init__(self, name="evaluation")
 
@@ -187,7 +187,6 @@ class HParamsToF(HParams):
 class HParamsLiDAR(HParams):
     def __init__(self):
         # hyper parameters
-        self.height_offset = None
         self.angle_min_max = None
 
         HParams.__init__(self, name="LiDAR")

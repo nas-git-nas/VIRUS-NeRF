@@ -19,6 +19,8 @@ from helpers.geometric_fcts import createScanRays
 from training.metrics_rh import MetricsRH
 from training.trainer_plot import TrainerPlot
 from training.loss import Loss
+from ETHZ_experiments.catkin_ws.src.sensors.src.pcl_tools.pcl_loader import PCLLoader
+from ETHZ_experiments.catkin_ws.src.sensors.src.pcl_tools.pcl_transformer import PCLTransformer
 
 
 warnings.filterwarnings("ignore")
@@ -215,6 +217,9 @@ class Trainer(TrainerPlot):
             metrics_dict=metrics_dict,
             color_dict=color_dict,
         )
+
+        # create and save pointclouds
+        self._createPointcloudNeRF()
         
         return metrics_dict
 
@@ -899,3 +904,100 @@ class Trainer(TrainerPlot):
         ).to_csv(os.path.join(self.args.save_dir, "metrics.csv"), index=True)
 
         return metrics_dict
+    
+    @torch.no_grad()
+    def _createPointcloudNeRF(
+        self,
+    ):
+        """
+        Create point cloud from NeRF and save it to disk.
+        """
+        if not self.args.eval.save_nerf_pointclouds:
+            return
+        
+        # get ray origins from train and test dataset
+        data_dir = os.path.join(self.args.ethz.dataset_dir, self.args.ethz.room)
+
+        if self.args.ethz.use_optimized_poses:
+            poses_name = 'poses_cam_balm_sync1.csv'
+            poses_lidar_name = 'poses_lidar_balm_sync1.csv'
+        else:
+            poses_name = 'poses_cam_sync1.csv'
+            poses_lidar_name = 'poses_lidar_sync1.csv'
+
+        df = pd.read_csv(
+            filepath_or_buffer=os.path.join(data_dir, 'poses', poses_name),
+            dtype=np.float64,
+        )
+        df_lidar = pd.read_csv(
+            filepath_or_buffer=os.path.join(data_dir, 'poses', poses_lidar_name),
+            dtype=np.float64,
+        )
+
+        rays_o = np.zeros((df.shape[0], 3))
+        for i in range(df.shape[0]):
+            trans = PCLTransformer(
+                t=[df["x"][i], df["y"][i], df["z"][i]],
+                q=[df["qx"][i], df["qy"][i], df["qz"][i], df["qw"][i]],
+            )
+            T = trans.getTransform(
+                type="matrix",
+            ) # (4, 4)
+            trans_lidar = PCLTransformer(
+                t=[df_lidar["x"][i], df_lidar["y"][i], df_lidar["z"][i]],
+                q=[df_lidar["qx"][i], df_lidar["qy"][i], df_lidar["qz"][i], df_lidar["qw"][i]],
+            )
+            T_lidar = trans_lidar.getTransform(
+                type="matrix",
+            ) # (4, 4)
+            rays_o[i] = np.array([T_lidar[0,3], T_lidar[1,3], T[2,3]]) # (3, 4)
+
+        rays_o = self.test_dataset.scene.w2c(pos=rays_o, copy=False) # (N, 3)
+        rays_o = torch.tensor(rays_o, dtype=torch.float32, device=self.args.device)
+
+        # create ray directions
+        rays_o, rays_d = createScanRays(
+            rays_o=rays_o,
+            angle_res=self.args.eval.res_angular,
+        ) # (N*M, 3), (N*M, 3)
+
+        # render rays to get depth
+        depths = torch.empty(0).to(self.args.device) # (N*M,)
+        for results in self._batchifyRender(
+                rays_o=rays_o,
+                rays_d=rays_d,
+                test_time=True,
+                batch_size=self.args.eval.batch_size,
+            ):
+            depths = torch.cat((depths, results['depth']), dim=0)
+
+        # convert depth to world coordinates
+        rays_o = rays_o.detach().clone().cpu().numpy() # (N*M, 3)
+        rays_d = rays_d.detach().clone().cpu().numpy() # (N*M, 3)
+        depths = depths.detach().clone().cpu().numpy()
+        rays_o = self.test_dataset.scene.c2w(pos=rays_o, copy=False)
+        depths = self.test_dataset.scene.c2w(pos=depths, only_scale=True, copy=False)
+
+        # calculate point cloud
+        xyzs = rays_o + rays_d * depths[:,None] # (N*M, 3)
+        xyzs = xyzs.reshape(-1, self.args.eval.res_angular, 3)
+
+        # save point cloud
+        pointcloud_dir = os.path.join(self.args.save_dir, "nerf_pcl")
+        if not os.path.exists(pointcloud_dir):
+            os.mkdir(pointcloud_dir)
+        
+        pcl_loader = PCLLoader(
+            data_dir=pointcloud_dir,
+        )
+        for i in range(xyzs.shape[0]):
+            pcl_loader.savePCL(
+                xyz=xyzs[i],
+                filename=f"nerf_pcl{i}.pcd",
+            )
+
+        # # plot point cloud
+        # import matplotlib.pyplot as plt
+        # xyzs = xyzs.reshape(-1, 3)
+        # plt.scatter(xyzs[:,0], xyzs[:,1])
+        # plt.show()
