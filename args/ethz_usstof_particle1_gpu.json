@@ -78,7 +78,7 @@
     "ethz":
     {
         "dataset_dir": "/media/scratch1/schmin/data/ETHZDataset",
-        "room": "commonroom",
+        "room": "office",
         "cam_ids": ["CAM1", "CAM3"],
         "use_optimized_poses": true
     },
