@@ -952,6 +952,15 @@ class Trainer(TrainerPlot):
             ) # (4, 4)
             rays_o[i] = np.array([T_lidar[0,3], T_lidar[1,3], T[2,3]]) # (3, 4)
 
+        height_range = 0.3
+        num_heights = 3
+        rays_o_h = np.zeros((0,3))
+        for h in np.linspace(-height_range, height_range, num_heights):
+            rays_o_temp = np.copy(rays_o)
+            rays_o_temp[:,2] += h
+            rays_o_h = np.concatenate((rays_o_h, rays_o_temp), axis=0)
+        rays_o = rays_o_h
+
         rays_o = self.test_dataset.scene.w2c(pos=rays_o, copy=False) # (N, 3)
         rays_o = torch.tensor(rays_o, dtype=torch.float32, device=self.args.device)
 
@@ -996,8 +1005,4 @@ class Trainer(TrainerPlot):
                 filename=f"nerf_pcl{i}.pcd",
             )
 
-        # # plot point cloud
-        # import matplotlib.pyplot as plt
-        # xyzs = xyzs.reshape(-1, 3)
-        # plt.scatter(xyzs[:,0], xyzs[:,1])
-        # plt.show()
+        
