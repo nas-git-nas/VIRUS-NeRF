@@ -934,7 +934,7 @@ class Trainer(TrainerPlot):
             dtype=np.float64,
         )
 
-        rays_o = np.zeros((df.shape[0], 3))
+        rays_o = np.zeros((df.shape[0], 3)) # (N,3)
         for i in range(df.shape[0]):
             trans = PCLTransformer(
                 t=[df["x"][i], df["y"][i], df["z"][i]],
@@ -953,25 +953,22 @@ class Trainer(TrainerPlot):
             rays_o[i] = np.array([T_lidar[0,3], T_lidar[1,3], T[2,3]]) # (3, 4)
 
         height_range = 0.3
-        num_heights = 13
-        rays_o_h = np.zeros((0,3))
-        for h in np.linspace(-height_range, height_range, num_heights):
-            rays_o_temp = np.copy(rays_o)
-            rays_o_temp[:,2] += h
-            rays_o_h = np.concatenate((rays_o_h, rays_o_temp), axis=0)
-        rays_o = rays_o_h
+        num_heights = 2
+        rays_o = np.tile(rays_o.reshape(df.shape[0],1,3), (1,num_heights,1)) # (N,H,3)
+        rays_o[:,:,2] = np.linspace(-height_range, height_range, num_heights)[None,:]
+        rays_o = rays_o.reshape(-1,3) # (N*H,3)
 
-        rays_o = self.test_dataset.scene.w2c(pos=rays_o, copy=False) # (N, 3)
+        rays_o = self.test_dataset.scene.w2c(pos=rays_o, copy=False) # (N*H, 3)
         rays_o = torch.tensor(rays_o, dtype=torch.float32, device=self.args.device)
 
         # create ray directions
         rays_o, rays_d = createScanRays(
             rays_o=rays_o,
             angle_res=self.args.eval.res_angular,
-        ) # (N*M, 3), (N*M, 3)
+        ) # (N*H*M, 3), (N*H*M, 3)
 
         # render rays to get depth
-        depths = torch.empty(0).to(self.args.device) # (N*M,)
+        depths = torch.empty(0).to(self.args.device) # (N*H*M,)
         for results in self._batchifyRender(
                 rays_o=rays_o,
                 rays_d=rays_d,
@@ -981,15 +978,15 @@ class Trainer(TrainerPlot):
             depths = torch.cat((depths, results['depth']), dim=0)
 
         # convert depth to world coordinates
-        rays_o = rays_o.detach().clone().cpu().numpy() # (N*M, 3)
-        rays_d = rays_d.detach().clone().cpu().numpy() # (N*M, 3)
+        rays_o = rays_o.detach().clone().cpu().numpy() # (N*H*M, 3)
+        rays_d = rays_d.detach().clone().cpu().numpy() # (N*H*M, 3)
         depths = depths.detach().clone().cpu().numpy()
         rays_o = self.test_dataset.scene.c2w(pos=rays_o, copy=False)
         depths = self.test_dataset.scene.c2w(pos=depths, only_scale=True, copy=False)
 
         # calculate point cloud
-        xyzs = rays_o + rays_d * depths[:,None] # (N*M, 3)
-        xyzs = xyzs.reshape(-1, self.args.eval.res_angular, 3)
+        xyzs = rays_o + rays_d * depths[:,None] # (N*H*M, 3)
+        xyzs = xyzs.reshape(df.shape[0], num_heights*self.args.eval.res_angular, 3) # (N,H*M,3)
 
         # save point cloud
         pointcloud_dir = os.path.join(self.args.save_dir, "nerf_pcl")
