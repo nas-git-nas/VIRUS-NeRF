@@ -953,7 +953,7 @@ class Trainer(TrainerPlot):
             rays_o[i] = np.array([T_lidar[0,3], T_lidar[1,3], T[2,3]]) # (3, 4)
 
         height_range = 0.3
-        num_heights = 3
+        num_heights = 13
         rays_o_h = np.zeros((0,3))
         for h in np.linspace(-height_range, height_range, num_heights):
             rays_o_temp = np.copy(rays_o)
